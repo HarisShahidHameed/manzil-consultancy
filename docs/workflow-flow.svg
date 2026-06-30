@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#F7941D"/>
+    </marker>
+    <marker id="arrowGrey" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#9CA3AF"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="20" y="34" font-size="20" font-weight="700" fill="#1B2E70">Manzil Consultancy — Case Workflow</text>
+  <text x="20" y="54" font-size="12" fill="#6B7280">Each case moves one stage forward at a time. Gates and teams shown below.</text>
+
+  <!-- ===== Main flow boxes (centers: 95 290 485 680 875, y 70-134) ===== -->
+  <!-- 1 INTAKE -->
+  <rect x="20" y="70" width="150" height="64" rx="10" fill="#FFFFFF" stroke="#1B2E70" stroke-width="2"/>
+  <text x="95" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2E70">1 · INTAKE</text>
+  <text x="95" y="114" text-anchor="middle" font-size="10.5" fill="#6B7280">Onboarding</text>
+  <text x="95" y="128" text-anchor="middle" font-size="9" fill="#9CA3AF">Appointment Team</text>
+
+  <!-- 2 APPOINTMENT -->
+  <rect x="215" y="70" width="150" height="64" rx="10" fill="#FFFFFF" stroke="#1B2E70" stroke-width="2"/>
+  <text x="290" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2E70">2 · APPOINTMENT</text>
+  <text x="290" y="114" text-anchor="middle" font-size="10.5" fill="#6B7280">Secure appointment</text>
+  <text x="290" y="128" text-anchor="middle" font-size="9" fill="#9CA3AF">Appointment Team</text>
+
+  <!-- 3 FILE PROCESSING -->
+  <rect x="410" y="70" width="150" height="64" rx="10" fill="#FFFFFF" stroke="#1B2E70" stroke-width="2"/>
+  <text x="485" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2E70">3 · FILE PROCESS</text>
+  <text x="485" y="114" text-anchor="middle" font-size="10.5" fill="#6B7280">Prepare file</text>
+  <text x="485" y="128" text-anchor="middle" font-size="9" fill="#9CA3AF">File Team</text>
+
+  <!-- 4 INVOICED -->
+  <rect x="605" y="70" width="150" height="64" rx="10" fill="#FFFFFF" stroke="#1B2E70" stroke-width="2"/>
+  <text x="680" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2E70">4 · INVOICED</text>
+  <text x="680" y="114" text-anchor="middle" font-size="10.5" fill="#6B7280">Raise invoices</text>
+  <text x="680" y="128" text-anchor="middle" font-size="9" fill="#9CA3AF">Accountant</text>
+
+  <!-- 5 COMPLETED -->
+  <rect x="800" y="70" width="150" height="64" rx="10" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+  <text x="875" y="96" text-anchor="middle" font-size="13" font-weight="700" fill="#15803D">5 · COMPLETED</text>
+  <text x="875" y="114" text-anchor="middle" font-size="10.5" fill="#166534">File ready</text>
+  <text x="875" y="128" text-anchor="middle" font-size="9" fill="#22A06B">Accountant</text>
+
+  <!-- Arrows + gate labels -->
+  <line x1="170" y1="102" x2="213" y2="102" stroke="#F7941D" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="191" y="60" text-anchor="middle" font-size="9.5" font-weight="600" fill="#B45309">advance paid</text>
+
+  <line x1="365" y1="102" x2="408" y2="102" stroke="#F7941D" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="387" y="60" text-anchor="middle" font-size="9.5" font-weight="600" fill="#6B7280">appt secured</text>
+
+  <line x1="560" y1="102" x2="603" y2="102" stroke="#F7941D" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="582" y="60" text-anchor="middle" font-size="9.5" font-weight="600" fill="#6B7280">file ready</text>
+
+  <line x1="755" y1="102" x2="798" y2="102" stroke="#F7941D" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="777" y="60" text-anchor="middle" font-size="9.5" font-weight="600" fill="#B45309">all dues paid</text>
+
+  <!-- ===== Pause / On Hold (under INTAKE) ===== -->
+  <rect x="20" y="300" width="150" height="56" rx="10" fill="#FEF3C7" stroke="#D97706" stroke-width="2"/>
+  <text x="95" y="324" text-anchor="middle" font-size="12.5" font-weight="700" fill="#B45309">ON HOLD</text>
+  <text x="95" y="340" text-anchor="middle" font-size="10" fill="#92400E">Client paused</text>
+
+  <line x1="80" y1="134" x2="80" y2="298" stroke="#D97706" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrowGrey)"/>
+  <line x1="110" y1="300" x2="110" y2="136" stroke="#D97706" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrowGrey)"/>
+  <text x="50" y="220" text-anchor="middle" font-size="9.5" font-weight="600" fill="#B45309" transform="rotate(-90 50 220)">pause</text>
+  <text x="140" y="220" text-anchor="middle" font-size="9.5" font-weight="600" fill="#B45309" transform="rotate(-90 140 220)">resume</text>
+
+  <!-- ===== Cancelled (under INVOICED) ===== -->
+  <rect x="605" y="300" width="150" height="56" rx="10" fill="#FEE2E2" stroke="#DC2626" stroke-width="2"/>
+  <text x="680" y="324" text-anchor="middle" font-size="12.5" font-weight="700" fill="#B91C1C">CANCELLED</text>
+  <text x="680" y="340" text-anchor="middle" font-size="10" fill="#991B1B">Workflow stopped</text>
+
+  <line x1="680" y1="180" x2="680" y2="298" stroke="#9CA3AF" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrowGrey)"/>
+  <line x1="95" y1="180" x2="680" y2="180" stroke="#9CA3AF" stroke-width="2" stroke-dasharray="5,4"/>
+  <line x1="290" y1="136" x2="290" y2="180" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <line x1="485" y1="136" x2="485" y2="180" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <line x1="680" y1="136" x2="680" y2="180" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <line x1="95" y1="136" x2="95" y2="180" stroke="#9CA3AF" stroke-width="1.5" stroke-dasharray="5,4"/>
+  <text x="500" y="174" text-anchor="middle" font-size="9.5" font-weight="600" fill="#9CA3AF">cancel — from any active stage</text>
+
+  <!-- ===== Gate legend ===== -->
+  <rect x="20" y="388" width="930" height="30" rx="6" fill="#F8FAFC" stroke="#E5E7EB"/>
+  <text x="32" y="407" font-size="10" fill="#374151"><tspan font-weight="700" fill="#1B2E70">Gates: </tspan>Intake → Appointment needs the advance marked Paid · Invoiced → Completed needs all invoices Paid · stages cannot be skipped · a paused case cannot advance.</text>
+</svg>

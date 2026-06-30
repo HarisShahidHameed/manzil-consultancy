@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" fill="none">
+  <!-- Teal base ellipse -->
+  <ellipse cx="44" cy="76" rx="20" ry="8" fill="#00C2D4" opacity="0.9"/>
+
+  <!-- Orange outer orbit swoosh -->
+  <path
+    d="M 72 26
+       A 36 36 0 1 0 74 62"
+    stroke="#F7941D" stroke-width="8" fill="none"
+    stroke-linecap="round"/>
+
+  <!-- Orange arrowhead -->
+  <polygon points="74,62 87,55 70,49" fill="#F7941D"/>
+
+  <!-- Inner navy arc -->
+  <path
+    d="M 58 16 A 26 26 0 0 0 16 58"
+    stroke="#1B2E70" stroke-width="3" fill="none"
+    stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Airplane (navy) -->
+  <g transform="translate(43,43) rotate(-42)">
+    <ellipse cx="0" cy="0" rx="15" ry="5" fill="#1B2E70"/>
+    <polygon points="-3,-2  -16,13  5,3" fill="#1B2E70"/>
+    <polygon points="3,2  16,-13  -5,-3" fill="#1B2E70"/>
+    <polygon points="-12,1  -20,10  -9,3.5" fill="#1B2E70"/>
+    <ellipse cx="14" cy="-0.5" rx="3.5" ry="2.8" fill="#1B2E70"/>
+  </g>
+</svg>

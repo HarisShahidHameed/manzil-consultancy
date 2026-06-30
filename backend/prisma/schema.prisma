@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum CaseStage {
+  INTAKE
+  APPOINTMENT
+  FILE_PROCESSING
+  INVOICED
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum DocumentStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  NOT_REQUIRED
+}
+
+enum AppointmentStatus {
+  WAITING
+  REGISTERED
+  ASSIGNED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+}
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String
+  firstName        String
+  lastName         String
+  isActive         Boolean   @default(true)
+  isEmailVerified  Boolean   @default(false)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  passwordResetToken       String?
+  passwordResetTokenExpiry DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  userRoles       UserRole[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  clientsAssigned Client[]   @relation("ClientAssignedTo")
+  clientsCreated  Client[]   @relation("ClientCreatedBy")
+  casesBooked       VisaCase[] @relation("CaseBookedBy")
+  casesAssigned     VisaCase[] @relation("CaseAssignedTo")
+  casesFileAssigned VisaCase[] @relation("CaseFileAssignedTo")
+  invoicesCreated   Invoice[]  @relation("InvoiceCreatedBy")
+
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  resource    String
+  action      String
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  success    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model ClientGroup {
+  id        String   @id @default(uuid())
+  groupRef  String   @unique
+  name      String
+  relation  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients Client[]
+
+  @@map("client_groups")
+}
+
+model Client {
+  id                   String   @id @default(uuid())
+  clientRef            String   @unique
+  groupId              String?
+  receivedDate         DateTime
+  firstName            String
+  lastName             String
+  gender               Gender
+  dob                  DateTime
+  phone                String
+  email                String?
+  whatsapp             String?
+  residentialAddress   String?
+  passportNumber       String
+  passportIssue        DateTime
+  passportExpiry       DateTime
+  birthCity            String?
+  nationality          String
+  maritalStatus        MaritalStatus?
+  previousSchengenVisa String?
+  registeredEmail      String?
+  eVisa                Boolean  @default(false)
+  contract             Boolean  @default(false)
+  visaAndTravelHistory String?
+  source               String?
+  referredBy           String?
+  hrComments           String?
+  folderUrl            String?
+  assignedToId         String?
+  createdById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  assignedTo User?      @relation("ClientAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy  User?      @relation("ClientCreatedBy",  fields: [createdById],  references: [id], onDelete: SetNull)
+  group      ClientGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  visaCases  VisaCase[]
+
+  @@map("clients")
+}
+
+model VisaCase {
+  id                      String         @id @default(uuid())
+  clientId                String
+  destination             String
+  city                    String?
+  visaType                String?
+  ukVisaExpiry            DateTime?
+  stage                   CaseStage      @default(INTAKE)
+  priority                Priority       @default(MEDIUM)
+  advance                 Decimal?       @db.Decimal(10, 2)
+  charges                 Decimal?       @db.Decimal(10, 2)
+  discount                Decimal?       @db.Decimal(10, 2)
+  advancePaid             Boolean        @default(false)
+  advancePaidDate         DateTime?
+  onHold                  Boolean        @default(false)
+  onHoldReason            String?
+  appointmentStatus       AppointmentStatus?
+  appointmentDate         DateTime?
+  bookedById              String?
+  appointmentAssignedToId String?
+  fileAssignedToId        String?
+  fraNo                   String?
+  tlsAccount              String?
+  appointmentNotes        String?
+  travelDate              DateTime?
+  hotelDate               DateTime?
+  salamComments           String?
+  hrComments              String?
+  docAppointment          DocumentStatus @default(PENDING)
+  docTicket               DocumentStatus @default(PENDING)
+  docInsurance            DocumentStatus @default(PENDING)
+  docHotel                DocumentStatus @default(PENDING)
+  docEVisa                DocumentStatus @default(PENDING)
+  docSop                  DocumentStatus @default(PENDING)
+  docVisaForm             DocumentStatus @default(PENDING)
+  docAppointmentCost      Decimal?       @db.Decimal(10, 2)
+  docTicketCost           Decimal?       @db.Decimal(10, 2)
+  docInsuranceCost        Decimal?       @db.Decimal(10, 2)
+  docHotelCost            Decimal?       @db.Decimal(10, 2)
+  docEVisaCost            Decimal?       @db.Decimal(10, 2)
+  docSopCost              Decimal?       @db.Decimal(10, 2)
+  docVisaFormCost         Decimal?       @db.Decimal(10, 2)
+  paymentReceived         Decimal?       @db.Decimal(10, 2)
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+
+  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  bookedBy            User?    @relation("CaseBookedBy",       fields: [bookedById],              references: [id], onDelete: SetNull)
+  appointmentAssigned User?    @relation("CaseAssignedTo",     fields: [appointmentAssignedToId], references: [id], onDelete: SetNull)
+  fileAssigned        User?    @relation("CaseFileAssignedTo", fields: [fileAssignedToId],         references: [id], onDelete: SetNull)
+  invoices            Invoice[]
+
+  @@map("visa_cases")
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  caseId      String
+  invoiceRef  String        @unique
+  issueDate   DateTime      @default(now())
+  dueDate     DateTime?
+  charges     Decimal       @db.Decimal(10, 2)
+  discount    Decimal       @default(0) @db.Decimal(10, 2)
+  advance     Decimal       @default(0) @db.Decimal(10, 2)
+  totalAmount Decimal       @db.Decimal(10, 2)
+  paidAmount  Decimal       @default(0) @db.Decimal(10, 2)
+  outstanding Decimal       @db.Decimal(10, 2)
+  status      InvoiceStatus @default(DRAFT)
+  notes       String?
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  case      VisaCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  createdBy User?    @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("invoices")
+}
