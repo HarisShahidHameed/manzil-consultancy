@@ -18,3 +18,12 @@ export const deleteClient = (id: string) =>
 
 export const addCase = (clientId: string, data: unknown) =>
   api.post<ApiResponse<VisaCase>>(`/clients/${clientId}/cases`, data).then(r => r.data);
+
+export interface ImportResult {
+  imported: number;
+  failed: number;
+  errors: { row: number; message: string }[];
+}
+
+export const importClients = (rows: unknown[]) =>
+  api.post<ApiResponse<ImportResult>>('/clients/import', { rows }).then(r => r.data);

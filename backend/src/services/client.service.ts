@@ -109,6 +109,23 @@ export const createClient = async (data: {
   });
 };
 
+export const bulkImportClients = async (
+  rows: Parameters<typeof createClient>[0][],
+  createdById?: string,
+) => {
+  const results = { imported: 0, failed: 0, errors: [] as { row: number; message: string }[] };
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      await createClient({ ...rows[i], createdById });
+      results.imported++;
+    } catch (e: any) {
+      results.failed++;
+      results.errors.push({ row: i + 1, message: e?.message ?? 'Unknown error' });
+    }
+  }
+  return results;
+};
+
 export const listClients = async (page = 1, limit = 20, search?: string, stage?: string, destination?: string) => {
   const skip = (page - 1) * limit;
   const where: Prisma.ClientWhereInput = {};

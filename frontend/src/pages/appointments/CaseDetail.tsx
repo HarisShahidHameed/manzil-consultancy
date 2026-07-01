@@ -52,6 +52,7 @@ const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docAppointment: 'docAppointmentCost', docTicket: 'docTicketCost', docInsurance: 'docInsuranceCost',
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
 };
+const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel']);
 const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: '', label: '— None —' },
   { value: 'WAITING', label: 'Waiting' },
@@ -80,6 +81,10 @@ const CaseDetail: React.FC = () => {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
+  const [docPaidBy, setDocPaidBy] = useState<Record<DocKey, 'client' | 'agency'>>({
+    docAppointment: 'client', docTicket: 'client', docInsurance: 'client', docHotel: 'client',
+    docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency',
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['case', id],
@@ -128,6 +133,13 @@ const CaseDetail: React.FC = () => {
         previousSchengenVisa: vc.client?.previousSchengenVisa ?? '',
         visaAndTravelHistory: vc.client?.visaAndTravelHistory ?? '',
       });
+      setDocPaidBy(prev => ({
+        ...prev,
+        docAppointment: (vc.docAppointmentCost != null && Number(vc.docAppointmentCost) > 0) ? 'agency' : 'client',
+        docTicket:      (vc.docTicketCost      != null && Number(vc.docTicketCost)      > 0) ? 'agency' : 'client',
+        docInsurance:   (vc.docInsuranceCost   != null && Number(vc.docInsuranceCost)   > 0) ? 'agency' : 'client',
+        docHotel:       (vc.docHotelCost       != null && Number(vc.docHotelCost)       > 0) ? 'agency' : 'client',
+      }));
     }
   }, [vc?.id]);
 
@@ -660,12 +672,15 @@ const CaseDetail: React.FC = () => {
                   <tr>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Document</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Status</th>
+                    <th className="text-left px-3 py-2 text-xs text-gray-500">Paid By</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Cost (£)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {(Object.keys(DOC_LABELS) as DocKey[]).map(key => {
                     const costKey = DOC_COST_KEY[key];
+                    const hasPaidBy = AGENCY_PAID_DOCS.has(key);
+                    const paidBy = docPaidBy[key];
                     return (
                     <tr key={key}>
                       <td className="px-3 py-2 font-medium text-gray-700">{DOC_LABELS[key]}</td>
@@ -686,13 +701,41 @@ const CaseDetail: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          type="number" min="0" step="0.01"
-                          className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          placeholder="0.00"
-                          value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
-                          onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
-                        />
+                        {hasPaidBy ? (
+                          <div className="flex items-center gap-3">
+                            {(['client', 'agency'] as const).map(opt => (
+                              <label key={opt} className="flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`paidBy-${key}`}
+                                  value={opt}
+                                  checked={paidBy === opt}
+                                  onChange={() => {
+                                    setDocPaidBy(p => ({ ...p, [key]: opt }));
+                                    if (opt === 'client') setEditFields(f => ({ ...f, [costKey]: 0 }));
+                                  }}
+                                  className="accent-indigo-600"
+                                />
+                                <span className="text-xs text-gray-600 capitalize">{opt}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">Agency</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {(!hasPaidBy || paidBy === 'agency') ? (
+                          <input
+                            type="number" min="0" step="0.01"
+                            className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="0.00"
+                            value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
+                            onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                     </tr>
                   ); })}

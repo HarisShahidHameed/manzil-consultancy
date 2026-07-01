@@ -3,9 +3,11 @@ import * as clientService from '../services/client.service';
 import * as visaCaseService from '../services/visaCase.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
+import { z } from 'zod';
 import {
   clientQuerySchema,
   createClientSchema,
+  importClientSchema,
   updateClientSchema,
   createCaseSchema,
 } from '../validators/client.validators';
@@ -91,6 +93,34 @@ export const deleteClient = async (req: Request, res: Response): Promise<void> =
     sendSuccess(res, 'Client deleted');
   } catch {
     sendError(res, 'Client not found', 404);
+  }
+};
+
+export const importClients = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { rows } = z.object({ rows: z.array(z.record(z.unknown())).min(1).max(500) }).parse(req.body);
+
+    const validated: Parameters<typeof clientService.bulkImportClients>[0] = [];
+    const parseErrors: { row: number; message: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const result = importClientSchema.safeParse(rows[i]);
+      if (result.success) {
+        validated.push(result.data);
+      } else {
+        parseErrors.push({ row: i + 1, message: Object.values(result.error.flatten().fieldErrors).flat().join(', ') });
+      }
+    }
+
+    const importResult = await clientService.bulkImportClients(validated, req.user?.sub);
+    importResult.failed  += parseErrors.length;
+    importResult.errors   = [...parseErrors, ...importResult.errors];
+
+    await createAuditLog({ userId: req.user?.sub, action: 'CLIENTS_IMPORTED', resource: 'clients', details: { imported: importResult.imported, failed: importResult.failed }, req });
+    sendSuccess(res, `Import complete: ${importResult.imported} imported, ${importResult.failed} failed`, importResult);
+  } catch (error: any) {
+    if (error?.name === 'ZodError') { sendError(res, 'Invalid request body', 422, error.flatten().fieldErrors); return; }
+    sendError(res, 'Import failed', 500);
   }
 };
 

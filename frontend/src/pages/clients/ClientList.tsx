@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, UserPlus, Trash2, Eye, Filter } from 'lucide-react';
+import { Search, UserPlus, Trash2, Eye, Filter, Upload } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { getClients, deleteClient } from '../../api/clients';
 import type { Client, CaseStage } from '../../types';
@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Can } from '../../routes/RoleGuard';
+import ImportClientsModal from './ImportClientsModal';
 
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
@@ -45,6 +46,7 @@ const ClientList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const params: Record<string, string> = { page: String(page), limit: '20' };
   if (search) params.search = search;
@@ -77,9 +79,14 @@ const ClientList: React.FC = () => {
           <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} total clients</p>
         </div>
         <Can permissions={['clients:write']}>
-          <Button leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => navigate('/clients/new')}>
-            Add Client
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" leftIcon={<Upload className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
+              Import
+            </Button>
+            <Button leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => navigate('/clients/new')}>
+              Add Client
+            </Button>
+          </div>
         </Can>
       </div>
 
@@ -208,6 +215,17 @@ const ClientList: React.FC = () => {
           </div>
         )}
       </div>
+
+      <ImportClientsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={() => {
+          qc.invalidateQueries({ queryKey: ['clients'] });
+          setImportOpen(false);
+          setSuccess('Import complete — client list refreshed');
+          setTimeout(() => setSuccess(null), 4000);
+        }}
+      />
     </div>
   );
 };

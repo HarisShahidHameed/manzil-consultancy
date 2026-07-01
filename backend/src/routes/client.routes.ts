@@ -6,8 +6,9 @@ import { requirePermission } from '../middleware/rbac.middleware';
 const router = Router();
 router.use(authenticate);
 
-router.get('/',       requirePermission('clients:read'),   clientController.listClients);
-router.post('/',      requirePermission('clients:write'),  clientController.createClient);
+router.get('/',          requirePermission('clients:read'),   clientController.listClients);
+router.post('/',         requirePermission('clients:write'),  clientController.createClient);
+router.post('/import',   requirePermission('clients:write'),  clientController.importClients);
 router.get('/:id',    requirePermission('clients:read'),   clientController.getClient);
 router.get('/:id/pdf', requirePermission('clients:read'),  clientController.downloadClientPdf);
 router.put('/:id',    requirePermission('clients:write'),  clientController.updateClient);

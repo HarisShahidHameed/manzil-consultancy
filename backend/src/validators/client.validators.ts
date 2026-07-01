@@ -38,6 +38,10 @@ export const createClientSchema = z.object({
   discount:     z.number().nonnegative().optional(),
 });
 
+export const importClientSchema = createClientSchema.extend({
+  phone: z.string().max(30).optional().transform(v => (v && v.trim().length >= 7 ? v.trim() : 'N/A')),
+});
+
 export const updateClientSchema = z.object({
   receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   firstName:    z.string().min(1).max(100).trim().optional(),
