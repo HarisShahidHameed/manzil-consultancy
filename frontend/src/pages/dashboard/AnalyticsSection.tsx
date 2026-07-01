@@ -67,8 +67,9 @@ export const AnalyticsSection: React.FC = () => {
           onChange={e => setDraft(d => ({ ...d, dateTo: e.target.value || undefined }))}
         />
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Destination</label>
+          <label htmlFor="analytics-destination" className="text-sm font-medium text-gray-700">Destination</label>
           <select
+            id="analytics-destination"
             className="rounded-lg border border-gray-300 text-sm py-2.5 px-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             value={draft.destination ?? ''}
             onChange={e => setDraft(d => ({ ...d, destination: e.target.value || undefined }))}
@@ -78,8 +79,9 @@ export const AnalyticsSection: React.FC = () => {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-gray-700">Assigned to</label>
+          <label htmlFor="analytics-assigned-to" className="text-sm font-medium text-gray-700">Assigned to</label>
           <select
+            id="analytics-assigned-to"
             className="rounded-lg border border-gray-300 text-sm py-2.5 px-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             value={draft.assignedToId ?? ''}
             onChange={e => setDraft(d => ({ ...d, assignedToId: e.target.value || undefined }))}

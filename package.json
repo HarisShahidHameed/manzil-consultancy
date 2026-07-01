@@ -10,6 +10,12 @@
     "db:seed": "npm run db:seed --prefix backend",
     "db:generate": "npm run db:generate --prefix backend",
     "db:push": "npm run db:push --prefix backend",
-    "setup": "npm run install:all && npm run db:generate && npm run db:push && npm run db:seed"
+    "setup": "npm run install:all && npm run db:generate && npm run db:push && npm run db:seed",
+    "test:backend": "npm test --prefix backend",
+    "test:frontend": "npm test --prefix frontend",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }
