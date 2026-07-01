@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../routes/RoleGuard';
 import type { ApiResponse, Role, Permission, CaseStage, DashboardStats } from '../../types';
 import api from '../../api/axios';
+import { AnalyticsSection } from './AnalyticsSection';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
   INTAKE:          'bg-gray-100 text-gray-700',
@@ -242,6 +243,11 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         )}
+      </Can>
+
+      {/* Reports & Analytics */}
+      <Can permissions={['reports:read']}>
+        <AnalyticsSection />
       </Can>
 
       {/* Roles & Permissions */}

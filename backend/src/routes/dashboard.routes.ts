@@ -7,5 +7,6 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/stats', requirePermission('dashboard:read'), dashboardController.getStats);
+router.get('/analytics', requirePermission('reports:read'), dashboardController.getAnalytics);
 
 export default router;

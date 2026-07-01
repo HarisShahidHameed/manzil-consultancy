@@ -231,6 +231,37 @@ export interface Invoice {
   updatedAt: string;
 }
 
+export interface AnalyticsFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  destination?: string;
+  assignedToId?: string;
+}
+
+export interface AnalyticsData {
+  pipeline: {
+    casesByStage: Array<{ stage: CaseStage; count: number }>;
+    casesByPriority: Array<{ priority: Priority; count: number }>;
+    casesByDestination: Array<{ destination: string; count: number }>;
+    appointmentFunnel: Array<{ status: string; count: number }>;
+    workload: Array<{ userId: string; name: string; count: number }>;
+    documentCompletion: Array<{ field: string; statuses: Array<{ status: DocumentStatus; count: number }> }>;
+    caseTrend: Array<{ month: string; count: number }>;
+  };
+  financials: {
+    invoicesByStatus: Array<{
+      status: InvoiceStatus; count: number; totalAmount: number; paidAmount: number; outstanding: number;
+    }>;
+    revenueTrend: Array<{ month: string; charges: number; paid: number; outstanding: number }>;
+  };
+  demographics: {
+    clientsByNationality: Array<{ nationality: string; count: number }>;
+    clientsByGender: Array<{ gender: Gender; count: number }>;
+    clientsBySource: Array<{ source: string; count: number }>;
+    newClientsTrend: Array<{ month: string; count: number }>;
+  };
+}
+
 export interface DashboardStats {
   totalClients: number;
   intakeCases: number;
