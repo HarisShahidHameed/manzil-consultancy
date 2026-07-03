@@ -35,7 +35,7 @@ echo "==> Applying database migrations"
 npx prisma migrate deploy
 
 echo "==> Seeding (idempotent — roles, permissions, admin user only in production)"
-NODE_ENV=production npx ts-node prisma/seed.ts
+NODE_ENV=production node dist/seed.js
 
 echo "==> Pruning dev dependencies to save disk"
 npm prune --omit=dev

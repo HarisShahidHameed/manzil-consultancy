@@ -236,7 +236,8 @@ enough to SSH in; the app's own secrets never transit through CI.
        to generate the client with the right native binary for *this* host)
      - `prisma generate`
      - `prisma migrate deploy` (applies any new migrations; no-op if none)
-     - `NODE_ENV=production ts-node prisma/seed.ts` — **idempotent**, safe to run on
+     - `NODE_ENV=production node dist/seed.js` (compiled from `prisma/seed.ts` during
+       the build step) — **idempotent**, safe to run on
        every deploy. In production this seeds only roles, permissions, and the one
        admin user (see §4) — it does not touch real client/case data at all.
      - `npm prune --omit=dev` to shrink `node_modules` back down
