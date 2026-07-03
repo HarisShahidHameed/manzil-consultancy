@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { getMissingIntakeFields, IntakeRequiredField } from '../utils/intakeCompleteness';
 
 const CASE_SELECT = {
   id: true, clientId: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
@@ -20,6 +21,7 @@ const CASE_SELECT = {
     select: {
       id: true, clientRef: true, firstName: true, lastName: true,
       phone: true, email: true, nationality: true, passportNumber: true,
+      dob: true, passportIssue: true, passportExpiry: true,
       residentialAddress: true, maritalStatus: true, previousSchengenVisa: true,
       visaAndTravelHistory: true, registeredEmail: true,
     },
@@ -52,13 +54,20 @@ export const requiredPermsForTransition = (from: string, to: string): string[] =
 
 /**
  * Enforces the business workflow: paused cases can't advance, no stage-skipping,
- * advance-payment gate before leaving Intake, and dues-cleared gate before Completed.
- * Throws typed errors.
+ * required-fields and advance-payment gates before leaving Intake, and a
+ * dues-cleared gate before Completed. Throws typed errors.
  */
 export const assertTransitionAllowed = (
   current: CaseStageName,
   next: CaseStageName,
-  caseRecord: { advancePaid: boolean; onHold: boolean; invoices: { status: string }[] }
+  caseRecord: {
+    advancePaid: boolean; onHold: boolean; invoices: { status: string }[];
+    destination: string | null;
+    client: {
+      passportNumber: string | null; nationality: string | null; dob: Date | null;
+      passportIssue: Date | null; passportExpiry: Date | null;
+    };
+  }
 ): void => {
   if (current === next) return;
   if (current === 'COMPLETED') throw new Error('STAGE_TERMINAL');
@@ -75,17 +84,35 @@ export const assertTransitionAllowed = (
   if (ci === -1 || ni === -1) throw new Error('STAGE_INVALID');
   if (ni !== ci + 1) throw new Error('STAGE_SKIP');
 
-  // Gate 1: advance payment must be marked paid before leaving Intake
+  // Gate 1: imported/incomplete records must be filled in before leaving Intake
+  if (current === 'INTAKE' && next === 'APPOINTMENT') {
+    const missingFields = getMissingIntakeFields(caseRecord.client, { destination: caseRecord.destination });
+    if (missingFields.length > 0) {
+      const e = new Error('INTAKE_INCOMPLETE') as Error & { missingFields: IntakeRequiredField[] };
+      e.missingFields = missingFields;
+      throw e;
+    }
+  }
+
+  // Gate 2: advance payment must be marked paid before leaving Intake
   if (current === 'INTAKE' && next === 'APPOINTMENT') {
     if (!caseRecord.advancePaid) throw new Error('ADVANCE_REQUIRED');
   }
 
-  // Gate 2: all invoices must be marked Paid before completing (payment handled manually)
+  // Gate 3: all invoices must be marked Paid before completing (payment handled manually)
   if (current === 'INVOICED' && next === 'COMPLETED') {
     const hasUnpaid = caseRecord.invoices.some(i => i.status !== 'PAID');
     if (hasUnpaid) throw new Error('DUES_PENDING');
   }
 };
+
+// Flags cases still stuck in Intake with what's left to fill in before they can proceed.
+const decorateCase = <T extends { stage: string; destination: string | null; client: Parameters<typeof getMissingIntakeFields>[0] }>(
+  c: T
+): T & { missingIntakeFields?: IntakeRequiredField[] } =>
+  c.stage === 'INTAKE'
+    ? { ...c, missingIntakeFields: getMissingIntakeFields(c.client, { destination: c.destination }) }
+    : c;
 
 export const listCases = async (page = 1, limit = 20, stage?: string, search?: string) => {
   const skip = (page - 1) * limit;
@@ -103,11 +130,12 @@ export const listCases = async (page = 1, limit = 20, stage?: string, search?: s
     prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy: { updatedAt: 'desc' } }),
     prisma.visaCase.count({ where }),
   ]);
-  return { cases, total, page, limit, totalPages: Math.ceil(total / limit) };
+  return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
 export const getCaseById = async (id: string) => {
-  return prisma.visaCase.findUnique({ where: { id }, select: CASE_SELECT });
+  const c = await prisma.visaCase.findUnique({ where: { id }, select: CASE_SELECT });
+  return c ? decorateCase(c) : null;
 };
 
 export const createCase = async (
@@ -140,8 +168,14 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     const existing = await prisma.visaCase.findUnique({
       where: { id },
       select: {
-        stage: true, advancePaid: true, onHold: true,
+        stage: true, advancePaid: true, onHold: true, destination: true,
         invoices: { select: { status: true } },
+        client: {
+          select: {
+            passportNumber: true, nationality: true, dob: true,
+            passportIssue: true, passportExpiry: true,
+          },
+        },
       },
     });
     if (!existing) {

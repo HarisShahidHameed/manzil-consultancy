@@ -97,3 +97,16 @@
 {"level":"error","message":"Prisma error Error in PostgreSQL connection: Error { kind: Db, cause: Some(DbError { severity: \"FATAL\", parsed_severity: Some(Fatal), code: SqlState(E57P01), message: \"terminating connection due to administrator command\", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some(\"postgres.c\"), line: Some(3286), routine: Some(\"ProcessInterrupts\") }) }","service":"manzil-api","timestamp":"2026-07-01 19:45:39"}
 {"level":"error","message":"Prisma error Error in PostgreSQL connection: Error { kind: Db, cause: Some(DbError { severity: \"FATAL\", parsed_severity: Some(Fatal), code: SqlState(E57P01), message: \"terminating connection due to administrator command\", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some(\"postgres.c\"), line: Some(3286), routine: Some(\"ProcessInterrupts\") }) }","service":"manzil-api","timestamp":"2026-07-01 19:45:39"}
 {"level":"error","message":"Prisma error Error in PostgreSQL connection: Error { kind: Db, cause: Some(DbError { severity: \"FATAL\", parsed_severity: Some(Fatal), code: SqlState(E57P01), message: \"terminating connection due to administrator command\", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some(\"postgres.c\"), line: Some(3286), routine: Some(\"ProcessInterrupts\") }) }","service":"manzil-api","timestamp":"2026-07-01 19:45:39"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:02:44"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:02:44"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:26:45"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:26:45"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:27:17"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:27:17"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:27:24"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:27:24"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:36:43"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:36:43"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:36:57"}
+{"level":"info","message":"Server running on port 5000 [development]","service":"manzil-api","timestamp":"2026-07-01 20:36:57"}
+{"level":"info","message":"Database connected","service":"manzil-api","timestamp":"2026-07-01 20:38:11"}

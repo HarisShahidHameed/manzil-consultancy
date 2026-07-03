@@ -106,6 +106,7 @@ export type CaseStage = 'INTAKE' | 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type DocumentStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'NOT_REQUIRED';
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID';
+export type IntakeRequiredField = 'passportNumber' | 'nationality' | 'dob' | 'passportIssue' | 'passportExpiry' | 'destination';
 
 export interface AssignableUser {
   id: string;
@@ -120,18 +121,18 @@ export interface Client {
   clientRef: string;
   receivedDate: string;
   firstName: string;
-  lastName: string;
-  gender: Gender;
-  dob: string;
+  lastName: string | null;
+  gender: Gender | null;
+  dob: string | null;
   phone: string;
   email?: string;
   whatsapp?: string;
   residentialAddress?: string;
-  passportNumber: string;
-  passportIssue: string;
-  passportExpiry: string;
+  passportNumber: string | null;
+  passportIssue: string | null;
+  passportExpiry: string | null;
   birthCity?: string;
-  nationality: string;
+  nationality: string | null;
   maritalStatus?: MaritalStatus;
   previousSchengenVisa?: string;
   registeredEmail?: string;
@@ -154,12 +155,14 @@ export interface Client {
 export interface VisaCase {
   id: string;
   clientId: string;
-  destination: string;
+  destination: string | null;
   city?: string;
   visaType?: string;
   ukVisaExpiry?: string;
   stage: CaseStage;
   priority: Priority;
+  // Present (non-empty) only while stage is INTAKE — fields still needed before it can advance.
+  missingIntakeFields?: IntakeRequiredField[];
   advance?: number | string;
   charges?: number | string;
   discount?: number | string;

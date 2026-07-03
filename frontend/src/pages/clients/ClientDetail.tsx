@@ -25,7 +25,7 @@ const PRI_COLORS: Record<Priority, string> = {
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
 };
 
-const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({ label, value }) => (
   <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">

@@ -189,18 +189,18 @@ model Client {
   groupId              String?
   receivedDate         DateTime
   firstName            String
-  lastName             String
-  gender               Gender
-  dob                  DateTime
+  lastName             String?
+  gender               Gender?
+  dob                  DateTime?
   phone                String
   email                String?
   whatsapp             String?
   residentialAddress   String?
-  passportNumber       String
-  passportIssue        DateTime
-  passportExpiry       DateTime
+  passportNumber       String?
+  passportIssue        DateTime?
+  passportExpiry       DateTime?
   birthCity            String?
-  nationality          String
+  nationality          String?
   maritalStatus        MaritalStatus?
   previousSchengenVisa String?
   registeredEmail      String?
@@ -227,7 +227,7 @@ model Client {
 model VisaCase {
   id                      String         @id @default(uuid())
   clientId                String
-  destination             String
+  destination             String?
   city                    String?
   visaType                String?
   ukVisaExpiry            DateTime?

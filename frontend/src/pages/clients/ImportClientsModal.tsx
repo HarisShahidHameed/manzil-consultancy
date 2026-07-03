@@ -77,10 +77,14 @@ interface MappedRow {
   hrComments?: string;
   _rowIndex: number;
   _errors: string[];
+  _warnings: string[];
 }
 
+// Fields required to leave Intake (see backend utils/intakeCompleteness.ts) — missing
+// them doesn't block import, but the client/case will stay stuck in Intake until filled in.
 const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   const errors: string[] = [];
+  const warnings: string[] = [];
 
   const firstName     = str(row[2]) ?? '';
   const lastName      = str(row[3]) ?? '';
@@ -95,15 +99,18 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   const ukVisaExpiryRaw = row[20];
   const ukVisaExpiry  = ukVisaExpiryRaw ? excelDateToISO(ukVisaExpiryRaw) : undefined;
 
-  if (!firstName)      errors.push('First Name missing');
-  if (!lastName)       errors.push('Last Name missing');
-  if (!passportNumber) errors.push('Passport Number missing');
-  if (!nationality)    errors.push('Nationality missing');
-  if (!destination)    errors.push('Destination missing');
-  if (!receivedDate)   errors.push('Received Date missing');
-  if (!dob)            errors.push('DOB missing');
-  if (!passportIssue)  errors.push('Passport Issue missing');
-  if (!passportExpiry) errors.push('Passport Expiry missing');
+  // Hard requirements — a row can't be imported at all without these.
+  if (!firstName)     errors.push('First Name missing');
+  if (!receivedDate)  errors.push('Received Date missing');
+
+  // Required to leave Intake, but fine to import as-is — stays flagged "incomplete" until filled in.
+  if (!lastName)       warnings.push('Last Name');
+  if (!passportNumber) warnings.push('Passport Number');
+  if (!nationality)    warnings.push('Nationality');
+  if (!destination)    warnings.push('Destination');
+  if (!dob)            warnings.push('DOB');
+  if (!passportIssue)  warnings.push('Passport Issue');
+  if (!passportExpiry) warnings.push('Passport Expiry');
 
   return {
     receivedDate,
@@ -136,6 +143,7 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
     hrComments:           str(row[34]),
     _rowIndex: rowIndex,
     _errors: errors,
+    _warnings: warnings,
   };
 };
 
@@ -194,14 +202,15 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
     if (file) handleFile(file);
   };
 
-  const validRows   = rows.filter(r => r._errors.length === 0);
-  const invalidRows = rows.filter(r => r._errors.length > 0);
+  const validRows      = rows.filter(r => r._errors.length === 0);
+  const invalidRows    = rows.filter(r => r._errors.length > 0);
+  const incompleteRows = validRows.filter(r => r._warnings.length > 0);
 
   const handleImport = async () => {
     setLoading(true);
     try {
       // strip internal fields before sending
-      const payload = validRows.map(({ _rowIndex: _r, _errors: _e, ...rest }) => rest);
+      const payload = validRows.map(({ _rowIndex: _r, _errors: _e, _warnings: _w, ...rest }) => rest);
       const res = await importClients(payload);
       setResult(res.data!);
       setStep('result');
@@ -277,8 +286,13 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
           {/* Summary badges */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="flex items-center gap-1.5 text-sm font-medium text-green-700 bg-green-50 px-3 py-1 rounded-full">
-              <CheckCircle className="w-4 h-4" /> {validRows.length} ready
+              <CheckCircle className="w-4 h-4" /> {validRows.length} will be imported
             </span>
+            {incompleteRows.length > 0 && (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-full">
+                <AlertCircle className="w-4 h-4" /> {incompleteRows.length} incomplete
+              </span>
+            )}
             {invalidRows.length > 0 && (
               <span className="flex items-center gap-1.5 text-sm font-medium text-red-700 bg-red-50 px-3 py-1 rounded-full">
                 <XCircle className="w-4 h-4" /> {invalidRows.length} will be skipped
@@ -286,12 +300,22 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
             )}
           </div>
 
-          {invalidRows.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
-              <p className="text-xs font-semibold text-amber-800 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> Rows with errors (will be skipped):
+          {incompleteRows.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-xs text-amber-800">
+                Rows missing Last Name, Passport Number, Nationality, Destination, DOB, Passport Issue,
+                or Passport Expiry will still be imported — they just stay in <strong>Intake</strong> until
+                that information is filled in, and can't move to the next stage until then.
               </p>
-              <ul className="text-xs text-amber-700 space-y-0.5 max-h-28 overflow-y-auto">
+            </div>
+          )}
+
+          {invalidRows.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-1">
+              <p className="text-xs font-semibold text-red-800 flex items-center gap-1">
+                <XCircle className="w-3.5 h-3.5" /> Rows with errors (will be skipped):
+              </p>
+              <ul className="text-xs text-red-700 space-y-0.5 max-h-28 overflow-y-auto">
                 {invalidRows.map(r => (
                   <li key={r._rowIndex}>Row {r._rowIndex}: {r._errors.join(' · ')}</li>
                 ))}
@@ -314,16 +338,24 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {rows.slice(0, 15).map(r => (
-                  <tr key={r._rowIndex} className={r._errors.length ? 'bg-red-50' : ''}>
+                  <tr key={r._rowIndex} className={r._errors.length ? 'bg-red-50' : r._warnings.length ? 'bg-amber-50/60' : ''}>
                     <td className="px-3 py-2 text-gray-400">{r._rowIndex}</td>
-                    <td className="px-3 py-2 font-medium text-gray-800">{r.firstName} {r.lastName}</td>
-                    <td className="px-3 py-2 text-gray-600">{r.passportNumber}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">
+                      {r.firstName} {r.lastName || <span className="text-gray-400 italic">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{r.passportNumber || <span className="text-gray-400 italic">—</span>}</td>
                     <td className="px-3 py-2 text-gray-600">{r.phone || <span className="text-gray-400 italic">N/A</span>}</td>
-                    <td className="px-3 py-2 text-gray-600">{r.destination}</td>
+                    <td className="px-3 py-2 text-gray-600">{r.destination || <span className="text-gray-400 italic">—</span>}</td>
                     <td className="px-3 py-2">
-                      {r._errors.length === 0
-                        ? <span className="text-green-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> OK</span>
-                        : <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Error</span>}
+                      {r._errors.length > 0 ? (
+                        <span className="text-red-500 flex items-center gap-1"><XCircle className="w-3 h-3" /> Error</span>
+                      ) : r._warnings.length > 0 ? (
+                        <span className="text-amber-600 flex items-center gap-1" title={`Missing: ${r._warnings.join(', ')}`}>
+                          <AlertCircle className="w-3 h-3" /> Incomplete
+                        </span>
+                      ) : (
+                        <span className="text-green-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> OK</span>
+                      )}
                     </td>
                   </tr>
                 ))}

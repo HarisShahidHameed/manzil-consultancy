@@ -38,8 +38,24 @@ export const createClientSchema = z.object({
   discount:     z.number().nonnegative().optional(),
 });
 
+// Bulk import accepts incomplete records — anything not on file yet is left blank
+// and the client/case stay in Intake until the required fields are filled in
+// (see utils/intakeCompleteness.ts for what's required to leave Intake).
+const optionalText = (max: number) =>
+  z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
+const optionalDate = () =>
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format').optional().or(z.literal('')).transform(v => v || undefined);
+
 export const importClientSchema = createClientSchema.extend({
   phone: z.string().max(30).optional().transform(v => (v && v.trim().length >= 7 ? v.trim() : 'N/A')),
+  lastName:       optionalText(100),
+  gender:         z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')).transform(v => v || undefined),
+  dob:            optionalDate(),
+  passportNumber: optionalText(30),
+  passportIssue:  optionalDate(),
+  passportExpiry: optionalDate(),
+  nationality:    optionalText(100),
+  destination:    optionalText(100),
 });
 
 export const updateClientSchema = z.object({

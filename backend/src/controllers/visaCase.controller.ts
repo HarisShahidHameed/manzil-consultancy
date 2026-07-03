@@ -31,12 +31,13 @@ export const getCase = async (req: Request, res: Response): Promise<void> => {
 };
 
 const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
-  STAGE_TERMINAL:   { status: 409, message: 'This case is already completed or cancelled and cannot change stage.' },
-  STAGE_SKIP:       { status: 409, message: 'Stages must be completed in order — you cannot skip a stage.' },
-  STAGE_INVALID:    { status: 422, message: 'Invalid stage transition.' },
-  ON_HOLD:          { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
-  ADVANCE_REQUIRED: { status: 422, message: 'Mark the advance payment as paid before moving this case out of Intake.' },
-  DUES_PENDING:     { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
+  STAGE_TERMINAL:     { status: 409, message: 'This case is already completed or cancelled and cannot change stage.' },
+  STAGE_SKIP:         { status: 409, message: 'Stages must be completed in order — you cannot skip a stage.' },
+  STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
+  ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
+  INTAKE_INCOMPLETE:  { status: 422, message: 'Fill in the required Intake fields before moving this case forward.' },
+  ADVANCE_REQUIRED:   { status: 422, message: 'Mark the advance payment as paid before moving this case out of Intake.' },
+  DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
 };
 
 export const updateCase = async (req: Request, res: Response): Promise<void> => {
@@ -74,7 +75,11 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
       return;
     }
     const wf = WORKFLOW_ERRORS[error?.message];
-    if (wf) { sendError(res, wf.message, wf.status); return; }
+    if (wf) {
+      const errors = error.missingFields ? { missingFields: error.missingFields } : undefined;
+      sendError(res, wf.message, wf.status, errors);
+      return;
+    }
     if (error?.code === 'P2025') { sendError(res, 'Case not found', 404); return; }
     sendError(res, 'Failed to update case', 500);
   }

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CalendarDays } from 'lucide-react';
+import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
 import { getCases } from '../../api/cases';
 import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -114,16 +114,26 @@ const AppointmentList: React.FC = () => {
                       <p className="text-xs font-bold text-indigo-600">{c.client?.clientRef}</p>
                       <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{c.destination}{c.city ? ` (${c.city})` : ''}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.destination ?? '—'}{c.city ? ` (${c.city})` : ''}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
                         {c.priority}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[c.stage]}`}>
-                        {c.stage.replace('_', ' ')}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[c.stage]}`}>
+                          {c.stage.replace('_', ' ')}
+                        </span>
+                        {(c.missingIntakeFields?.length ?? 0) > 0 && (
+                          <span
+                            title="Missing required Intake info"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">

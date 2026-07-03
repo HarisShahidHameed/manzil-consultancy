@@ -33,6 +33,17 @@ const INV_COLORS: Record<InvoiceStatus, string> = {
   PARTIAL: 'bg-yellow-100 text-yellow-700', PAID: 'bg-green-100 text-green-700',
 };
 
+const INTAKE_FIELD_LABELS: Record<string, string> = {
+  passportNumber: 'Passport Number',
+  nationality: 'Nationality',
+  dob: 'Date of Birth',
+  passportIssue: 'Passport Issue Date',
+  passportExpiry: 'Passport Expiry Date',
+  destination: 'Destination',
+};
+// These live on the Client record, not the case — completed via the client's own edit form.
+const CLIENT_LEVEL_INTAKE_FIELDS = ['passportNumber', 'nationality', 'dob', 'passportIssue', 'passportExpiry'];
+
 const APPT_ROLES = ['APPOINTMENT_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 
@@ -105,6 +116,7 @@ const CaseDetail: React.FC = () => {
   useEffect(() => {
     if (vc) {
       setEditFields({
+        destination: vc.destination ?? '',
         priority: vc.priority,
         appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
         fraNo: vc.fraNo ?? '',
@@ -149,6 +161,7 @@ const CaseDetail: React.FC = () => {
 
   const saveOnboardingMut = useMutation({
     mutationFn: () => updateCase(id!, {
+      destination: (editFields.destination as string) || undefined,
       charges:  toNum(editFields.charges),
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
@@ -310,10 +323,14 @@ const CaseDetail: React.FC = () => {
   const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived);
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
 
+  const missingIntakeFields = vc.missingIntakeFields ?? [];
+
   // Gate reason blocking the next transition (mirrors backend enforcement)
   let gateReason: string | null = null;
   if (vc.onHold) {
     gateReason = 'This case is paused. Resume it to continue the workflow.';
+  } else if (vc.stage === 'INTAKE' && missingIntakeFields.length > 0) {
+    gateReason = `Missing required Intake info: ${missingIntakeFields.map(f => INTAKE_FIELD_LABELS[f] ?? f).join(', ')}.`;
   } else if (vc.stage === 'INTAKE' && !vc.advancePaid) {
     gateReason = 'Mark the advance payment as paid (below) before moving out of Intake.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
@@ -352,7 +369,7 @@ const CaseDetail: React.FC = () => {
               </span>
             )}
           </div>
-          <p className="text-gray-500 text-sm mt-0.5">{vc.destination} · {vc.client?.phone}</p>
+          <p className="text-gray-500 text-sm mt-0.5">{vc.destination ?? '—'} · {vc.client?.phone}</p>
         </div>
         {!isTerminal && (
           <div className="flex items-center gap-2">
@@ -444,7 +461,34 @@ const CaseDetail: React.FC = () => {
               </Button>
             </Can>
           </div>
+
+          {missingIntakeFields.length > 0 && (
+            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+              <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <div>
+                <p>
+                  Imported with missing info — fill in{' '}
+                  <strong>{missingIntakeFields.map(f => INTAKE_FIELD_LABELS[f] ?? f).join(', ')}</strong>{' '}
+                  before this case can move to Appointment.
+                </p>
+                {missingIntakeFields.some(f => CLIENT_LEVEL_INTAKE_FIELDS.includes(f)) && (
+                  <button
+                    type="button"
+                    className="text-amber-800 underline font-medium mt-1"
+                    onClick={() => navigate(`/clients/${vc.client!.id}`)}
+                  >
+                    Complete client info →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-gray-500">Destination</label>
+              <input className={`${inputCls} mt-1`} value={editFields.destination as string ?? ''} onChange={setEF('destination')} placeholder="e.g. UK" />
+            </div>
             <div>
               <label className="text-xs text-gray-500">Service Charges (£)</label>
               <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.charges as string ?? ''} onChange={setEF('charges')} />

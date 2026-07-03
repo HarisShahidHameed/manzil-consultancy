@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { getMissingIntakeFields, IntakeRequiredField } from '../utils/intakeCompleteness';
 
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
@@ -53,6 +54,22 @@ const CLIENT_DETAIL_SELECT = {
   },
 } satisfies Prisma.ClientSelect;
 
+// Flags any Intake-stage case on this client with what's left to fill in before it can proceed.
+const decorateClient = <
+  T extends {
+    passportNumber: string | null; nationality: string | null; dob: Date | null;
+    passportIssue: Date | null; passportExpiry: Date | null;
+    visaCases: Array<{ stage: string; destination: string | null } & Record<string, unknown>>;
+  }
+>(client: T) => ({
+  ...client,
+  visaCases: client.visaCases.map(vc =>
+    vc.stage === 'INTAKE'
+      ? { ...vc, missingIntakeFields: getMissingIntakeFields(client, { destination: vc.destination }) as IntakeRequiredField[] }
+      : vc
+  ),
+});
+
 export const generateClientRef = async (): Promise<string> => {
   const last = await prisma.client.findFirst({
     orderBy: { clientRef: 'desc' },
@@ -63,17 +80,17 @@ export const generateClientRef = async (): Promise<string> => {
 };
 
 export const createClient = async (data: {
-  receivedDate: string; firstName: string; lastName: string;
-  gender: 'MALE' | 'FEMALE' | 'OTHER'; dob: string; phone: string;
+  receivedDate: string; firstName: string; lastName?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER'; dob?: string; phone: string;
   email?: string; whatsapp?: string; residentialAddress?: string;
-  passportNumber: string; passportIssue: string; passportExpiry: string;
-  birthCity?: string; nationality: string;
+  passportNumber?: string; passportIssue?: string; passportExpiry?: string;
+  birthCity?: string; nationality?: string;
   maritalStatus?: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa?: string;
   registeredEmail?: string;
   eVisa?: boolean; contract?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
-  destination: string; city?: string; visaType?: string; ukVisaExpiry?: string;
+  destination?: string; city?: string; visaType?: string; ukVisaExpiry?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
@@ -88,9 +105,9 @@ export const createClient = async (data: {
       ...rest,
       clientRef,
       receivedDate:  new Date(rest.receivedDate),
-      dob:           new Date(rest.dob),
-      passportIssue: new Date(rest.passportIssue),
-      passportExpiry:new Date(rest.passportExpiry),
+      dob:           rest.dob           ? new Date(rest.dob)           : undefined,
+      passportIssue: rest.passportIssue ? new Date(rest.passportIssue) : undefined,
+      passportExpiry:rest.passportExpiry? new Date(rest.passportExpiry): undefined,
       createdById,
       visaCases: {
         create: {
@@ -155,14 +172,15 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
     prisma.client.count({ where }),
   ]);
 
-  return { clients, total, page, limit, totalPages: Math.ceil(total / limit) };
+  return { clients: clients.map(decorateClient), total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
 export const getClientById = async (id: string) => {
-  return prisma.client.findFirst({
+  const client = await prisma.client.findFirst({
     where: { OR: [{ id }, { clientRef: id }] },
     select: CLIENT_DETAIL_SELECT,
   });
+  return client ? decorateClient(client) : null;
 };
 
 export const updateClient = async (

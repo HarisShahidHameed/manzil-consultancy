@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, UserPlus, Trash2, Eye, Filter, Upload } from 'lucide-react';
+import { Search, UserPlus, Trash2, Eye, Filter, Upload, AlertTriangle } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { getClients, deleteClient } from '../../api/clients';
 import type { Client, CaseStage } from '../../types';
@@ -146,17 +146,27 @@ const ClientList: React.FC = () => {
                     onClick={() => navigate(`/clients/${c.id}`)}
                   >
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-indigo-600 text-xs">{c.clientRef}</p>
-                      <p className="font-medium text-gray-900">{c.firstName} {c.lastName}</p>
-                      <p className="text-gray-400 text-xs">{c.nationality}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-indigo-600 text-xs">{c.clientRef}</p>
+                        {c.visaCases.some(vc => (vc.missingIntakeFields?.length ?? 0) > 0) && (
+                          <span
+                            title="Missing required Intake info"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Missing info
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
+                      <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{c.passportNumber}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {c.visaCases.slice(0, 2).map(vc => (
                           <div key={vc.id} className="flex flex-col gap-0.5">
-                            <span className="text-xs text-gray-600">{vc.destination}</span>
+                            <span className="text-xs text-gray-600">{vc.destination ?? '—'}</span>
                             <StageBadge stage={vc.stage} />
                           </div>
                         ))}
