@@ -1,0 +1,146 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+  DEPLOY_ROOT: /opt/manzil
+
+jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npx prisma generate
+        working-directory: backend
+      - run: npx tsc --noEmit
+        working-directory: backend
+      - run: npm test -- --ci
+        working-directory: backend
+
+  build:
+    name: Build release artifact
+    needs: [test]
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release_id.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Build backend
+        working-directory: backend
+        run: |
+          npm ci
+          npx prisma generate
+          npm run build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Compute release id
+        id: release_id
+        run: echo "value=$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble release directory
+        run: |
+          set -euo pipefail
+          RELEASE=release/${{ steps.release_id.outputs.value }}
+          mkdir -p "$RELEASE/backend" "$RELEASE/frontend" "$RELEASE/ops" "$RELEASE/scripts"
+
+          # Backend: compiled output + manifest + prisma schema/migrations only —
+          # no source, no node_modules. node_modules gets installed fresh on the
+          # server from package-lock.json so native (Prisma) binaries match the host.
+          cp -r backend/dist "$RELEASE/backend/dist"
+          cp backend/package.json backend/package-lock.json "$RELEASE/backend/"
+          cp -r backend/prisma "$RELEASE/backend/prisma"
+
+          # Frontend: static build only.
+          cp -r frontend/dist "$RELEASE/frontend/dist"
+
+          # Ops tooling needed on the server for this release.
+          cp ops/ecosystem.config.js "$RELEASE/ops/"
+          cp scripts/remote-deploy.sh "$RELEASE/scripts/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.release_id.outputs.value }}
+          path: release/
+          retention-days: 7
+
+  deploy:
+    name: Ship to server
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.build.outputs.release_id }}
+          path: release
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload release
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          RELEASE_ID: ${{ needs.build.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -p $PORT -o UserKnownHostsFile=~/.ssh/known_hosts"
+          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "mkdir -p $DEPLOY_ROOT/releases/$RELEASE_ID"
+          rsync -az -e "ssh $SSH_OPTS" release/"$RELEASE_ID"/ "$SSH_USER@$SSH_HOST:$DEPLOY_ROOT/releases/$RELEASE_ID/"
+
+      - name: Run remote deploy script
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          RELEASE_ID: ${{ needs.build.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -p $PORT -o UserKnownHostsFile=~/.ssh/known_hosts"
+          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "chmod +x $DEPLOY_ROOT/releases/$RELEASE_ID/scripts/remote-deploy.sh && bash $DEPLOY_ROOT/releases/$RELEASE_ID/scripts/remote-deploy.sh $RELEASE_ID"

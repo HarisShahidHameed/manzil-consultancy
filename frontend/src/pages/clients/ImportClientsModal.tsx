@@ -384,9 +384,15 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
               <p className="text-3xl font-bold text-green-700">{result.imported}</p>
               <p className="text-sm text-green-600 mt-1">Clients imported</p>
             </div>
-            {result.failed > 0 && (
+            {result.duplicates > 0 && (
+              <div className="flex-1 bg-amber-50 rounded-xl p-4 text-center">
+                <p className="text-3xl font-bold text-amber-600">{result.duplicates}</p>
+                <p className="text-sm text-amber-600 mt-1">Duplicates skipped</p>
+              </div>
+            )}
+            {result.failed - result.duplicates > 0 && (
               <div className="flex-1 bg-red-50 rounded-xl p-4 text-center">
-                <p className="text-3xl font-bold text-red-600">{result.failed}</p>
+                <p className="text-3xl font-bold text-red-600">{result.failed - result.duplicates}</p>
                 <p className="text-sm text-red-500 mt-1">Failed</p>
               </div>
             )}

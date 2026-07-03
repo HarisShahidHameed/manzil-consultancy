@@ -22,6 +22,7 @@ export const addCase = (clientId: string, data: unknown) =>
 export interface ImportResult {
   imported: number;
   failed: number;
+  duplicates: number;
   errors: { row: number; message: string }[];
 }
 

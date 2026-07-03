@@ -196,7 +196,7 @@ model Client {
   email                String?
   whatsapp             String?
   residentialAddress   String?
-  passportNumber       String?
+  passportNumber       String?  @unique
   passportIssue        DateTime?
   passportExpiry       DateTime?
   birthCity            String?

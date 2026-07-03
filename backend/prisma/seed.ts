@@ -155,13 +155,22 @@ async function main() {
   const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
   if (!superAdminRole) throw new Error('SUPER_ADMIN role not found');
 
-  const hashedPassword = await bcrypt.hash('Admin@123456', 12);
+  // Override via env in production so the seeded admin isn't a published default
+  // credential — set SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD in the server's .env
+  // (see docs/DEPLOYMENT.md) before the first deploy.
+  const adminEmail    = process.env.SEED_ADMIN_EMAIL    || 'admin@manzil.com';
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'Admin@123456';
+  if (process.env.NODE_ENV === 'production' && !process.env.SEED_ADMIN_PASSWORD) {
+    console.warn('WARNING: SEED_ADMIN_PASSWORD not set — seeding with the default password. Change it immediately after first login.');
+  }
+
+  const hashedPassword = await bcrypt.hash(adminPassword, 12);
 
   const superAdmin = await prisma.user.upsert({
-    where: { email: 'admin@manzil.com' },
+    where: { email: adminEmail },
     update: {},
     create: {
-      email: 'admin@manzil.com',
+      email: adminEmail,
       password: hashedPassword,
       firstName: 'Super',
       lastName: 'Admin',
@@ -176,37 +185,43 @@ async function main() {
     create: { userId: superAdmin.id, roleId: superAdminRole.id },
   });
 
-  console.log('Seeded super admin: admin@manzil.com / Admin@123456');
+  console.log(`Seeded super admin: ${adminEmail}`);
 
-  // Team test users — one per operational role, all share password Team@123456
-  const TEAM_USERS = [
-    { email: 'manager@manzil.com',     firstName: 'Maya',  lastName: 'Manager',     role: 'HR_MANAGER' },
-    { email: 'appointment@manzil.com', firstName: 'Adam',  lastName: 'Appointments', role: 'APPOINTMENT_TEAM' },
-    { email: 'files@manzil.com',       firstName: 'Farah', lastName: 'Files',        role: 'FILE_TEAM' },
-    { email: 'accounts@manzil.com',    firstName: 'Aron',  lastName: 'Accounts',     role: 'ACCOUNTANT' },
-  ];
-  const teamPassword = await bcrypt.hash('Team@123456', 12);
-  for (const tu of TEAM_USERS) {
-    const role = await prisma.role.findUnique({ where: { name: tu.role } });
-    if (!role) { console.warn(`Role ${tu.role} not found, skipping ${tu.email}`); continue; }
-    const user = await prisma.user.upsert({
-      where: { email: tu.email },
-      update: {},
-      create: {
-        email: tu.email,
-        password: teamPassword,
-        firstName: tu.firstName,
-        lastName: tu.lastName,
-        isActive: true,
-        isEmailVerified: true,
-      },
-    });
-    await prisma.userRole.upsert({
-      where: { userId_roleId: { userId: user.id, roleId: role.id } },
-      update: {},
-      create: { userId: user.id, roleId: role.id },
-    });
-    console.log(`Seeded ${tu.role}: ${tu.email} / Team@123456`);
+  // Team test users are for local/dev convenience only — never seeded in production,
+  // so a fresh prod database only ever has the one admin account plus whatever real
+  // users are created through the app afterwards.
+  if (process.env.NODE_ENV !== 'production') {
+    const TEAM_USERS = [
+      { email: 'manager@manzil.com',     firstName: 'Maya',  lastName: 'Manager',     role: 'HR_MANAGER' },
+      { email: 'appointment@manzil.com', firstName: 'Adam',  lastName: 'Appointments', role: 'APPOINTMENT_TEAM' },
+      { email: 'files@manzil.com',       firstName: 'Farah', lastName: 'Files',        role: 'FILE_TEAM' },
+      { email: 'accounts@manzil.com',    firstName: 'Aron',  lastName: 'Accounts',     role: 'ACCOUNTANT' },
+    ];
+    const teamPassword = await bcrypt.hash('Team@123456', 12);
+    for (const tu of TEAM_USERS) {
+      const role = await prisma.role.findUnique({ where: { name: tu.role } });
+      if (!role) { console.warn(`Role ${tu.role} not found, skipping ${tu.email}`); continue; }
+      const user = await prisma.user.upsert({
+        where: { email: tu.email },
+        update: {},
+        create: {
+          email: tu.email,
+          password: teamPassword,
+          firstName: tu.firstName,
+          lastName: tu.lastName,
+          isActive: true,
+          isEmailVerified: true,
+        },
+      });
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: user.id, roleId: role.id } },
+        update: {},
+        create: { userId: user.id, roleId: role.id },
+      });
+      console.log(`Seeded ${tu.role}: ${tu.email} / Team@123456`);
+    }
+  } else {
+    console.log('NODE_ENV=production — skipping dev team users, admin only.');
   }
 
   console.log('Seeding complete.');

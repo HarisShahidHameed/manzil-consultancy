@@ -1,1 +1,27 @@
 /node_modules
+node_modules/
+
+# env files — never commit real secrets, only .env.example
+.env
+.env.local
+.env.*.local
+!*.env.example
+
+# build output
+dist/
+build/
+
+# logs
+logs/
+*.log
+npm-debug.log*
+
+# test / coverage
+coverage/
+playwright-report/
+test-results/
+
+# misc
+.DS_Store
+*.pem
+ruvector.db

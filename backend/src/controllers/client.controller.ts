@@ -31,6 +31,10 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
       return;
     }
+    if (error?.code === 'P2002') {
+      sendError(res, 'A client with this passport number already exists', 409);
+      return;
+    }
     sendError(res, 'Failed to create client', 500);
   }
 };
@@ -70,6 +74,7 @@ export const updateClient = async (req: Request, res: Response): Promise<void> =
       return;
     }
     if (error?.code === 'P2025') { sendError(res, 'Client not found', 404); return; }
+    if (error?.code === 'P2002') { sendError(res, 'A client with this passport number already exists', 409); return; }
     sendError(res, 'Failed to update client', 500);
   }
 };

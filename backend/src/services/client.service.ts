@@ -126,18 +126,86 @@ export const createClient = async (data: {
   });
 };
 
+// A client "matches" an existing one if their passport number is the same, or — for
+// rows without a passport number yet — if first name, last name and phone all match.
+// Postgres already enforces the passport uniqueness at the DB level (nulls excluded);
+// this pre-check catches both that case and the name+phone fallback in one pass, and
+// lets us report duplicates distinctly instead of surfacing them as row errors.
+const nameKey = (firstName: string, lastName: string | undefined, phone: string) =>
+  `${firstName.trim().toLowerCase()}|${(lastName ?? '').trim().toLowerCase()}|${phone.trim().toLowerCase()}`;
+
 export const bulkImportClients = async (
   rows: Parameters<typeof createClient>[0][],
   createdById?: string,
 ) => {
-  const results = { imported: 0, failed: 0, errors: [] as { row: number; message: string }[] };
+  const results = {
+    imported: 0,
+    failed: 0,
+    duplicates: 0,
+    errors: [] as { row: number; message: string }[],
+  };
+
+  const passportNumbers = [...new Set(
+    rows.map(r => r.passportNumber?.trim()).filter((p): p is string => !!p)
+  )];
+  const existingByPassport = passportNumbers.length
+    ? await prisma.client.findMany({
+        where: { passportNumber: { in: passportNumbers } },
+        select: { passportNumber: true },
+      })
+    : [];
+  const seenPassports = new Set(existingByPassport.map(c => c.passportNumber as string));
+
+  const nameKeyCandidates = rows
+    .filter(r => !r.passportNumber?.trim() && r.phone && r.phone !== 'N/A')
+    .map(r => ({ firstName: r.firstName, lastName: r.lastName, phone: r.phone }));
+  const existingByName = nameKeyCandidates.length
+    ? await prisma.client.findMany({
+        where: {
+          OR: nameKeyCandidates.map(c => ({
+            firstName: { equals: c.firstName, mode: 'insensitive' as const },
+            lastName:  c.lastName ? { equals: c.lastName, mode: 'insensitive' as const } : null,
+            phone: c.phone,
+          })),
+        },
+        select: { firstName: true, lastName: true, phone: true },
+      })
+    : [];
+  const seenNameKeys = new Set(
+    existingByName.map(c => nameKey(c.firstName, c.lastName ?? undefined, c.phone))
+  );
+
   for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const passport = row.passportNumber?.trim();
+    const key = passport || nameKey(row.firstName, row.lastName, row.phone);
+    const isDuplicate = passport ? seenPassports.has(passport) : seenNameKeys.has(key);
+
+    if (isDuplicate) {
+      results.duplicates++;
+      results.failed++;
+      const fullName = `${row.firstName} ${row.lastName ?? ''}`.trim();
+      results.errors.push({
+        row: i + 1,
+        message: passport
+          ? `Duplicate: a client with passport ${passport} already exists`
+          : `Duplicate: a client named "${fullName}" with phone ${row.phone} already exists`,
+      });
+      continue;
+    }
+
     try {
-      await createClient({ ...rows[i], createdById });
+      await createClient({ ...row, createdById });
       results.imported++;
+      if (passport) seenPassports.add(passport);
+      else seenNameKeys.add(key);
     } catch (e: any) {
       results.failed++;
-      results.errors.push({ row: i + 1, message: e?.message ?? 'Unknown error' });
+      const message = e?.code === 'P2002'
+        ? 'Duplicate: passport number already exists'
+        : e?.message ?? 'Unknown error';
+      if (e?.code === 'P2002') results.duplicates++;
+      results.errors.push({ row: i + 1, message });
     }
   }
   return results;
