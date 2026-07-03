@@ -32,6 +32,11 @@ jobs:
         working-directory: backend
       - run: npm test -- --ci
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+          JWT_ACCESS_SECRET: test-access-secret-min-32-characters-long
+          JWT_REFRESH_SECRET: test-refresh-secret-min-32-characters-long
+          COOKIE_SECRET: test-cookie-secret-min-32-characters-long
 
   frontend:
     name: Frontend (typecheck + unit tests + build)
