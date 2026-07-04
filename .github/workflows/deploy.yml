@@ -69,6 +69,8 @@ jobs:
 
       - name: Build frontend
         working-directory: frontend
+        env:
+          VITE_API_URL: https://api.manzilconsultancy.com/api
         run: |
           npm ci
           npm run build

@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-const BASE_URL = '/api';
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;

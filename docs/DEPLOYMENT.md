@@ -151,9 +151,13 @@ the SSH login itself does (§3). One less place secrets can leak from.
 
 ### 1.7 Nginx
 
+Two subdomains, one Nginx config with two `server` blocks:
+`dashboard.manzilconsultancy.com` (frontend) and `api.manzilconsultancy.com` (backend,
+proxied straight through — no path rewriting, since Express already mounts everything
+under `/api`). See `ops/nginx/manzil.conf` for the exact blocks.
+
 ```bash
 sudo cp ops/nginx/manzil.conf /etc/nginx/sites-available/manzil
-sudo sed -i 's/YOUR_DOMAIN_HERE/your-domain.example/' /etc/nginx/sites-available/manzil
 sudo ln -s /etc/nginx/sites-available/manzil /etc/nginx/sites-enabled/manzil
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
@@ -163,12 +167,19 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.example
+sudo certbot --nginx -d dashboard.manzilconsultancy.com -d api.manzilconsultancy.com
 ```
 
-Certbot edits `sites-available/manzil` in place to add the TLS server block and the
-80→443 redirect, and sets up auto-renewal via a systemd timer — nothing further to
-do. Confirm it's active with `sudo systemctl list-timers | grep certbot`.
+Certbot edits `sites-available/manzil` in place to add TLS server blocks (one per
+domain) and the 80→443 redirects, and sets up auto-renewal via a systemd timer —
+nothing further to do. Confirm it's active with `sudo systemctl list-timers | grep certbot`.
+
+Since `dashboard.*` and `api.*` are different origins, the backend's CORS allowlist
+(`CLIENT_URL` in `.env`, §1.6) must be set to `https://dashboard.manzilconsultancy.com`
+exactly, and the frontend is built with `VITE_API_URL=https://api.manzilconsultancy.com/api`
+baked in at build time (see `.github/workflows/deploy.yml`) — both subdomains share the
+same registrable domain, so the httpOnly refresh cookie (`sameSite: 'strict'`) still
+works across them without further changes.
 
 ---
 
