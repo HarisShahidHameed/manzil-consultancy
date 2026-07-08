@@ -74,7 +74,7 @@ const App: React.FC = () => (
                   <Route path="/groups" element={<Groups />} />
                 </Route>
 
-                {/* Appointments (INTAKE + APPOINTMENT stage cases) */}
+                {/* Appointments — the queue every new case lands in (Waiting → Assigned → Registered) */}
                 <Route element={<RoleGuard permissions={['appointments:read', 'clients:read']} requireAll={false} />}>
                   <Route path="/appointments" element={<AppointmentList />} />
                 </Route>

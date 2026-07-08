@@ -5,7 +5,6 @@ import { AnalyticsQuery } from '../validators/dashboard.validators';
 export const getDashboardStats = async () => {
   const [
     totalClients,
-    intakeCases,
     appointmentCases,
     fileProcessingCases,
     invoicedCases,
@@ -14,7 +13,6 @@ export const getDashboardStats = async () => {
     pendingAmount,
   ] = await Promise.all([
     prisma.client.count(),
-    prisma.visaCase.count({ where: { stage: 'INTAKE' } }),
     prisma.visaCase.count({ where: { stage: 'APPOINTMENT' } }),
     prisma.visaCase.count({ where: { stage: 'FILE_PROCESSING' } }),
     prisma.visaCase.count({ where: { stage: 'INVOICED' } }),
@@ -41,7 +39,6 @@ export const getDashboardStats = async () => {
 
   return {
     totalClients,
-    intakeCases,
     appointmentCases,
     fileProcessingCases,
     invoicedCases,

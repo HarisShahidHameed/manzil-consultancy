@@ -21,7 +21,7 @@ const defaultCaseGroupByImpl = (args: VisaCaseGroupByArgs) => {
   switch (field) {
     case 'stage':
       return Promise.resolve([
-        { stage: 'INTAKE', _count: { _all: 3 } },
+        { stage: 'APPOINTMENT', _count: { _all: 3 } },
         { stage: 'COMPLETED', _count: { _all: 2 } },
       ]);
     case 'priority':
@@ -89,7 +89,7 @@ describe('getAnalytics', () => {
     const result = await getAnalytics({});
 
     expect(result.pipeline.casesByStage).toEqual([
-      { stage: 'INTAKE', count: 3 },
+      { stage: 'APPOINTMENT', count: 3 },
       { stage: 'COMPLETED', count: 2 },
     ]);
     expect(result.pipeline.casesByPriority).toEqual([{ priority: 'MEDIUM', count: 5 }]);

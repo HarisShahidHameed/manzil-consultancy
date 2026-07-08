@@ -8,7 +8,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',
@@ -23,16 +22,26 @@ const PRI_COLORS: Record<Priority, string> = {
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
-type TabStage = 'ALL' | 'INTAKE' | 'APPOINTMENT';
+const APPT_STATUS_COLORS: Record<string, string> = {
+  WAITING:    'bg-amber-100 text-amber-700',
+  ASSIGNED:   'bg-blue-100 text-blue-700',
+  REGISTERED: 'bg-green-100 text-green-700',
+};
+
+// Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered.
+type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED';
 
 const AppointmentList: React.FC = () => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<TabStage>('ALL');
+  const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
   const params: Record<string, string> = { page: String(page), limit: '20' };
-  if (tab !== 'ALL') params.stage = tab;
+  if (tab !== 'ALL') {
+    params.stage = 'APPOINTMENT';
+    params.appointmentStatus = tab;
+  }
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
@@ -43,10 +52,11 @@ const AppointmentList: React.FC = () => {
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
 
-  const tabs: { key: TabStage; label: string }[] = [
-    { key: 'ALL',         label: 'All' },
-    { key: 'INTAKE',      label: 'Intake' },
-    { key: 'APPOINTMENT', label: 'Appointment' },
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'ALL',        label: 'All' },
+    { key: 'WAITING',    label: 'Waiting' },
+    { key: 'ASSIGNED',   label: 'Assigned' },
+    { key: 'REGISTERED', label: 'Registered' },
   ];
 
   return (
@@ -98,6 +108,7 @@ const AppointmentList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Assigned To</th>
@@ -126,15 +137,24 @@ const AppointmentList: React.FC = () => {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[c.stage]}`}>
                           {c.stage.replace('_', ' ')}
                         </span>
-                        {(c.missingIntakeFields?.length ?? 0) > 0 && (
+                        {(c.missingRequiredFields?.length ?? 0) > 0 && (
                           <span
-                            title="Missing required Intake info"
+                            title="Missing required client info"
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
                           >
                             <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
+                          {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (

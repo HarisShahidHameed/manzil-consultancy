@@ -11,11 +11,12 @@ const caseQuerySchema = z.object({
   limit:  z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   stage:  z.string().optional(),
   search: z.string().optional(),
+  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED']).optional(),
 });
 
 export const listCases = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, stage, search } = caseQuerySchema.parse(req.query);
-  const result = await visaCaseService.listCases(page, limit, stage, search);
+  const { page, limit, stage, search, appointmentStatus } = caseQuerySchema.parse(req.query);
+  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus);
   sendSuccess(res, 'Cases retrieved', result.cases, 200, {
     total: result.total,
     page: result.page,
@@ -35,7 +36,8 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   STAGE_SKIP:         { status: 409, message: 'Stages must be completed in order — you cannot skip a stage.' },
   STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
-  INTAKE_INCOMPLETE:  { status: 422, message: 'Fill in the required Intake fields before moving this case forward.' },
+  CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move to File Processing.' },
+  APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case to File Processing.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
 };
 

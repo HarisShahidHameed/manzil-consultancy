@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { getMissingIntakeFields, IntakeRequiredField } from '../utils/intakeCompleteness';
+import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
@@ -37,7 +37,7 @@ const CLIENT_DETAIL_SELECT = {
   visaCases: {
     select: {
       id: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
-      stage: true, priority: true, appointmentDate: true, bookedById: true,
+      stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
@@ -55,7 +55,8 @@ const CLIENT_DETAIL_SELECT = {
   },
 } satisfies Prisma.ClientSelect;
 
-// Flags any Intake-stage case on this client with what's left to fill in before it can proceed.
+// Flags any Appointment-stage case on this client with what's left to fill in
+// before it can move to file processing.
 const decorateClient = <
   T extends {
     passportNumber: string | null; nationality: string | null; dob: Date | null;
@@ -65,8 +66,8 @@ const decorateClient = <
 >(client: T) => ({
   ...client,
   visaCases: client.visaCases.map(vc =>
-    vc.stage === 'INTAKE'
-      ? { ...vc, missingIntakeFields: getMissingIntakeFields(client, { destination: vc.destination }) as IntakeRequiredField[] }
+    vc.stage === 'APPOINTMENT'
+      ? { ...vc, missingRequiredFields: getMissingRequiredFields(client, { destination: vc.destination }) as CaseRequiredField[] }
       : vc
   ),
 });
@@ -110,8 +111,11 @@ export const createClient = async (data: {
       passportIssue: rest.passportIssue ? new Date(rest.passportIssue) : undefined,
       passportExpiry:rest.passportExpiry? new Date(rest.passportExpiry): undefined,
       createdById,
+      // No Intake stage: the case enters the appointment queue as Waiting
+      // as soon as the client's information is filled in.
       visaCases: {
         create: {
+          appointmentStatus: 'WAITING',
           destination,
           city,
           visaType,

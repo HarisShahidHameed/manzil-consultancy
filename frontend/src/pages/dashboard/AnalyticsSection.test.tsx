@@ -15,7 +15,7 @@ vi.mock('../../hooks/useAuth');
 
 const fullAnalytics: AnalyticsData = {
   pipeline: {
-    casesByStage: [{ stage: 'INTAKE', count: 3 }],
+    casesByStage: [{ stage: 'APPOINTMENT', count: 3 }],
     casesByPriority: [{ priority: 'MEDIUM', count: 3 }],
     casesByDestination: [{ destination: 'UK', count: 2 }, { destination: 'Canada', count: 1 }],
     appointmentFunnel: [{ status: 'NONE', count: 3 }],

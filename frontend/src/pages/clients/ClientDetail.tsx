@@ -12,7 +12,6 @@ import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',

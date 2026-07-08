@@ -102,11 +102,11 @@ export interface ClientGroup {
   }>;
   _count?: { clients: number };
 }
-export type CaseStage = 'INTAKE' | 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
+export type CaseStage = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type DocumentStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'NOT_REQUIRED';
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID';
-export type IntakeRequiredField = 'passportNumber' | 'nationality' | 'dob' | 'passportIssue' | 'passportExpiry' | 'destination';
+export type CaseRequiredField = 'passportNumber' | 'nationality' | 'dob' | 'passportIssue' | 'passportExpiry' | 'destination';
 
 export interface AssignableUser {
   id: string;
@@ -161,8 +161,9 @@ export interface VisaCase {
   ukVisaExpiry?: string;
   stage: CaseStage;
   priority: Priority;
-  // Present (non-empty) only while stage is INTAKE — fields still needed before it can advance.
-  missingIntakeFields?: IntakeRequiredField[];
+  // Present (non-empty) only while stage is APPOINTMENT — fields still needed
+  // before the case can move to File Processing.
+  missingRequiredFields?: CaseRequiredField[];
   advance?: number | string;
   charges?: number | string;
   discount?: number | string;
@@ -200,6 +201,7 @@ export interface VisaCase {
   client?: {
     id: string; clientRef: string; firstName: string; lastName: string;
     phone: string; email?: string; nationality: string; passportNumber: string;
+    dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null;
     residentialAddress?: string; maritalStatus?: MaritalStatus;
     previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string;
   };
@@ -267,7 +269,6 @@ export interface AnalyticsData {
 
 export interface DashboardStats {
   totalClients: number;
-  intakeCases: number;
   appointmentCases: number;
   fileProcessingCases: number;
   invoicedCases: number;

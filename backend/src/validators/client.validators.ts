@@ -39,8 +39,8 @@ export const createClientSchema = z.object({
 });
 
 // Bulk import accepts incomplete records — anything not on file yet is left blank
-// and the client/case stay in Intake until the required fields are filled in
-// (see utils/intakeCompleteness.ts for what's required to leave Intake).
+// and the case stays flagged incomplete in the Appointment queue until the required
+// fields are filled in (see utils/caseRequiredInfo.ts for what file processing needs).
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
 const optionalDate = () =>
@@ -91,7 +91,7 @@ export const clientQuerySchema = z.object({
   page:        z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
   limit:       z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   search:      z.string().optional(),
-  stage:       z.enum(['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  stage:       z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
   destination: z.string().optional(),
 });
 
@@ -127,7 +127,7 @@ export const updateCaseSchema = z.object({
   city:         z.string().max(100).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().optional(),
-  stage:        z.enum(['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),

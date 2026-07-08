@@ -21,7 +21,6 @@ enum MaritalStatus {
 }
 
 enum CaseStage {
-  INTAKE
   APPOINTMENT
   FILE_PROCESSING
   INVOICED
@@ -231,7 +230,7 @@ model VisaCase {
   city                    String?
   visaType                String?
   ukVisaExpiry            DateTime?
-  stage                   CaseStage      @default(INTAKE)
+  stage                   CaseStage      @default(APPOINTMENT)
   priority                Priority       @default(MEDIUM)
   advance                 Decimal?       @db.Decimal(10, 2)
   charges                 Decimal?       @db.Decimal(10, 2)
@@ -240,7 +239,7 @@ model VisaCase {
   advancePaidDate         DateTime?
   onHold                  Boolean        @default(false)
   onHoldReason            String?
-  appointmentStatus       AppointmentStatus?
+  appointmentStatus       AppointmentStatus? @default(WAITING)
   appointmentDate         DateTime?
   bookedById              String?
   appointmentAssignedToId String?
