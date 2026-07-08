@@ -43,14 +43,15 @@ npm prune --omit=dev
 echo "==> Flipping current symlink"
 ln -sfn "$RELEASE_DIR" "$DEPLOY_ROOT/current"
 
-echo "==> Starting/reloading PM2 process"
+echo "==> Starting PM2 process from current release"
 mkdir -p "$DEPLOY_ROOT/shared/logs"
-if pm2 describe manzil-backend > /dev/null 2>&1; then
-  pm2 reload "$DEPLOY_ROOT/current/ops/ecosystem.config.js" --update-env
-else
-  pm2 start "$DEPLOY_ROOT/current/ops/ecosystem.config.js"
-  pm2 save
-fi
+# Always delete + start fresh (never `pm2 reload`): reload keeps the script/cwd
+# path a running process was originally started with, so it silently keeps
+# running the old release directory after every `current` symlink flip — until
+# that old release gets pruned out from under it and the process crash-loops.
+pm2 delete manzil-backend > /dev/null 2>&1 || true
+pm2 start "$DEPLOY_ROOT/current/ops/ecosystem.config.js"
+pm2 save
 
 echo "==> Pruning old releases (keeping last $KEEP_RELEASES)"
 cd "$DEPLOY_ROOT/releases"
