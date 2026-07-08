@@ -8,6 +8,8 @@ import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
+import { Combobox } from '../../components/ui/Combobox';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -38,7 +40,7 @@ const emptyForm = {
   passportNumber: '', passportIssue: '', passportExpiry: '',
   birthCity: '', nationality: '', maritalStatus: '' as '' | 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED',
   previousSchengenVisa: '', registeredEmail: '',
-  eVisa: false, contract: false,
+  eVisa: false,
   visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
   destination: '', city: '', visaType: '', ukVisaExpiry: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
@@ -84,7 +86,7 @@ const ClientForm: React.FC = () => {
       maritalStatus: client.maritalStatus ?? '',
       previousSchengenVisa: client.previousSchengenVisa ?? '',
       registeredEmail: client.registeredEmail ?? '',
-      eVisa: client.eVisa ?? false, contract: client.contract ?? false,
+      eVisa: client.eVisa ?? false,
       visaAndTravelHistory: client.visaAndTravelHistory ?? '',
       source: client.source ?? '', referredBy: client.referredBy ?? '',
       hrComments: client.hrComments ?? '', folderUrl: client.folderUrl ?? '',
@@ -177,7 +179,7 @@ const ClientForm: React.FC = () => {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
 
-  const setCheck = (k: 'eVisa' | 'contract') => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const setCheck = (k: 'eVisa') => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.checked }));
 
   if (isEdit && clientLoading) return (
@@ -284,10 +286,6 @@ const ClientForm: React.FC = () => {
             <input type="checkbox" checked={form.eVisa} onChange={setCheck('eVisa')} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
             <span className="text-sm font-medium text-gray-700">E-Visa</span>
           </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.contract} onChange={setCheck('contract')} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-            <span className="text-sm font-medium text-gray-700">Contract Signed</span>
-          </label>
         </div>
         <Field label="Previous Schengen Visa Details">
           <textarea className={inputCls} rows={2} value={form.previousSchengenVisa} onChange={set('previousSchengenVisa')} placeholder="Prior Schengen visas, dates, type…" />
@@ -301,10 +299,20 @@ const ClientForm: React.FC = () => {
         <Section title="Visa Application">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Destination Country" required error={fieldErrors.destination}>
-              <input className={inputCls} value={form.destination} onChange={set('destination')} placeholder="Netherlands" />
+              <Combobox
+                value={form.destination}
+                onChange={v => setForm(f => ({ ...f, destination: v }))}
+                options={DESTINATION_OPTIONS}
+                placeholder="Select destination"
+              />
             </Field>
             <Field label="Appointment City">
-              <input className={inputCls} value={form.city} onChange={set('city')} placeholder="Islamabad" />
+              <Combobox
+                value={form.city}
+                onChange={v => setForm(f => ({ ...f, city: v }))}
+                options={APPOINTMENT_CITY_OPTIONS}
+                placeholder="Select city"
+              />
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-4">

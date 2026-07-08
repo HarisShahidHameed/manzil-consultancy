@@ -19,7 +19,6 @@ export const createClientSchema = z.object({
   previousSchengenVisa: z.string().max(500).optional(),
   registeredEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   eVisa:    z.boolean().default(false),
-  contract: z.boolean().default(false),
   visaAndTravelHistory: z.string().optional(),
   source:     z.string().max(100).optional(),
   referredBy: z.string().max(100).optional(),
@@ -77,7 +76,6 @@ export const updateClientSchema = z.object({
   previousSchengenVisa: z.string().max(500).optional(),
   registeredEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   eVisa:    z.boolean().optional(),
-  contract: z.boolean().optional(),
   visaAndTravelHistory: z.string().optional(),
   source:     z.string().max(100).optional(),
   referredBy: z.string().max(100).optional(),
@@ -138,7 +136,7 @@ export const updateCaseSchema = z.object({
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
-  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED']).nullable().optional(),
+  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
   appointmentDate:         z.string().optional(),
   bookedById:              z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
   appointmentAssignedToId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
@@ -165,6 +163,10 @@ export const updateCaseSchema = z.object({
   docEVisaCost:       z.number().nonnegative().nullable().optional(),
   docSopCost:         z.number().nonnegative().nullable().optional(),
   docVisaFormCost:    z.number().nonnegative().nullable().optional(),
+  docAppointmentClientPaid: z.number().nonnegative().nullable().optional(),
+  docTicketClientPaid:      z.number().nonnegative().nullable().optional(),
+  docInsuranceClientPaid:   z.number().nonnegative().nullable().optional(),
+  docHotelClientPaid:       z.number().nonnegative().nullable().optional(),
   paymentReceived: z.number().nonnegative().optional(),
 });
 

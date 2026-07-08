@@ -65,10 +65,19 @@ const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
 };
 const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel']);
+// Only the 4 agency-paid docs above track a client-contribution amount.
+const DOC_CLIENT_PAID_KEY: Partial<Record<DocKey, keyof VisaCase>> = {
+  docAppointment: 'docAppointmentClientPaid', docTicket: 'docTicketClientPaid',
+  docInsurance: 'docInsuranceClientPaid', docHotel: 'docHotelClientPaid',
+};
 const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'WAITING', label: 'Waiting' },
   { value: 'ASSIGNED', label: 'Assigned' },
   { value: 'REGISTERED', label: 'Registered' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'HOLD', label: 'Hold' },
+  { value: 'DROPPED', label: 'Dropped' },
+  { value: 'BACK_UP', label: 'Back-Up' },
 ];
 
 const CaseDetail: React.FC = () => {
@@ -123,6 +132,10 @@ const CaseDetail: React.FC = () => {
         docEVisa: vc.docEVisa,
         docSop: vc.docSop,
         docVisaForm: vc.docVisaForm,
+        docAppointmentClientPaid: vc.docAppointmentClientPaid,
+        docTicketClientPaid: vc.docTicketClientPaid,
+        docInsuranceClientPaid: vc.docInsuranceClientPaid,
+        docHotelClientPaid: vc.docHotelClientPaid,
         charges: vc.charges,
         discount: vc.discount,
         advance: vc.advance,
@@ -183,6 +196,10 @@ const CaseDetail: React.FC = () => {
       docEVisaCost:       toNum(editFields.docEVisaCost),
       docSopCost:         toNum(editFields.docSopCost),
       docVisaFormCost:    toNum(editFields.docVisaFormCost),
+      docAppointmentClientPaid: toNum(editFields.docAppointmentClientPaid),
+      docTicketClientPaid:      toNum(editFields.docTicketClientPaid),
+      docInsuranceClientPaid:   toNum(editFields.docInsuranceClientPaid),
+      docHotelClientPaid:       toNum(editFields.docHotelClientPaid),
       charges:         toNum(editFields.charges),
       discount:        toNum(editFields.discount),
       advance:         toNum(editFields.advance),
@@ -277,7 +294,16 @@ const CaseDetail: React.FC = () => {
   const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
-  const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived);
+  // For each agency-paid document, the client still owes whatever the agency
+  // covered minus what the client has already contributed toward that cost.
+  const agencyDocOutstanding = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
+    const costKey = DOC_COST_KEY[key];
+    const clientPaidKey = DOC_CLIENT_PAID_KEY[key]!;
+    const cost = num(vc[costKey] as number | string | null);
+    const clientPaid = num(vc[clientPaidKey] as number | string | null);
+    return sum + Math.max(0, cost - clientPaid);
+  }, 0);
+  const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived) + agencyDocOutstanding;
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
 
   const missingRequiredFields = vc.missingRequiredFields ?? [];
@@ -700,11 +726,13 @@ const CaseDetail: React.FC = () => {
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Status</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Paid By</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Cost (£)</th>
+                    <th className="text-left px-3 py-2 text-xs text-gray-500">Client Already Given (£)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {(Object.keys(DOC_LABELS) as DocKey[]).map(key => {
                     const costKey = DOC_COST_KEY[key];
+                    const clientPaidKey = DOC_CLIENT_PAID_KEY[key];
                     const hasPaidBy = AGENCY_PAID_DOCS.has(key);
                     const paidBy = docPaidBy[key];
                     return (
@@ -763,6 +791,19 @@ const CaseDetail: React.FC = () => {
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
+                      <td className="px-3 py-2">
+                        {(hasPaidBy && paidBy === 'agency' && clientPaidKey) ? (
+                          <input
+                            type="number" min="0" step="0.01"
+                            className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="0.00"
+                            value={String((editFields[clientPaidKey] as string | number | undefined) ?? vc[clientPaidKey] ?? '')}
+                            onChange={e => setEditFields(f => ({ ...f, [clientPaidKey]: e.target.value }))}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ); })}
                 </tbody>
@@ -792,7 +833,7 @@ const CaseDetail: React.FC = () => {
               </div>
             </div>
             <div className="mt-3 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
-              <span className="text-sm text-gray-600">Balance (charges − discount − advance − received)</span>
+              <span className="text-sm text-gray-600">Balance (charges − discount − advance − received + agency costs owed)</span>
               <span className={`text-sm font-bold ${caseDue <= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {fmtMoney(caseDue)}
               </span>

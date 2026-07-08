@@ -15,6 +15,7 @@ const CASE_SELECT = {
   docEVisa: true, docSop: true, docVisaForm: true,
   docAppointmentCost: true, docTicketCost: true, docInsuranceCost: true, docHotelCost: true,
   docEVisaCost: true, docSopCost: true, docVisaFormCost: true,
+  docAppointmentClientPaid: true, docTicketClientPaid: true, docInsuranceClientPaid: true, docHotelClientPaid: true,
   paymentReceived: true,
   createdAt: true, updatedAt: true,
   client: {
@@ -212,12 +213,25 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     'advance', 'charges', 'discount', 'paymentReceived',
     'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
     'docEVisaCost', 'docSopCost', 'docVisaFormCost',
+    'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid', 'docHotelClientPaid',
   ];
   for (const f of decimalFields) {
     if (d[f] !== undefined && d[f] !== null && d[f] !== '') d[f] = new Prisma.Decimal(d[f]);
     else if (d[f] === '' || d[f] === null) d[f] = null;
   }
-  return prisma.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
+  const updated = await prisma.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
+
+  // A client is only meant to be actively working one case at a time. Once a case
+  // reaches File Processing, any other still-open case (Appointment stage) for the
+  // same client is a duplicate application and gets auto-cancelled.
+  if (d.stage === 'FILE_PROCESSING') {
+    await prisma.visaCase.updateMany({
+      where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
+      data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
+    });
+  }
+
+  return updated;
 };
 
 // Returns current stage so the controller can resolve the required permission for a transition.

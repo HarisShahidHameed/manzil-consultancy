@@ -86,7 +86,7 @@ export interface PaginatedData<T> {
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type MaritalStatus = 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
-export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED';
+export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
 
 export interface ClientGroup {
   id: string;
@@ -139,7 +139,6 @@ export interface Client {
   groupId?: string;
   group?: { id: string; groupRef: string; name: string; relation?: string };
   eVisa: boolean;
-  contract: boolean;
   visaAndTravelHistory?: string;
   source?: string;
   referredBy?: string;
@@ -197,6 +196,10 @@ export interface VisaCase {
   docEVisaCost?: number | string | null;
   docSopCost?: number | string | null;
   docVisaFormCost?: number | string | null;
+  docAppointmentClientPaid?: number | string | null;
+  docTicketClientPaid?: number | string | null;
+  docInsuranceClientPaid?: number | string | null;
+  docHotelClientPaid?: number | string | null;
   paymentReceived?: number | string;
   client?: {
     id: string; clientRef: string; firstName: string; lastName: string;

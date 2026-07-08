@@ -165,7 +165,6 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="Issue Date"   value={fmtDate(client.passportIssue)} />
             <InfoRow label="Expiry Date"  value={fmtDate(client.passportExpiry)} />
             <InfoRow label="E-Visa"    value={client.eVisa} />
-            <InfoRow label="Contract"  value={client.contract} />
             <InfoRow label="Previous Schengen Visa" value={client.previousSchengenVisa} />
             <InfoRow label="Source"    value={client.source} />
             <InfoRow label="Referred By" value={client.referredBy} />

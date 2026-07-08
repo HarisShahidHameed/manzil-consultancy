@@ -8,7 +8,7 @@ const CLIENT_SELECT = {
   phone: true, email: true, whatsapp: true, residentialAddress: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
-  eVisa: true, contract: true, visaAndTravelHistory: true,
+  eVisa: true, visaAndTravelHistory: true,
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -29,7 +29,7 @@ const CLIENT_DETAIL_SELECT = {
   phone: true, email: true, whatsapp: true, residentialAddress: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
-  eVisa: true, contract: true, visaAndTravelHistory: true,
+  eVisa: true, visaAndTravelHistory: true,
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -89,7 +89,7 @@ export const createClient = async (data: {
   birthCity?: string; nationality?: string;
   maritalStatus?: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa?: string;
   registeredEmail?: string;
-  eVisa?: boolean; contract?: boolean; visaAndTravelHistory?: string;
+  eVisa?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
   destination?: string; city?: string; visaType?: string; ukVisaExpiry?: string;
@@ -268,7 +268,7 @@ export const updateClient = async (
     birthCity: string; nationality: string;
     maritalStatus: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa: string;
     registeredEmail: string;
-    eVisa: boolean; contract: boolean; visaAndTravelHistory: string;
+    eVisa: boolean; visaAndTravelHistory: string;
     source: string; referredBy: string; hrComments: string;
     folderUrl: string; assignedToId: string; groupId: string | null;
   }>

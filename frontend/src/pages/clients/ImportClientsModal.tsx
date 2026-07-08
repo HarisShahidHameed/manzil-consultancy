@@ -62,7 +62,6 @@ interface MappedRow {
   email?: string;
   residentialAddress?: string;
   whatsapp?: string;
-  contract?: boolean;
   birthCity?: string;
   city?: string;
   ukVisaExpiry?: string;
@@ -129,7 +128,6 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
     email:                str(row[8]),
     residentialAddress:   str(row[9]),
     whatsapp:             str(row[13]),
-    contract:             bool(row[14]),
     birthCity:            str(row[15]),
     city:                 str(row[18]),
     ukVisaExpiry:         ukVisaExpiry || undefined,

@@ -156,7 +156,14 @@ const ClientList: React.FC = () => {
                         )}
                       </div>
                       <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
-                      <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
+                        {c.group && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                            {c.group.groupRef} — {c.group.name}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>

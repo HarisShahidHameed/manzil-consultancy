@@ -26,26 +26,34 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'bg-amber-100 text-amber-700',
   ASSIGNED:   'bg-blue-100 text-blue-700',
   REGISTERED: 'bg-green-100 text-green-700',
+  COMPLETED:  'bg-green-100 text-green-700',
+  HOLD:       'bg-orange-100 text-orange-700',
+  DROPPED:    'bg-red-100 text-red-700',
+  BACK_UP:    'bg-purple-100 text-purple-700',
 };
 
-// Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered.
-type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED';
+// Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered / Completed / Hold / Dropped / Back-Up.
+type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
 
-const AppointmentList: React.FC = () => {
+interface CaseListProps {
+  stage: CaseStage;
+  title: string;
+  /** Show the Waiting/Assigned/Registered/... appointment-status sub-tabs (Appointment stage only). */
+  showStatusTabs?: boolean;
+}
+
+const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs }) => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const params: Record<string, string> = { page: String(page), limit: '20' };
-  if (tab !== 'ALL') {
-    params.stage = 'APPOINTMENT';
-    params.appointmentStatus = tab;
-  }
+  const params: Record<string, string> = { page: String(page), limit: '20', stage };
+  if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', tab, search, page],
+    queryKey: ['cases', stage, tab, search, page],
     queryFn:  () => getCases(params),
   });
 
@@ -57,30 +65,36 @@ const AppointmentList: React.FC = () => {
     { key: 'WAITING',    label: 'Waiting' },
     { key: 'ASSIGNED',   label: 'Assigned' },
     { key: 'REGISTERED', label: 'Registered' },
+    { key: 'COMPLETED',  label: 'Completed' },
+    { key: 'HOLD',       label: 'Hold' },
+    { key: 'DROPPED',    label: 'Dropped' },
+    { key: 'BACK_UP',    label: 'Back-Up' },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
         <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} cases</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {tabs.map(t => (
-              <button
-                key={t.key}
-                onClick={() => { setTab(t.key); setPage(1); }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {showStatusTabs && (
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => { setTab(t.key); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           <Input
             placeholder="Search by client, destination..."
             value={search}
