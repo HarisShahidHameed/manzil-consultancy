@@ -11,7 +11,7 @@ const caseQuerySchema = z.object({
   limit:  z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   stage:  z.string().optional(),
   search: z.string().optional(),
-  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED']).optional(),
+  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
 });
 
 export const listCases = async (req: Request, res: Response): Promise<void> => {
