@@ -86,7 +86,7 @@ export interface PaginatedData<T> {
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type MaritalStatus = 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
-export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED';
+export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
 
 export interface ClientGroup {
   id: string;
@@ -102,11 +102,11 @@ export interface ClientGroup {
   }>;
   _count?: { clients: number };
 }
-export type CaseStage = 'INTAKE' | 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
+export type CaseStage = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
 export type Priority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type DocumentStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'NOT_REQUIRED';
 export type InvoiceStatus = 'DRAFT' | 'SENT' | 'PARTIAL' | 'PAID';
-export type IntakeRequiredField = 'passportNumber' | 'nationality' | 'dob' | 'passportIssue' | 'passportExpiry' | 'destination';
+export type CaseRequiredField = 'passportNumber' | 'nationality' | 'dob' | 'passportIssue' | 'passportExpiry' | 'destination';
 
 export interface AssignableUser {
   id: string;
@@ -139,7 +139,6 @@ export interface Client {
   groupId?: string;
   group?: { id: string; groupRef: string; name: string; relation?: string };
   eVisa: boolean;
-  contract: boolean;
   visaAndTravelHistory?: string;
   source?: string;
   referredBy?: string;
@@ -161,8 +160,9 @@ export interface VisaCase {
   ukVisaExpiry?: string;
   stage: CaseStage;
   priority: Priority;
-  // Present (non-empty) only while stage is INTAKE — fields still needed before it can advance.
-  missingIntakeFields?: IntakeRequiredField[];
+  // Present (non-empty) only while stage is APPOINTMENT — fields still needed
+  // before the case can move to File Processing.
+  missingRequiredFields?: CaseRequiredField[];
   advance?: number | string;
   charges?: number | string;
   discount?: number | string;
@@ -196,10 +196,15 @@ export interface VisaCase {
   docEVisaCost?: number | string | null;
   docSopCost?: number | string | null;
   docVisaFormCost?: number | string | null;
+  docAppointmentClientPaid?: number | string | null;
+  docTicketClientPaid?: number | string | null;
+  docInsuranceClientPaid?: number | string | null;
+  docHotelClientPaid?: number | string | null;
   paymentReceived?: number | string;
   client?: {
     id: string; clientRef: string; firstName: string; lastName: string;
     phone: string; email?: string; nationality: string; passportNumber: string;
+    dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null;
     residentialAddress?: string; maritalStatus?: MaritalStatus;
     previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string;
   };
@@ -267,7 +272,6 @@ export interface AnalyticsData {
 
 export interface DashboardStats {
   totalClients: number;
-  intakeCases: number;
   appointmentCases: number;
   fileProcessingCases: number;
   invoicedCases: number;

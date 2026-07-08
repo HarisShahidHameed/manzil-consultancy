@@ -8,7 +8,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',
@@ -23,54 +22,79 @@ const PRI_COLORS: Record<Priority, string> = {
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
-type TabStage = 'ALL' | 'INTAKE' | 'APPOINTMENT';
+const APPT_STATUS_COLORS: Record<string, string> = {
+  WAITING:    'bg-amber-100 text-amber-700',
+  ASSIGNED:   'bg-blue-100 text-blue-700',
+  REGISTERED: 'bg-green-100 text-green-700',
+  COMPLETED:  'bg-green-100 text-green-700',
+  HOLD:       'bg-orange-100 text-orange-700',
+  DROPPED:    'bg-red-100 text-red-700',
+  BACK_UP:    'bg-purple-100 text-purple-700',
+};
 
-const AppointmentList: React.FC = () => {
+// Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered / Completed / Hold / Dropped / Back-Up.
+type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
+
+interface CaseListProps {
+  stage: CaseStage;
+  title: string;
+  /** Show the Waiting/Assigned/Registered/... appointment-status sub-tabs (Appointment stage only). */
+  showStatusTabs?: boolean;
+}
+
+const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs }) => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<TabStage>('ALL');
+  const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  const params: Record<string, string> = { page: String(page), limit: '20' };
-  if (tab !== 'ALL') params.stage = tab;
+  const params: Record<string, string> = { page: String(page), limit: '20', stage };
+  if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', tab, search, page],
+    queryKey: ['cases', stage, tab, search, page],
     queryFn:  () => getCases(params),
   });
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
 
-  const tabs: { key: TabStage; label: string }[] = [
-    { key: 'ALL',         label: 'All' },
-    { key: 'INTAKE',      label: 'Intake' },
-    { key: 'APPOINTMENT', label: 'Appointment' },
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'ALL',        label: 'All' },
+    { key: 'WAITING',    label: 'Waiting' },
+    { key: 'ASSIGNED',   label: 'Assigned' },
+    { key: 'REGISTERED', label: 'Registered' },
+    { key: 'COMPLETED',  label: 'Completed' },
+    { key: 'HOLD',       label: 'Hold' },
+    { key: 'DROPPED',    label: 'Dropped' },
+    { key: 'BACK_UP',    label: 'Back-Up' },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Appointments</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
         <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} cases</p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {tabs.map(t => (
-              <button
-                key={t.key}
-                onClick={() => { setTab(t.key); setPage(1); }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          {showStatusTabs && (
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
+              {tabs.map(t => (
+                <button
+                  key={t.key}
+                  onClick={() => { setTab(t.key); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
           <Input
             placeholder="Search by client, destination..."
             value={search}
@@ -98,6 +122,8 @@ const AppointmentList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Assigned To</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
@@ -125,15 +151,35 @@ const AppointmentList: React.FC = () => {
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[c.stage]}`}>
                           {c.stage.replace('_', ' ')}
                         </span>
-                        {(c.missingIntakeFields?.length ?? 0) > 0 && (
+                        {(c.missingRequiredFields?.length ?? 0) > 0 && (
                           <span
-                            title="Missing required Intake info"
+                            title="Missing required client info"
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
                           >
                             <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
+                          {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.stage === 'CANCELLED' ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : c.advancePaid ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                          <AlertTriangle className="w-2.5 h-2.5" /> Pending
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">

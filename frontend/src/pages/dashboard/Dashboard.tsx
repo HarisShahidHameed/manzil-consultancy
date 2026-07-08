@@ -10,7 +10,6 @@ import api from '../../api/axios';
 import { AnalyticsSection } from './AnalyticsSection';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',
@@ -121,18 +120,13 @@ const Dashboard: React.FC = () => {
       <Can permissions={['clients:read']}>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {statsLoading ? (
-            Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+            Array.from({ length: 7 }).map((_, i) => <SkeletonCard key={i} />)
           ) : stats ? (
             <>
               <StatCard
                 label="Total Clients" value={stats.totalClients}
                 icon={<Users className="w-6 h-6 text-indigo-600" />}
                 color="bg-indigo-50" onClick={() => navigate('/clients')}
-              />
-              <StatCard
-                label="Intake" value={stats.intakeCases}
-                icon={<FolderOpen className="w-6 h-6 text-gray-600" />}
-                color="bg-gray-50" onClick={() => navigate('/appointments')}
               />
               <StatCard
                 label="Appointments" value={stats.appointmentCases}

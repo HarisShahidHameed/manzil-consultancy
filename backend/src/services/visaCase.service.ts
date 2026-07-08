@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { getMissingIntakeFields, IntakeRequiredField } from '../utils/intakeCompleteness';
+import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 
 const CASE_SELECT = {
   id: true, clientId: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
@@ -15,6 +15,7 @@ const CASE_SELECT = {
   docEVisa: true, docSop: true, docVisaForm: true,
   docAppointmentCost: true, docTicketCost: true, docInsuranceCost: true, docHotelCost: true,
   docEVisaCost: true, docSopCost: true, docVisaFormCost: true,
+  docAppointmentClientPaid: true, docTicketClientPaid: true, docInsuranceClientPaid: true, docHotelClientPaid: true,
   paymentReceived: true,
   createdAt: true, updatedAt: true,
   client: {
@@ -34,14 +35,15 @@ const CASE_SELECT = {
   },
 } satisfies Prisma.VisaCaseSelect;
 
-export type CaseStageName = 'INTAKE' | 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
+export type CaseStageName = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
 
-export const STAGE_ORDER: CaseStageName[] = ['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
+export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
-// Permission required to perform a given stage transition (team-scoped separation of duties)
+// Permission required to perform a given stage transition (team-scoped separation of duties).
+// There is no Intake stage: a case enters the appointment queue as soon as the client's
+// information is filled in, and the appointment team hands it over to file processing.
 export const TRANSITION_PERMISSIONS: Record<string, string[]> = {
-  'INTAKE>APPOINTMENT':         ['appointments:write'],
-  'APPOINTMENT>FILE_PROCESSING':['files:write'],
+  'APPOINTMENT>FILE_PROCESSING':['appointments:write'],
   'FILE_PROCESSING>INVOICED':   ['files:write', 'invoices:write'],
   'INVOICED>COMPLETED':         ['invoices:write'],
   '*>CANCELLED':                ['clients:write'],
@@ -54,8 +56,11 @@ export const requiredPermsForTransition = (from: string, to: string): string[] =
 
 /**
  * Enforces the business workflow: paused cases can't advance, no stage-skipping,
- * required-fields and advance-payment gates before leaving Intake, and a
- * dues-cleared gate before Completed. Throws typed errors.
+ * a booked-appointment + required-fields gate before File Processing, and a
+ * dues-cleared gate before Completed. Throws typed errors. Advance payment is
+ * not a hard gate — it's auto-derived from the advance amount (see
+ * updateCase/createCase) and surfaced as a non-blocking "pending" warning in
+ * the UI when unpaid.
  */
 export const assertTransitionAllowed = (
   current: CaseStageName,
@@ -63,6 +68,7 @@ export const assertTransitionAllowed = (
   caseRecord: {
     advancePaid: boolean; onHold: boolean; invoices: { status: string }[];
     destination: string | null;
+    appointmentDate: Date | null;
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
       passportIssue: Date | null; passportExpiry: Date | null;
@@ -84,40 +90,38 @@ export const assertTransitionAllowed = (
   if (ci === -1 || ni === -1) throw new Error('STAGE_INVALID');
   if (ni !== ci + 1) throw new Error('STAGE_SKIP');
 
-  // Gate 1: imported/incomplete records must be filled in before leaving Intake
-  if (current === 'INTAKE' && next === 'APPOINTMENT') {
-    const missingFields = getMissingIntakeFields(caseRecord.client, { destination: caseRecord.destination });
+  // Gate 1: before the appointment team hands a case over to file processing,
+  // the client's required info must be complete and the appointment booked.
+  if (current === 'APPOINTMENT' && next === 'FILE_PROCESSING') {
+    const missingFields = getMissingRequiredFields(caseRecord.client, { destination: caseRecord.destination });
     if (missingFields.length > 0) {
-      const e = new Error('INTAKE_INCOMPLETE') as Error & { missingFields: IntakeRequiredField[] };
+      const e = new Error('CLIENT_INFO_INCOMPLETE') as Error & { missingFields: CaseRequiredField[] };
       e.missingFields = missingFields;
       throw e;
     }
+    if (!caseRecord.appointmentDate) throw new Error('APPOINTMENT_NOT_BOOKED');
   }
 
-  // Gate 2: advance payment must be marked paid before leaving Intake
-  if (current === 'INTAKE' && next === 'APPOINTMENT') {
-    if (!caseRecord.advancePaid) throw new Error('ADVANCE_REQUIRED');
-  }
-
-  // Gate 3: all invoices must be marked Paid before completing (payment handled manually)
+  // Gate 2: all invoices must be marked Paid before completing (payment handled manually)
   if (current === 'INVOICED' && next === 'COMPLETED') {
     const hasUnpaid = caseRecord.invoices.some(i => i.status !== 'PAID');
     if (hasUnpaid) throw new Error('DUES_PENDING');
   }
 };
 
-// Flags cases still stuck in Intake with what's left to fill in before they can proceed.
-const decorateCase = <T extends { stage: string; destination: string | null; client: Parameters<typeof getMissingIntakeFields>[0] }>(
+// Flags Appointment-stage cases with what's left to fill in before they can move to file processing.
+const decorateCase = <T extends { stage: string; destination: string | null; client: Parameters<typeof getMissingRequiredFields>[0] }>(
   c: T
-): T & { missingIntakeFields?: IntakeRequiredField[] } =>
-  c.stage === 'INTAKE'
-    ? { ...c, missingIntakeFields: getMissingIntakeFields(c.client, { destination: c.destination }) }
+): T & { missingRequiredFields?: CaseRequiredField[] } =>
+  c.stage === 'APPOINTMENT'
+    ? { ...c, missingRequiredFields: getMissingRequiredFields(c.client, { destination: c.destination }) }
     : c;
 
-export const listCases = async (page = 1, limit = 20, stage?: string, search?: string) => {
+export const listCases = async (page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string) => {
   const skip = (page - 1) * limit;
   const where: Prisma.VisaCaseWhereInput = {};
   if (stage) where.stage = stage as any;
+  if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },
@@ -146,9 +150,12 @@ export const createCase = async (
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
+  const advancePaid = (data.advance ?? 0) > 0;
+  // New cases skip Intake entirely: they enter the appointment queue as Waiting.
   return prisma.visaCase.create({
     data: {
       clientId,
+      appointmentStatus: 'WAITING',
       destination: data.destination,
       city:        data.city,
       visaType:    data.visaType,
@@ -157,6 +164,8 @@ export const createCase = async (
       advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
       charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
       discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
+      advancePaid,
+      advancePaidDate: advancePaid ? new Date() : undefined,
     },
     select: CASE_SELECT,
   });
@@ -168,7 +177,7 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     const existing = await prisma.visaCase.findUnique({
       where: { id },
       select: {
-        stage: true, advancePaid: true, onHold: true, destination: true,
+        stage: true, advancePaid: true, onHold: true, destination: true, appointmentDate: true,
         invoices: { select: { status: true } },
         client: {
           select: {
@@ -190,6 +199,13 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
   }
+  // Whenever the advance amount itself is set (and paid status isn't explicitly
+  // being set in the same call), derive advancePaid from it — a filled advance
+  // is paid, so the manual toggle doesn't need to be revisited later.
+  if (Object.prototype.hasOwnProperty.call(data, 'advance') && !Object.prototype.hasOwnProperty.call(data, 'advancePaid')) {
+    const advanceNum = data.advance !== undefined && data.advance !== null && data.advance !== '' ? Number(data.advance) : 0;
+    d.advancePaid = advanceNum > 0;
+  }
   // Auto-stamp the advance payment date when it is first marked paid
   if (d.advancePaid === true && !d.advancePaidDate) d.advancePaidDate = new Date();
   if (d.advancePaid === false) d.advancePaidDate = null;
@@ -197,12 +213,25 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     'advance', 'charges', 'discount', 'paymentReceived',
     'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
     'docEVisaCost', 'docSopCost', 'docVisaFormCost',
+    'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid', 'docHotelClientPaid',
   ];
   for (const f of decimalFields) {
     if (d[f] !== undefined && d[f] !== null && d[f] !== '') d[f] = new Prisma.Decimal(d[f]);
     else if (d[f] === '' || d[f] === null) d[f] = null;
   }
-  return prisma.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
+  const updated = await prisma.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
+
+  // A client is only meant to be actively working one case at a time. Once a case
+  // reaches File Processing, any other still-open case (Appointment stage) for the
+  // same client is a duplicate application and gets auto-cancelled.
+  if (d.stage === 'FILE_PROCESSING') {
+    await prisma.visaCase.updateMany({
+      where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
+      data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
+    });
+  }
+
+  return updated;
 };
 
 // Returns current stage so the controller can resolve the required permission for a transition.

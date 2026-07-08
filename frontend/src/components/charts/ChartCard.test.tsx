@@ -46,7 +46,7 @@ describe('chart color palettes', () => {
   });
 
   it('maps every case stage to a color', () => {
-    const stages = ['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED'];
+    const stages = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED'];
     stages.forEach(stage => expect(STAGE_CHART_COLORS[stage]).toMatch(/^#[0-9a-f]{6}$/i));
   });
 

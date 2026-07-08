@@ -19,7 +19,6 @@ export const createClientSchema = z.object({
   previousSchengenVisa: z.string().max(500).optional(),
   registeredEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   eVisa:    z.boolean().default(false),
-  contract: z.boolean().default(false),
   visaAndTravelHistory: z.string().optional(),
   source:     z.string().max(100).optional(),
   referredBy: z.string().max(100).optional(),
@@ -39,8 +38,8 @@ export const createClientSchema = z.object({
 });
 
 // Bulk import accepts incomplete records — anything not on file yet is left blank
-// and the client/case stay in Intake until the required fields are filled in
-// (see utils/intakeCompleteness.ts for what's required to leave Intake).
+// and the case stays flagged incomplete in the Appointment queue until the required
+// fields are filled in (see utils/caseRequiredInfo.ts for what file processing needs).
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
 const optionalDate = () =>
@@ -77,7 +76,6 @@ export const updateClientSchema = z.object({
   previousSchengenVisa: z.string().max(500).optional(),
   registeredEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   eVisa:    z.boolean().optional(),
-  contract: z.boolean().optional(),
   visaAndTravelHistory: z.string().optional(),
   source:     z.string().max(100).optional(),
   referredBy: z.string().max(100).optional(),
@@ -91,7 +89,7 @@ export const clientQuerySchema = z.object({
   page:        z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
   limit:       z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   search:      z.string().optional(),
-  stage:       z.enum(['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  stage:       z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
   destination: z.string().optional(),
 });
 
@@ -127,7 +125,7 @@ export const updateCaseSchema = z.object({
   city:         z.string().max(100).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().optional(),
-  stage:        z.enum(['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
@@ -138,7 +136,7 @@ export const updateCaseSchema = z.object({
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
-  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED']).nullable().optional(),
+  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
   appointmentDate:         z.string().optional(),
   bookedById:              z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
   appointmentAssignedToId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
@@ -165,6 +163,10 @@ export const updateCaseSchema = z.object({
   docEVisaCost:       z.number().nonnegative().nullable().optional(),
   docSopCost:         z.number().nonnegative().nullable().optional(),
   docVisaFormCost:    z.number().nonnegative().nullable().optional(),
+  docAppointmentClientPaid: z.number().nonnegative().nullable().optional(),
+  docTicketClientPaid:      z.number().nonnegative().nullable().optional(),
+  docInsuranceClientPaid:   z.number().nonnegative().nullable().optional(),
+  docHotelClientPaid:       z.number().nonnegative().nullable().optional(),
   paymentReceived: z.number().nonnegative().optional(),
 });
 

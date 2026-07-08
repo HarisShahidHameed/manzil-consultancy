@@ -2,25 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, ChevronRight, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog } from 'lucide-react';
 import { getCase, updateCase } from '../../api/cases';
-import { updateClient } from '../../api/clients';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
 import { downloadAdvanceReceipt, downloadInvoicePdf } from '../../api/pdf';
-import type { AssignableUser, CaseStage, DocumentStatus, InvoiceStatus, MaritalStatus, VisaCase } from '../../types';
+import type { AssignableUser, CaseStage, DocumentStatus, InvoiceStatus, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
+import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
 
-const STAGE_ORDER: CaseStage[] = ['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
+const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 const STAGE_LABELS: Record<CaseStage, string> = {
-  INTAKE: 'Intake', APPOINTMENT: 'Appointment', FILE_PROCESSING: 'File Processing',
+  APPOINTMENT: 'Appointment', FILE_PROCESSING: 'File Processing',
   INVOICED: 'Invoiced', COMPLETED: 'Completed', CANCELLED: 'Cancelled',
 };
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE: 'bg-gray-100 text-gray-700', APPOINTMENT: 'bg-blue-100 text-blue-700',
+  APPOINTMENT: 'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700', INVOICED: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-700',
 };
@@ -33,7 +33,7 @@ const INV_COLORS: Record<InvoiceStatus, string> = {
   PARTIAL: 'bg-yellow-100 text-yellow-700', PAID: 'bg-green-100 text-green-700',
 };
 
-const INTAKE_FIELD_LABELS: Record<string, string> = {
+const REQUIRED_FIELD_LABELS: Record<string, string> = {
   passportNumber: 'Passport Number',
   nationality: 'Nationality',
   dob: 'Date of Birth',
@@ -42,12 +42,13 @@ const INTAKE_FIELD_LABELS: Record<string, string> = {
   destination: 'Destination',
 };
 // These live on the Client record, not the case — completed via the client's own edit form.
-const CLIENT_LEVEL_INTAKE_FIELDS = ['passportNumber', 'nationality', 'dob', 'passportIssue', 'passportExpiry'];
+const CLIENT_LEVEL_REQUIRED_FIELDS = ['passportNumber', 'nationality', 'dob', 'passportIssue', 'passportExpiry'];
 
 const APPT_ROLES = ['APPOINTMENT_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 
 const fmtMoney = (v?: number | string | null) => v != null ? `£${parseFloat(String(v)).toFixed(2)}` : '—';
+const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
 const num = (v?: number | string | null) => (v != null && v !== '' ? parseFloat(String(v)) : 0);
 const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloat(String(v)) : undefined);
 
@@ -64,20 +65,20 @@ const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
 };
 const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel']);
+// Only the 4 agency-paid docs above track a client-contribution amount.
+const DOC_CLIENT_PAID_KEY: Partial<Record<DocKey, keyof VisaCase>> = {
+  docAppointment: 'docAppointmentClientPaid', docTicket: 'docTicketClientPaid',
+  docInsurance: 'docInsuranceClientPaid', docHotel: 'docHotelClientPaid',
+};
 const APPT_STATUS_OPTS: { value: string; label: string }[] = [
-  { value: '', label: '— None —' },
   { value: 'WAITING', label: 'Waiting' },
-  { value: 'REGISTERED', label: 'Registered' },
   { value: 'ASSIGNED', label: 'Assigned' },
+  { value: 'REGISTERED', label: 'Registered' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'HOLD', label: 'Hold' },
+  { value: 'DROPPED', label: 'Dropped' },
+  { value: 'BACK_UP', label: 'Back-Up' },
 ];
-
-interface ClientFields {
-  residentialAddress: string;
-  email: string;
-  maritalStatus: MaritalStatus | '';
-  previousSchengenVisa: string;
-  visaAndTravelHistory: string;
-}
 
 const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -86,9 +87,7 @@ const CaseDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<VisaCase>>({});
-  const [clientFields, setClientFields] = useState<ClientFields>({
-    residentialAddress: '', email: '', maritalStatus: '', previousSchengenVisa: '', visaAndTravelHistory: '',
-  });
+  const [activeSection, setActiveSection] = useState<CaseStage>('APPOINTMENT');
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
@@ -133,18 +132,16 @@ const CaseDetail: React.FC = () => {
         docEVisa: vc.docEVisa,
         docSop: vc.docSop,
         docVisaForm: vc.docVisaForm,
+        docAppointmentClientPaid: vc.docAppointmentClientPaid,
+        docTicketClientPaid: vc.docTicketClientPaid,
+        docInsuranceClientPaid: vc.docInsuranceClientPaid,
+        docHotelClientPaid: vc.docHotelClientPaid,
         charges: vc.charges,
         discount: vc.discount,
         advance: vc.advance,
         paymentReceived: vc.paymentReceived,
       });
-      setClientFields({
-        residentialAddress: vc.client?.residentialAddress ?? '',
-        email: vc.client?.email ?? '',
-        maritalStatus: vc.client?.maritalStatus ?? '',
-        previousSchengenVisa: vc.client?.previousSchengenVisa ?? '',
-        visaAndTravelHistory: vc.client?.visaAndTravelHistory ?? '',
-      });
+      setActiveSection(vc.stage === 'CANCELLED' ? 'APPOINTMENT' : vc.stage);
       setDocPaidBy(prev => ({
         ...prev,
         docAppointment: (vc.docAppointmentCost != null && Number(vc.docAppointmentCost) > 0) ? 'agency' : 'client',
@@ -159,23 +156,12 @@ const CaseDetail: React.FC = () => {
   const onErr = (e: AxiosError<{ message: string }>, fallback: string) =>
     setError(e.response?.data?.message ?? fallback);
 
-  const saveOnboardingMut = useMutation({
+  const saveAppointmentMut = useMutation({
     mutationFn: () => updateCase(id!, {
-      destination: (editFields.destination as string) || undefined,
+      destination:      (editFields.destination as string) || undefined,
       charges:  toNum(editFields.charges),
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
-      showSuccess('Onboarding saved');
-    },
-    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save'),
-  });
-
-  const saveAppointmentMut = useMutation({
-    mutationFn: () => updateCase(id!, {
       priority:         editFields.priority,
       appointmentDate:  (editFields.appointmentDate as string) || undefined,
       fraNo:            (editFields.fraNo as string) || undefined,
@@ -210,6 +196,10 @@ const CaseDetail: React.FC = () => {
       docEVisaCost:       toNum(editFields.docEVisaCost),
       docSopCost:         toNum(editFields.docSopCost),
       docVisaFormCost:    toNum(editFields.docVisaFormCost),
+      docAppointmentClientPaid: toNum(editFields.docAppointmentClientPaid),
+      docTicketClientPaid:      toNum(editFields.docTicketClientPaid),
+      docInsuranceClientPaid:   toNum(editFields.docInsuranceClientPaid),
+      docHotelClientPaid:       toNum(editFields.docHotelClientPaid),
       charges:         toNum(editFields.charges),
       discount:        toNum(editFields.discount),
       advance:         toNum(editFields.advance),
@@ -221,21 +211,6 @@ const CaseDetail: React.FC = () => {
       showSuccess('File processing saved');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save'),
-  });
-
-  const saveClientMut = useMutation({
-    mutationFn: () => updateClient(vc!.client!.id, {
-      residentialAddress: clientFields.residentialAddress || undefined,
-      email: clientFields.email || undefined,
-      maritalStatus: clientFields.maritalStatus || undefined,
-      previousSchengenVisa: clientFields.previousSchengenVisa || undefined,
-      visaAndTravelHistory: clientFields.visaAndTravelHistory || undefined,
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      showSuccess('Client information saved');
-    },
-    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save client info'),
   });
 
   // Generic immediate patch (assignment, advance-paid toggle, pause/resume)
@@ -299,8 +274,6 @@ const CaseDetail: React.FC = () => {
 
   const setEF = (k: keyof VisaCase) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setEditFields(f => ({ ...f, [k]: e.target.value }));
-  const setCF = (k: keyof ClientFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setClientFields(f => ({ ...f, [k]: e.target.value }));
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -317,25 +290,40 @@ const CaseDetail: React.FC = () => {
 
   const stageIdx = STAGE_ORDER.indexOf(vc.stage);
   const isTerminal = vc.stage === 'COMPLETED' || vc.stage === 'CANCELLED';
+  const locked = vc.stage === 'COMPLETED';
   const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
-  const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived);
+  // For each agency-paid document, the client still owes whatever the agency
+  // covered minus what the client has already contributed toward that cost.
+  const agencyDocOutstanding = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
+    const costKey = DOC_COST_KEY[key];
+    const clientPaidKey = DOC_CLIENT_PAID_KEY[key]!;
+    const cost = num(vc[costKey] as number | string | null);
+    const clientPaid = num(vc[clientPaidKey] as number | string | null);
+    return sum + Math.max(0, cost - clientPaid);
+  }, 0);
+  const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived) + agencyDocOutstanding;
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
 
-  const missingIntakeFields = vc.missingIntakeFields ?? [];
+  const missingRequiredFields = vc.missingRequiredFields ?? [];
 
   // Gate reason blocking the next transition (mirrors backend enforcement)
   let gateReason: string | null = null;
   if (vc.onHold) {
     gateReason = 'This case is paused. Resume it to continue the workflow.';
-  } else if (vc.stage === 'INTAKE' && missingIntakeFields.length > 0) {
-    gateReason = `Missing required Intake info: ${missingIntakeFields.map(f => INTAKE_FIELD_LABELS[f] ?? f).join(', ')}.`;
-  } else if (vc.stage === 'INTAKE' && !vc.advancePaid) {
-    gateReason = 'Mark the advance payment as paid (below) before moving out of Intake.';
+  } else if (vc.stage === 'APPOINTMENT' && missingRequiredFields.length > 0) {
+    gateReason = `Missing required client info: ${missingRequiredFields.map(f => REQUIRED_FIELD_LABELS[f] ?? f).join(', ')}.`;
+  } else if (vc.stage === 'APPOINTMENT' && !vc.appointmentDate) {
+    gateReason = 'Set the appointment date before this case can move to File Processing.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
     gateReason = `All invoices must be marked Paid before completing (${unpaidInvoices.length} outstanding).`;
   }
+
+  // Advance payment is not a hard gate — it's a non-blocking warning that follows
+  // the case through every stage until it's paid (auto-marked paid once a non-zero
+  // advance amount is on file).
+  const advancePending = !vc.advancePaid && vc.stage !== 'CANCELLED';
 
   const togglePause = () => {
     if (vc.onHold) {
@@ -373,6 +361,16 @@ const CaseDetail: React.FC = () => {
         </div>
         {!isTerminal && (
           <div className="flex items-center gap-2">
+            <Can permissions={['clients:write']}>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<UserCog className="w-4 h-4" />}
+                onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}
+              >
+                Edit Client Info
+              </Button>
+            </Can>
             <Can permissions={['appointments:write', 'files:write', 'clients:write']} requireAll={false}>
               <Button
                 variant="outline"
@@ -405,22 +403,26 @@ const CaseDetail: React.FC = () => {
         <Alert variant="warning" message={`This case is paused${vc.onHoldReason ? ` — ${vc.onHoldReason}` : ''}. Resume it to continue.`} />
       )}
 
-      {/* Stage Stepper */}
+      {advancePending && (
+        <Alert variant="warning" message={`Advance payment is pending${vc.advance != null ? ` (${fmtMoney(vc.advance)} due)` : ''}.`} />
+      )}
+
+      {vc.stage === 'COMPLETED' && (
+        <Alert variant="info" message="This case is completed. All information — including client details — is now locked and read-only." />
+      )}
+
+      {/* Breadcrumb stage navigation */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-1 overflow-x-auto pb-1">
-          {STAGE_ORDER.map((s, i) => (
-            <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                vc.stage === s ? STAGE_COLORS[s] : i < stageIdx ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'
-              }`}>
-                {i < stageIdx && '✓ '}{STAGE_LABELS[s]}
-              </div>
-              {i < STAGE_ORDER.length - 1 && (
-                <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
+        <Breadcrumbs
+          activeKey={activeSection}
+          steps={STAGE_ORDER.map((s, i): BreadcrumbStep => ({
+            key: s,
+            label: STAGE_LABELS[s],
+            state: i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'upcoming',
+            onClick: i <= stageIdx ? () => setActiveSection(s) : undefined,
+          }))}
+          currentClass={STAGE_COLORS[vc.stage]}
+        />
 
         {vc.stage === 'CANCELLED' && (
           <div className="mt-4"><Alert variant="error" message="This case has been cancelled." /></div>
@@ -450,106 +452,42 @@ const CaseDetail: React.FC = () => {
         )}
       </div>
 
-      {/* Onboarding — charges, advance & advance receipt (Intake) */}
-      {vc.stage === 'INTAKE' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Onboarding — Charges & Advance</h3>
-            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveOnboardingMut.isPending} onClick={() => saveOnboardingMut.mutate()}>
-                Save
-              </Button>
-            </Can>
-          </div>
-
-          {missingIntakeFields.length > 0 && (
-            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
-              <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-              <div>
-                <p>
-                  Imported with missing info — fill in{' '}
-                  <strong>{missingIntakeFields.map(f => INTAKE_FIELD_LABELS[f] ?? f).join(', ')}</strong>{' '}
-                  before this case can move to Appointment.
-                </p>
-                {missingIntakeFields.some(f => CLIENT_LEVEL_INTAKE_FIELDS.includes(f)) && (
-                  <button
-                    type="button"
-                    className="text-amber-800 underline font-medium mt-1"
-                    onClick={() => navigate(`/clients/${vc.client!.id}`)}
-                  >
-                    Complete client info →
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label className="text-xs text-gray-500">Destination</label>
-              <input className={`${inputCls} mt-1`} value={editFields.destination as string ?? ''} onChange={setEF('destination')} placeholder="e.g. UK" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Service Charges (£)</label>
-              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.charges as string ?? ''} onChange={setEF('charges')} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Discount (£)</label>
-              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.discount as string ?? ''} onChange={setEF('discount')} />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500">Advance Amount (£)</label>
-              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.advance as string ?? ''} onChange={setEF('advance')} />
-            </div>
-          </div>
-
-          {/* Advance paid status + receipt */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-                <button
-                  type="button"
-                  disabled={patchMut.isPending}
-                  onClick={() => patchMut.mutate({ patch: { advancePaid: !vc.advancePaid }, msg: vc.advancePaid ? 'Advance marked unpaid' : 'Advance marked paid' })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advancePaid ? 'bg-green-500' : 'bg-gray-300'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-              </Can>
-              <div>
-                <p className="text-sm font-medium text-gray-800">
-                  Advance Payment: <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
-                </p>
-                <p className="text-xs text-gray-400">
-                  {fmtMoney(vc.advance)}{vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}
-                </p>
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              leftIcon={<Download className="w-3.5 h-3.5" />}
-              loading={downloading}
-              disabled={!vc.advancePaid}
-              onClick={() => handleDownload(() => downloadAdvanceReceipt(vc.id, vc.client!.clientRef))}
-            >
-              Advance Receipt
-            </Button>
-          </div>
-          <p className="text-xs text-gray-400">Mark the advance as paid to unlock progression to the Appointment stage and enable the receipt.</p>
-        </div>
-      )}
-
-      {/* Appointment Section */}
+      {/* Appointment Section — the case lands here as soon as client info is filled */}
+      {activeSection === 'APPOINTMENT' && (
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
-          <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-            <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
-              Save
-            </Button>
-          </Can>
+          {!locked && (
+            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+                Save
+              </Button>
+            </Can>
+          )}
         </div>
+        <fieldset disabled={locked} className="space-y-4">
+
+        {missingRequiredFields.length > 0 && (
+          <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+            <Lock className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <div>
+              <p>
+                Missing client info — fill in{' '}
+                <strong>{missingRequiredFields.map(f => REQUIRED_FIELD_LABELS[f] ?? f).join(', ')}</strong>{' '}
+                before this case can move to File Processing.
+              </p>
+              {missingRequiredFields.some(f => CLIENT_LEVEL_REQUIRED_FIELDS.includes(f)) && (
+                <button
+                  type="button"
+                  className="text-amber-800 underline font-medium mt-1"
+                  onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}
+                >
+                  Complete client info →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -599,6 +537,10 @@ const CaseDetail: React.FC = () => {
             </select>
           </div>
           <div>
+            <label className="text-xs text-gray-500">Destination</label>
+            <input className={`${inputCls} mt-1`} value={editFields.destination as string ?? ''} onChange={setEF('destination')} placeholder="e.g. Netherlands" />
+          </div>
+          <div>
             <label className="text-xs text-gray-500">Appointment Date</label>
             <input type="date" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
           </div>
@@ -615,19 +557,114 @@ const CaseDetail: React.FC = () => {
           <label className="text-xs text-gray-500">Appointment Notes</label>
           <textarea className={`${inputCls} mt-1`} rows={3} value={editFields.appointmentNotes as string ?? ''} onChange={setEF('appointmentNotes')} />
         </div>
+
+        {/* Charges & advance — agreed when the client is onboarded, confirmed here */}
+        <div>
+          <h4 className="text-xs font-semibold text-gray-500 mb-2">Charges & Advance</h4>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs text-gray-500">Service Charges (£)</label>
+              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.charges as string ?? ''} onChange={setEF('charges')} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Discount (£)</label>
+              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.discount as string ?? ''} onChange={setEF('discount')} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Advance Amount (£)</label>
+              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.advance as string ?? ''} onChange={setEF('advance')} />
+            </div>
+          </div>
+        </div>
+
+        {/* Advance paid status + receipt */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+              <button
+                type="button"
+                disabled={patchMut.isPending}
+                onClick={() => patchMut.mutate({ patch: { advancePaid: !vc.advancePaid }, msg: vc.advancePaid ? 'Advance marked unpaid' : 'Advance marked paid' })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advancePaid ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </Can>
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                Advance Payment: <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
+              </p>
+              <p className="text-xs text-gray-400">
+                {fmtMoney(vc.advance)}{vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Download className="w-3.5 h-3.5" />}
+            loading={downloading}
+            disabled={!vc.advancePaid}
+            onClick={() => handleDownload(() => downloadAdvanceReceipt(vc.id, vc.client!.clientRef))}
+          >
+            Advance Receipt
+          </Button>
+        </div>
+        <p className="text-xs text-gray-400">
+          Automatically marked paid once a non-zero advance amount is saved. Use the toggle only to correct it manually.
+        </p>
+        </fieldset>
       </div>
+      )}
 
       {/* File Processing Section */}
-      {(stageIdx >= 2 || vc.stage === 'FILE_PROCESSING') && (
+      {activeSection === 'FILE_PROCESSING' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
-            <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
-                Save
-              </Button>
-            </Can>
+            {!locked && (
+              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
+                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
+                  Save
+                </Button>
+              </Can>
+            )}
           </div>
+
+          {/* Everything captured earlier in the workflow, read-only for the file processor */}
+          <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
+            <h4 className="text-xs font-semibold text-gray-500 mb-3">Client & Appointment Summary</h4>
+            <dl className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+              {([
+                ['Client', `${vc.client?.firstName ?? ''} ${vc.client?.lastName ?? ''}`.trim() || '—'],
+                ['Passport No.', vc.client?.passportNumber ?? '—'],
+                ['Date of Birth', fmtDate(vc.client?.dob)],
+                ['Nationality', vc.client?.nationality ?? '—'],
+                ['Passport Issue', fmtDate(vc.client?.passportIssue)],
+                ['Passport Expiry', fmtDate(vc.client?.passportExpiry)],
+                ['Phone', vc.client?.phone ?? '—'],
+                ['Registered Email', vc.client?.registeredEmail ?? '—'],
+                ['Destination', `${vc.destination ?? '—'}${vc.city ? ` (${vc.city})` : ''}`],
+                ['Visa Type', vc.visaType ?? '—'],
+                ['Appointment Date', fmtDate(vc.appointmentDate)],
+                ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
+                ['TLS Account', vc.tlsAccount ?? '—'],
+                ['FRA No.', vc.fraNo ?? '—'],
+                ['Charges', fmtMoney(vc.charges)],
+                ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-xs text-gray-400">{label}</dt>
+                  <dd className="text-gray-800 font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            {vc.appointmentNotes && (
+              <p className="mt-3 text-xs text-gray-500"><span className="text-gray-400">Appointment notes:</span> {vc.appointmentNotes}</p>
+            )}
+          </div>
+
+          <fieldset disabled={locked} className="space-y-4">
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -654,46 +691,17 @@ const CaseDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Remaining client info collected at file stage */}
-          <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-gray-600">Client Information (collected at this stage)</h4>
-              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-                <Button size="sm" variant="outline" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveClientMut.isPending} onClick={() => saveClientMut.mutate()}>
-                  Save Info
-                </Button>
-              </Can>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs text-gray-500">Marital Status</label>
-                <select className={`${inputCls} mt-1`} value={clientFields.maritalStatus} onChange={setCF('maritalStatus')}>
-                  <option value="">— Select —</option>
-                  <option value="SINGLE">Single</option>
-                  <option value="MARRIED">Married</option>
-                  <option value="DIVORCED">Divorced</option>
-                  <option value="WIDOWED">Widowed</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Email</label>
-                <input type="email" className={`${inputCls} mt-1`} value={clientFields.email} onChange={setCF('email')} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Current Address</label>
-                <input className={`${inputCls} mt-1`} value={clientFields.residentialAddress} onChange={setCF('residentialAddress')} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-gray-500">Previous Schengen Visa Details</label>
-                <textarea className={`${inputCls} mt-1`} rows={2} value={clientFields.previousSchengenVisa} onChange={setCF('previousSchengenVisa')} placeholder="Prior Schengen visas, dates, type…" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Travel History</label>
-                <textarea className={`${inputCls} mt-1`} rows={2} value={clientFields.visaAndTravelHistory} onChange={setCF('visaAndTravelHistory')} placeholder="Countries visited…" />
-              </div>
-            </div>
+          {/* Client-level fields (marital status, address, travel history, etc.) live on the
+              client record itself — edited via the unified client form, not duplicated here. */}
+          <div className="flex items-center justify-between border border-gray-100 rounded-lg p-4 bg-gray-50/50">
+            <p className="text-xs text-gray-500">
+              Marital status, address, email and travel history are managed on the client's own record.
+            </p>
+            <Can permissions={['clients:write']}>
+              <Button size="sm" variant="outline" leftIcon={<UserCircle className="w-3.5 h-3.5" />} onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}>
+                Edit Client Info
+              </Button>
+            </Can>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -718,11 +726,13 @@ const CaseDetail: React.FC = () => {
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Status</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Paid By</th>
                     <th className="text-left px-3 py-2 text-xs text-gray-500">Cost (£)</th>
+                    <th className="text-left px-3 py-2 text-xs text-gray-500">Client Already Given (£)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {(Object.keys(DOC_LABELS) as DocKey[]).map(key => {
                     const costKey = DOC_COST_KEY[key];
+                    const clientPaidKey = DOC_CLIENT_PAID_KEY[key];
                     const hasPaidBy = AGENCY_PAID_DOCS.has(key);
                     const paidBy = docPaidBy[key];
                     return (
@@ -781,6 +791,19 @@ const CaseDetail: React.FC = () => {
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
+                      <td className="px-3 py-2">
+                        {(hasPaidBy && paidBy === 'agency' && clientPaidKey) ? (
+                          <input
+                            type="number" min="0" step="0.01"
+                            className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="0.00"
+                            value={String((editFields[clientPaidKey] as string | number | undefined) ?? vc[clientPaidKey] ?? '')}
+                            onChange={e => setEditFields(f => ({ ...f, [clientPaidKey]: e.target.value }))}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
                     </tr>
                   ); })}
                 </tbody>
@@ -810,12 +833,13 @@ const CaseDetail: React.FC = () => {
               </div>
             </div>
             <div className="mt-3 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
-              <span className="text-sm text-gray-600">Balance (charges − discount − advance − received)</span>
+              <span className="text-sm text-gray-600">Balance (charges − discount − advance − received + agency costs owed)</span>
               <span className={`text-sm font-bold ${caseDue <= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {fmtMoney(caseDue)}
               </span>
             </div>
           </div>
+          </fieldset>
         </div>
       )}
 
@@ -825,11 +849,13 @@ const CaseDetail: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
             Invoices ({vc.invoices?.length ?? 0})
           </h3>
-          <Can permissions={['invoices:write']}>
-            <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setInvoiceOpen(true)}>
-              Create Invoice
-            </Button>
-          </Can>
+          {!locked && (
+            <Can permissions={['invoices:write']}>
+              <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setInvoiceOpen(true)}>
+                Create Invoice
+              </Button>
+            </Can>
+          )}
         </div>
         {(vc.invoices?.length ?? 0) === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">No invoices yet</p>

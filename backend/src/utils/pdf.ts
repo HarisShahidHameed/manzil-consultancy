@@ -95,7 +95,6 @@ export const streamClientPdf = (res: Response, c: any): void => {
     ['Issue Date', fdate(c.passportIssue)],
     ['Expiry Date', fdate(c.passportExpiry)],
     ['E-Visa', c.eVisa ? 'Yes' : 'No'],
-    ['Contract Signed', c.contract ? 'Yes' : 'No'],
     ['Source', c.source],
   ]);
 

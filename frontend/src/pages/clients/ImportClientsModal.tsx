@@ -62,7 +62,6 @@ interface MappedRow {
   email?: string;
   residentialAddress?: string;
   whatsapp?: string;
-  contract?: boolean;
   birthCity?: string;
   city?: string;
   ukVisaExpiry?: string;
@@ -80,8 +79,9 @@ interface MappedRow {
   _warnings: string[];
 }
 
-// Fields required to leave Intake (see backend utils/intakeCompleteness.ts) — missing
-// them doesn't block import, but the client/case will stay stuck in Intake until filled in.
+// Fields required for file processing (see backend utils/caseRequiredInfo.ts) — missing
+// them doesn't block import, but the case stays flagged incomplete in the
+// Appointment queue until they're filled in.
 const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -103,7 +103,7 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   if (!firstName)     errors.push('First Name missing');
   if (!receivedDate)  errors.push('Received Date missing');
 
-  // Required to leave Intake, but fine to import as-is — stays flagged "incomplete" until filled in.
+  // Required for file processing, but fine to import as-is — stays flagged "incomplete" until filled in.
   if (!lastName)       warnings.push('Last Name');
   if (!passportNumber) warnings.push('Passport Number');
   if (!nationality)    warnings.push('Nationality');
@@ -128,7 +128,6 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
     email:                str(row[8]),
     residentialAddress:   str(row[9]),
     whatsapp:             str(row[13]),
-    contract:             bool(row[14]),
     birthCity:            str(row[15]),
     city:                 str(row[18]),
     ukVisaExpiry:         ukVisaExpiry || undefined,
@@ -304,8 +303,8 @@ const ImportClientsModal: React.FC<Props> = ({ open, onClose, onDone }) => {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
               <p className="text-xs text-amber-800">
                 Rows missing Last Name, Passport Number, Nationality, Destination, DOB, Passport Issue,
-                or Passport Expiry will still be imported — they just stay in <strong>Intake</strong> until
-                that information is filled in, and can't move to the next stage until then.
+                or Passport Expiry will still be imported — they land in the <strong>Appointment</strong> queue
+                flagged as incomplete, and can't move to File Processing until that information is filled in.
               </p>
             </div>
           )}

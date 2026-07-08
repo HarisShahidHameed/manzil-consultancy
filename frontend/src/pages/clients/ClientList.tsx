@@ -13,7 +13,6 @@ import ImportClientsModal from './ImportClientsModal';
 
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
-  { value: 'INTAKE', label: 'Intake' },
   { value: 'APPOINTMENT', label: 'Appointment' },
   { value: 'FILE_PROCESSING', label: 'File Processing' },
   { value: 'INVOICED', label: 'Invoiced' },
@@ -22,7 +21,6 @@ const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
 ];
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',
@@ -148,9 +146,9 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <p className="font-semibold text-indigo-600 text-xs">{c.clientRef}</p>
-                        {c.visaCases.some(vc => (vc.missingIntakeFields?.length ?? 0) > 0) && (
+                        {c.visaCases.some(vc => (vc.missingRequiredFields?.length ?? 0) > 0) && (
                           <span
-                            title="Missing required Intake info"
+                            title="Missing required client info"
                             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
                           >
                             <AlertTriangle className="w-2.5 h-2.5" /> Missing info
@@ -158,7 +156,14 @@ const ClientList: React.FC = () => {
                         )}
                       </div>
                       <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
-                      <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
+                        {c.group && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                            {c.group.groupRef} — {c.group.name}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>

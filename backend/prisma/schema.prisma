@@ -21,7 +21,6 @@ enum MaritalStatus {
 }
 
 enum CaseStage {
-  INTAKE
   APPOINTMENT
   FILE_PROCESSING
   INVOICED
@@ -47,6 +46,10 @@ enum AppointmentStatus {
   WAITING
   REGISTERED
   ASSIGNED
+  COMPLETED
+  HOLD
+  DROPPED
+  BACK_UP
 }
 
 enum InvoiceStatus {
@@ -196,7 +199,7 @@ model Client {
   email                String?
   whatsapp             String?
   residentialAddress   String?
-  passportNumber       String?  @unique
+  passportNumber       String?
   passportIssue        DateTime?
   passportExpiry       DateTime?
   birthCity            String?
@@ -205,7 +208,6 @@ model Client {
   previousSchengenVisa String?
   registeredEmail      String?
   eVisa                Boolean  @default(false)
-  contract             Boolean  @default(false)
   visaAndTravelHistory String?
   source               String?
   referredBy           String?
@@ -231,7 +233,7 @@ model VisaCase {
   city                    String?
   visaType                String?
   ukVisaExpiry            DateTime?
-  stage                   CaseStage      @default(INTAKE)
+  stage                   CaseStage      @default(APPOINTMENT)
   priority                Priority       @default(MEDIUM)
   advance                 Decimal?       @db.Decimal(10, 2)
   charges                 Decimal?       @db.Decimal(10, 2)
@@ -240,7 +242,7 @@ model VisaCase {
   advancePaidDate         DateTime?
   onHold                  Boolean        @default(false)
   onHoldReason            String?
-  appointmentStatus       AppointmentStatus?
+  appointmentStatus       AppointmentStatus? @default(WAITING)
   appointmentDate         DateTime?
   bookedById              String?
   appointmentAssignedToId String?
@@ -266,6 +268,12 @@ model VisaCase {
   docEVisaCost            Decimal?       @db.Decimal(10, 2)
   docSopCost              Decimal?       @db.Decimal(10, 2)
   docVisaFormCost         Decimal?       @db.Decimal(10, 2)
+  // How much of the agency-paid cost above the client has already reimbursed —
+  // only meaningful for the 4 docs the client/agency payer toggle applies to.
+  docAppointmentClientPaid Decimal?      @db.Decimal(10, 2)
+  docTicketClientPaid      Decimal?      @db.Decimal(10, 2)
+  docInsuranceClientPaid   Decimal?      @db.Decimal(10, 2)
+  docHotelClientPaid       Decimal?      @db.Decimal(10, 2)
   paymentReceived         Decimal?       @db.Decimal(10, 2)
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt

@@ -22,7 +22,6 @@ export const CHART_COLORS = [
 ];
 
 export const STAGE_CHART_COLORS: Record<string, string> = {
-  INTAKE: '#9ca3af',
   APPOINTMENT: '#3b82f6',
   FILE_PROCESSING: '#f59e0b',
   INVOICED: '#a855f7',

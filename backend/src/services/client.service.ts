@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { getMissingIntakeFields, IntakeRequiredField } from '../utils/intakeCompleteness';
+import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
@@ -8,7 +8,7 @@ const CLIENT_SELECT = {
   phone: true, email: true, whatsapp: true, residentialAddress: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
-  eVisa: true, contract: true, visaAndTravelHistory: true,
+  eVisa: true, visaAndTravelHistory: true,
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -29,7 +29,7 @@ const CLIENT_DETAIL_SELECT = {
   phone: true, email: true, whatsapp: true, residentialAddress: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
-  eVisa: true, contract: true, visaAndTravelHistory: true,
+  eVisa: true, visaAndTravelHistory: true,
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -37,12 +37,13 @@ const CLIENT_DETAIL_SELECT = {
   visaCases: {
     select: {
       id: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
-      stage: true, priority: true, appointmentDate: true, bookedById: true,
+      stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
       docEVisa: true, docSop: true, docVisaForm: true,
       advance: true, charges: true, discount: true, paymentReceived: true,
+      advancePaid: true, advancePaidDate: true,
       createdAt: true, updatedAt: true,
       bookedBy:           { select: { id: true, firstName: true, lastName: true } },
       appointmentAssigned:{ select: { id: true, firstName: true, lastName: true } },
@@ -54,7 +55,8 @@ const CLIENT_DETAIL_SELECT = {
   },
 } satisfies Prisma.ClientSelect;
 
-// Flags any Intake-stage case on this client with what's left to fill in before it can proceed.
+// Flags any Appointment-stage case on this client with what's left to fill in
+// before it can move to file processing.
 const decorateClient = <
   T extends {
     passportNumber: string | null; nationality: string | null; dob: Date | null;
@@ -64,8 +66,8 @@ const decorateClient = <
 >(client: T) => ({
   ...client,
   visaCases: client.visaCases.map(vc =>
-    vc.stage === 'INTAKE'
-      ? { ...vc, missingIntakeFields: getMissingIntakeFields(client, { destination: vc.destination }) as IntakeRequiredField[] }
+    vc.stage === 'APPOINTMENT'
+      ? { ...vc, missingRequiredFields: getMissingRequiredFields(client, { destination: vc.destination }) as CaseRequiredField[] }
       : vc
   ),
 });
@@ -87,7 +89,7 @@ export const createClient = async (data: {
   birthCity?: string; nationality?: string;
   maritalStatus?: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa?: string;
   registeredEmail?: string;
-  eVisa?: boolean; contract?: boolean; visaAndTravelHistory?: string;
+  eVisa?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
   destination?: string; city?: string; visaType?: string; ukVisaExpiry?: string;
@@ -109,8 +111,11 @@ export const createClient = async (data: {
       passportIssue: rest.passportIssue ? new Date(rest.passportIssue) : undefined,
       passportExpiry:rest.passportExpiry? new Date(rest.passportExpiry): undefined,
       createdById,
+      // No Intake stage: the case enters the appointment queue as Waiting
+      // as soon as the client's information is filled in.
       visaCases: {
         create: {
+          appointmentStatus: 'WAITING',
           destination,
           city,
           visaType,
@@ -119,6 +124,8 @@ export const createClient = async (data: {
           advance:  advance  !== undefined ? new Prisma.Decimal(advance)  : undefined,
           charges:  charges  !== undefined ? new Prisma.Decimal(charges)  : undefined,
           discount: discount !== undefined ? new Prisma.Decimal(discount) : undefined,
+          advancePaid: (advance ?? 0) > 0,
+          advancePaidDate: (advance ?? 0) > 0 ? new Date() : undefined,
         },
       },
     },
@@ -261,11 +268,16 @@ export const updateClient = async (
     birthCity: string; nationality: string;
     maritalStatus: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa: string;
     registeredEmail: string;
-    eVisa: boolean; contract: boolean; visaAndTravelHistory: string;
+    eVisa: boolean; visaAndTravelHistory: string;
     source: string; referredBy: string; hrComments: string;
     folderUrl: string; assignedToId: string; groupId: string | null;
   }>
 ) => {
+  const existingCases = await prisma.visaCase.findMany({ where: { clientId: id }, select: { stage: true } });
+  if (existingCases.length > 0 && existingCases.every(c => c.stage === 'COMPLETED')) {
+    throw new Error('CLIENT_LOCKED');
+  }
+
   const d: any = { ...data };
   if (data.receivedDate)  d.receivedDate  = new Date(data.receivedDate);
   if (data.dob)           d.dob           = new Date(data.dob);

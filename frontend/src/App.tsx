@@ -65,6 +65,7 @@ const App: React.FC = () => (
                 </Route>
                 <Route element={<RoleGuard permissions={['clients:write']} />}>
                   <Route path="/clients/new" element={<ClientForm />} />
+                  <Route path="/clients/:id/edit" element={<ClientForm />} />
                 </Route>
                 <Route element={<RoleGuard permissions={['clients:read']} />}>
                   <Route path="/clients/:id" element={<ClientDetail />} />
@@ -73,14 +74,19 @@ const App: React.FC = () => (
                   <Route path="/groups" element={<Groups />} />
                 </Route>
 
-                {/* Appointments (INTAKE + APPOINTMENT stage cases) */}
+                {/* Appointments — the queue every new case lands in (Waiting → Assigned → Registered) */}
                 <Route element={<RoleGuard permissions={['appointments:read', 'clients:read']} requireAll={false} />}>
-                  <Route path="/appointments" element={<AppointmentList />} />
+                  <Route path="/appointments" element={<AppointmentList stage="APPOINTMENT" title="Appointments" showStatusTabs />} />
                 </Route>
 
-                {/* File Processing shortcut — shows FILE_PROCESSING stage cases */}
+                {/* File Processing shortcut — shows only FILE_PROCESSING stage cases */}
                 <Route element={<RoleGuard permissions={['files:read', 'clients:read']} requireAll={false} />}>
-                  <Route path="/file-processing" element={<AppointmentList />} />
+                  <Route path="/file-processing" element={<AppointmentList stage="FILE_PROCESSING" title="File Processing" />} />
+                </Route>
+
+                {/* Completed — shows only COMPLETED stage cases */}
+                <Route element={<RoleGuard permissions={['appointments:read', 'files:read', 'invoices:read', 'clients:read']} requireAll={false} />}>
+                  <Route path="/completed" element={<AppointmentList stage="COMPLETED" title="Completed" />} />
                 </Route>
 
                 {/* Case detail (shared across appointment + file processing) */}

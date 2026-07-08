@@ -4,12 +4,16 @@ jest.mock('../config/database', () => ({
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
+    },
+    visaCase: {
+      findMany: jest.fn(),
     },
   },
 }));
 
 import { prisma } from '../config/database';
-import { bulkImportClients } from './client.service';
+import { bulkImportClients, updateClient } from './client.service';
 
 const baseRow = (overrides: Partial<Parameters<typeof bulkImportClients>[0][number]> = {}) => ({
   receivedDate: '2025-01-01',
@@ -81,5 +85,36 @@ describe('bulkImportClients', () => {
     expect(result.duplicates).toBe(1);
     expect(result.failed).toBe(1);
     expect(result.errors[0].message).toMatch(/Duplicate/);
+  });
+});
+
+describe('updateClient — completed-case lock', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (prisma.client.update as jest.Mock).mockResolvedValue({ id: 'client-1' });
+  });
+
+  it('rejects updates once every case for the client is COMPLETED', async () => {
+    (prisma.visaCase.findMany as jest.Mock).mockResolvedValue([{ stage: 'COMPLETED' }]);
+
+    await expect(updateClient('client-1', { firstName: 'New Name' })).rejects.toThrow('CLIENT_LOCKED');
+    expect(prisma.client.update).not.toHaveBeenCalled();
+  });
+
+  it('allows updates when at least one case is still active', async () => {
+    (prisma.visaCase.findMany as jest.Mock).mockResolvedValue([
+      { stage: 'COMPLETED' },
+      { stage: 'FILE_PROCESSING' },
+    ]);
+
+    await updateClient('client-1', { firstName: 'New Name' });
+    expect(prisma.client.update).toHaveBeenCalled();
+  });
+
+  it('allows updates when the client has no cases at all', async () => {
+    (prisma.visaCase.findMany as jest.Mock).mockResolvedValue([]);
+
+    await updateClient('client-1', { firstName: 'New Name' });
+    expect(prisma.client.update).toHaveBeenCalled();
   });
 });

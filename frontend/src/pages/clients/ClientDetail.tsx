@@ -2,17 +2,16 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Edit, Save, X, Plus, Eye, Download } from 'lucide-react';
-import { getClient, updateClient, addCase } from '../../api/clients';
+import { ArrowLeft, Edit, Plus, Eye, Download, Lock } from 'lucide-react';
+import { getClient, addCase } from '../../api/clients';
 import { downloadClientPdf } from '../../api/pdf';
-import type { Client, CaseStage, Priority, VisaCase } from '../../types';
+import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
-  INTAKE:          'bg-gray-100 text-gray-700',
   APPOINTMENT:     'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
   INVOICED:        'bg-purple-100 text-purple-700',
@@ -42,12 +41,10 @@ const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
   const [addCaseOpen, setAddCaseOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<Client>>({});
   const [caseForm, setCaseForm] = useState({ destination: '', city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
 
   const { data, isLoading } = useQuery({
@@ -57,18 +54,6 @@ const ClientDetail: React.FC = () => {
   });
 
   const client = data?.data;
-
-  const updateMut = useMutation({
-    mutationFn: () => updateClient(id!, editForm),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['client', id] });
-      qc.invalidateQueries({ queryKey: ['clients'] });
-      setEditing(false);
-      showSuccess('Client updated');
-    },
-    onError: (e: AxiosError<{ message: string }>) =>
-      setError(e.response?.data?.message ?? 'Failed to update client'),
-  });
 
   const addCaseMut = useMutation({
     mutationFn: () => addCase(id!, {
@@ -89,26 +74,6 @@ const ClientDetail: React.FC = () => {
 
   const showSuccess = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
 
-  const startEdit = () => {
-    if (!client) return;
-    setEditForm({
-      firstName: client.firstName, lastName: client.lastName,
-      gender: client.gender, phone: client.phone, email: client.email,
-      whatsapp: client.whatsapp, residentialAddress: client.residentialAddress,
-      passportNumber: client.passportNumber,
-      passportIssue:  client.passportIssue?.split('T')[0],
-      passportExpiry: client.passportExpiry?.split('T')[0],
-      dob: client.dob?.split('T')[0],
-      birthCity: client.birthCity, nationality: client.nationality,
-      registeredEmail: client.registeredEmail, eVisa: client.eVisa,
-      contract: client.contract, visaAndTravelHistory: client.visaAndTravelHistory,
-      source: client.source, referredBy: client.referredBy, hrComments: client.hrComments,
-      folderUrl: client.folderUrl,
-      receivedDate: client.receivedDate?.split('T')[0],
-    });
-    setEditing(true);
-  };
-
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
@@ -121,6 +86,8 @@ const ClientDetail: React.FC = () => {
       <Button variant="outline" className="mt-4" onClick={() => navigate('/clients')}>Back to Clients</Button>
     </div>
   );
+
+  const isLocked = client.visaCases.length > 0 && client.visaCases.every(vc => vc.stage === 'COMPLETED');
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -138,30 +105,27 @@ const ClientDetail: React.FC = () => {
           </div>
         </div>
         <div className="flex gap-2">
-          {!editing && (
-            <Button
-              variant="outline"
-              leftIcon={<Download className="w-4 h-4" />}
-              loading={downloading}
-              onClick={async () => {
-                try { setDownloading(true); await downloadClientPdf(client.id, client.clientRef); }
-                catch { setError('Failed to download PDF'); }
-                finally { setDownloading(false); }
-              }}
-            >
-              Download PDF
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            leftIcon={<Download className="w-4 h-4" />}
+            loading={downloading}
+            onClick={async () => {
+              try { setDownloading(true); await downloadClientPdf(client.id, client.clientRef); }
+              catch { setError('Failed to download PDF'); }
+              finally { setDownloading(false); }
+            }}
+          >
+            Download PDF
+          </Button>
           <Can permissions={['clients:write']}>
-            {editing ? (
-              <div className="flex gap-2">
-                <Button variant="outline" leftIcon={<X className="w-4 h-4" />} onClick={() => setEditing(false)}>Cancel</Button>
-                <Button leftIcon={<Save className="w-4 h-4" />} loading={updateMut.isPending} onClick={() => updateMut.mutate()}>
-                  Save Changes
-                </Button>
-              </div>
+            {isLocked ? (
+              <Button variant="outline" leftIcon={<Lock className="w-4 h-4" />} disabled title="All cases are completed — client information is locked">
+                Locked
+              </Button>
             ) : (
-              <Button variant="outline" leftIcon={<Edit className="w-4 h-4" />} onClick={startEdit}>Edit</Button>
+              <Button variant="outline" leftIcon={<Edit className="w-4 h-4" />} onClick={() => navigate(`/clients/${id}/edit`)}>
+                Edit
+              </Button>
             )}
           </Can>
         </div>
@@ -169,135 +133,56 @@ const ClientDetail: React.FC = () => {
 
       {error   && <Alert variant="error"   message={error}   onClose={() => setError(null)} />}
       {success && <Alert variant="success" message={success} onClose={() => setSuccess(null)} />}
+      {isLocked && (
+        <Alert variant="warning" message="This client is locked — all cases are completed and information can no longer be changed." />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Personal Info */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Personal Information</h3>
-          {editing ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500">First Name</label>
-                  <input className={inputCls} value={editForm.firstName ?? ''} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Last Name</label>
-                  <input className={inputCls} value={editForm.lastName ?? ''} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500">Gender</label>
-                  <select className={inputCls} value={editForm.gender ?? 'MALE'} onChange={e => setEditForm(f => ({ ...f, gender: e.target.value as any }))}>
-                    <option value="MALE">Male</option><option value="FEMALE">Female</option><option value="OTHER">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">DOB</label>
-                  <input type="date" className={inputCls} value={editForm.dob ?? ''} onChange={e => setEditForm(f => ({ ...f, dob: e.target.value }))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500">Phone</label>
-                  <input className={inputCls} value={editForm.phone ?? ''} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">WhatsApp</label>
-                  <input className={inputCls} value={editForm.whatsapp ?? ''} onChange={e => setEditForm(f => ({ ...f, whatsapp: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Email</label>
-                <input type="email" className={inputCls} value={editForm.email ?? ''} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Nationality</label>
-                <input className={inputCls} value={editForm.nationality ?? ''} onChange={e => setEditForm(f => ({ ...f, nationality: e.target.value }))} />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <InfoRow label="Gender" value={client.gender} />
-              <InfoRow label="Date of Birth" value={fmtDate(client.dob)} />
-              <InfoRow label="Nationality" value={client.nationality} />
-              <InfoRow label="Group" value={client.group ? `${client.group.name} (${client.group.groupRef})` : '—'} />
-              <InfoRow label="Marital Status" value={client.maritalStatus ? client.maritalStatus.charAt(0) + client.maritalStatus.slice(1).toLowerCase() : '—'} />
-              <InfoRow label="Birth City" value={client.birthCity} />
-              <InfoRow label="Phone" value={client.phone} />
-              <InfoRow label="WhatsApp" value={client.whatsapp} />
-              <InfoRow label="Email" value={client.email} />
-              <InfoRow label="Registered Email" value={client.registeredEmail} />
-              <InfoRow label="Residential Address" value={client.residentialAddress} />
-              <InfoRow label="Received Date" value={fmtDate(client.receivedDate)} />
-            </div>
-          )}
+          <div>
+            <InfoRow label="Gender" value={client.gender} />
+            <InfoRow label="Date of Birth" value={fmtDate(client.dob)} />
+            <InfoRow label="Nationality" value={client.nationality} />
+            <InfoRow label="Group" value={client.group ? `${client.group.name} (${client.group.groupRef})` : '—'} />
+            <InfoRow label="Marital Status" value={client.maritalStatus ? client.maritalStatus.charAt(0) + client.maritalStatus.slice(1).toLowerCase() : '—'} />
+            <InfoRow label="Birth City" value={client.birthCity} />
+            <InfoRow label="Phone" value={client.phone} />
+            <InfoRow label="WhatsApp" value={client.whatsapp} />
+            <InfoRow label="Email" value={client.email} />
+            <InfoRow label="Registered Email" value={client.registeredEmail} />
+            <InfoRow label="Residential Address" value={client.residentialAddress} />
+            <InfoRow label="Received Date" value={fmtDate(client.receivedDate)} />
+          </div>
         </div>
 
         {/* Passport */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">Passport & Documents</h3>
-          {editing ? (
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-500">Passport Number</label>
-                <input className={inputCls} value={editForm.passportNumber ?? ''} onChange={e => setEditForm(f => ({ ...f, passportNumber: e.target.value }))} />
+          <div>
+            <InfoRow label="Passport No." value={client.passportNumber} />
+            <InfoRow label="Issue Date"   value={fmtDate(client.passportIssue)} />
+            <InfoRow label="Expiry Date"  value={fmtDate(client.passportExpiry)} />
+            <InfoRow label="E-Visa"    value={client.eVisa} />
+            <InfoRow label="Previous Schengen Visa" value={client.previousSchengenVisa} />
+            <InfoRow label="Source"    value={client.source} />
+            <InfoRow label="Referred By" value={client.referredBy} />
+            {client.folderUrl && (
+              <div className="flex justify-between py-1.5 border-b border-gray-50">
+                <span className="text-sm text-gray-500">Folder</span>
+                <a href={client.folderUrl} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:underline">Open folder</a>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500">Issue Date</label>
-                  <input type="date" className={inputCls} value={editForm.passportIssue ?? ''} onChange={e => setEditForm(f => ({ ...f, passportIssue: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Expiry Date</label>
-                  <input type="date" className={inputCls} value={editForm.passportExpiry ?? ''} onChange={e => setEditForm(f => ({ ...f, passportExpiry: e.target.value }))} />
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input type="checkbox" checked={editForm.eVisa ?? false} onChange={e => setEditForm(f => ({ ...f, eVisa: e.target.checked }))} className="rounded" />
-                  E-Visa
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input type="checkbox" checked={editForm.contract ?? false} onChange={e => setEditForm(f => ({ ...f, contract: e.target.checked }))} className="rounded" />
-                  Contract Signed
-                </label>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Folder URL</label>
-                <input type="url" className={inputCls} value={editForm.folderUrl ?? ''} onChange={e => setEditForm(f => ({ ...f, folderUrl: e.target.value }))} />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <InfoRow label="Passport No." value={client.passportNumber} />
-              <InfoRow label="Issue Date"   value={fmtDate(client.passportIssue)} />
-              <InfoRow label="Expiry Date"  value={fmtDate(client.passportExpiry)} />
-              <InfoRow label="E-Visa"    value={client.eVisa} />
-              <InfoRow label="Contract"  value={client.contract} />
-              <InfoRow label="Source"    value={client.source} />
-              <InfoRow label="Referred By" value={client.referredBy} />
-              {client.folderUrl && (
-                <div className="flex justify-between py-1.5 border-b border-gray-50">
-                  <span className="text-sm text-gray-500">Folder</span>
-                  <a href={client.folderUrl} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:underline">Open folder</a>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* HR Comments */}
-      {(client.hrComments || editing) && (
+      {client.hrComments && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">HR Comments</h3>
-          {editing ? (
-            <textarea className={inputCls} rows={3} value={editForm.hrComments ?? ''} onChange={e => setEditForm(f => ({ ...f, hrComments: e.target.value }))} />
-          ) : (
-            <p className="text-sm text-gray-700">{client.hrComments}</p>
-          )}
+          <p className="text-sm text-gray-700">{client.hrComments}</p>
         </div>
       )}
 
