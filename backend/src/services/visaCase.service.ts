@@ -54,8 +54,10 @@ export const requiredPermsForTransition = (from: string, to: string): string[] =
 
 /**
  * Enforces the business workflow: paused cases can't advance, no stage-skipping,
- * required-fields and advance-payment gates before leaving Intake, and a
- * dues-cleared gate before Completed. Throws typed errors.
+ * a required-fields gate before leaving Intake, and a dues-cleared gate before
+ * Completed. Throws typed errors. Advance payment is not a hard gate — it's
+ * auto-derived from the advance amount (see updateCase/createCase) and surfaced
+ * as a non-blocking "pending" warning in the UI when unpaid.
  */
 export const assertTransitionAllowed = (
   current: CaseStageName,
@@ -94,12 +96,7 @@ export const assertTransitionAllowed = (
     }
   }
 
-  // Gate 2: advance payment must be marked paid before leaving Intake
-  if (current === 'INTAKE' && next === 'APPOINTMENT') {
-    if (!caseRecord.advancePaid) throw new Error('ADVANCE_REQUIRED');
-  }
-
-  // Gate 3: all invoices must be marked Paid before completing (payment handled manually)
+  // Gate 2: all invoices must be marked Paid before completing (payment handled manually)
   if (current === 'INVOICED' && next === 'COMPLETED') {
     const hasUnpaid = caseRecord.invoices.some(i => i.status !== 'PAID');
     if (hasUnpaid) throw new Error('DUES_PENDING');
@@ -146,6 +143,7 @@ export const createCase = async (
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
+  const advancePaid = (data.advance ?? 0) > 0;
   return prisma.visaCase.create({
     data: {
       clientId,
@@ -157,6 +155,8 @@ export const createCase = async (
       advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
       charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
       discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
+      advancePaid,
+      advancePaidDate: advancePaid ? new Date() : undefined,
     },
     select: CASE_SELECT,
   });
@@ -189,6 +189,13 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
   for (const f of dateFields) {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
+  }
+  // Whenever the advance amount itself is set (and paid status isn't explicitly
+  // being set in the same call), derive advancePaid from it — a filled advance
+  // is paid, so the manual toggle doesn't need to be revisited later.
+  if (Object.prototype.hasOwnProperty.call(data, 'advance') && !Object.prototype.hasOwnProperty.call(data, 'advancePaid')) {
+    const advanceNum = data.advance !== undefined && data.advance !== null && data.advance !== '' ? Number(data.advance) : 0;
+    d.advancePaid = advanceNum > 0;
   }
   // Auto-stamp the advance payment date when it is first marked paid
   if (d.advancePaid === true && !d.advancePaidDate) d.advancePaidDate = new Date();

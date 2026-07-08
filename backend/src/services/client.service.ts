@@ -43,6 +43,7 @@ const CLIENT_DETAIL_SELECT = {
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
       docEVisa: true, docSop: true, docVisaForm: true,
       advance: true, charges: true, discount: true, paymentReceived: true,
+      advancePaid: true, advancePaidDate: true,
       createdAt: true, updatedAt: true,
       bookedBy:           { select: { id: true, firstName: true, lastName: true } },
       appointmentAssigned:{ select: { id: true, firstName: true, lastName: true } },
@@ -119,6 +120,8 @@ export const createClient = async (data: {
           advance:  advance  !== undefined ? new Prisma.Decimal(advance)  : undefined,
           charges:  charges  !== undefined ? new Prisma.Decimal(charges)  : undefined,
           discount: discount !== undefined ? new Prisma.Decimal(discount) : undefined,
+          advancePaid: (advance ?? 0) > 0,
+          advancePaidDate: (advance ?? 0) > 0 ? new Date() : undefined,
         },
       },
     },
@@ -266,6 +269,11 @@ export const updateClient = async (
     folderUrl: string; assignedToId: string; groupId: string | null;
   }>
 ) => {
+  const existingCases = await prisma.visaCase.findMany({ where: { clientId: id }, select: { stage: true } });
+  if (existingCases.length > 0 && existingCases.every(c => c.stage === 'COMPLETED')) {
+    throw new Error('CLIENT_LOCKED');
+  }
+
   const d: any = { ...data };
   if (data.receivedDate)  d.receivedDate  = new Date(data.receivedDate);
   if (data.dob)           d.dob           = new Date(data.dob);

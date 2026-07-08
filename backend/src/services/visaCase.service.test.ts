@@ -21,6 +21,11 @@ describe('assertTransitionAllowed — Intake completeness gate', () => {
     expect(() => assertTransitionAllowed('INTAKE', 'APPOINTMENT', baseCase)).not.toThrow();
   });
 
+  it('allows INTAKE → APPOINTMENT even when advance is unpaid — it is a soft warning, not a gate', () => {
+    const unpaid = { ...baseCase, advancePaid: false };
+    expect(() => assertTransitionAllowed('INTAKE', 'APPOINTMENT', unpaid)).not.toThrow();
+  });
+
   it('throws INTAKE_INCOMPLETE with the missing field names when required fields are absent', () => {
     const incomplete = { ...baseCase, client: { ...completeClient, passportNumber: null, nationality: null } };
     try {
@@ -32,8 +37,7 @@ describe('assertTransitionAllowed — Intake completeness gate', () => {
     }
   });
 
-  it('checks Intake completeness before the advance-payment gate', () => {
-    // Both are unmet — completeness should be reported first, matching backend gate order.
+  it('reports missing fields even when advance is also unpaid', () => {
     const incomplete = { ...baseCase, advancePaid: false, destination: null };
     try {
       assertTransitionAllowed('INTAKE', 'APPOINTMENT', incomplete);
@@ -41,11 +45,6 @@ describe('assertTransitionAllowed — Intake completeness gate', () => {
     } catch (e) {
       expect((e as Error).message).toBe('INTAKE_INCOMPLETE');
     }
-  });
-
-  it('still enforces the advance-payment gate once Intake fields are complete', () => {
-    const unpaid = { ...baseCase, advancePaid: false };
-    expect(() => assertTransitionAllowed('INTAKE', 'APPOINTMENT', unpaid)).toThrow('ADVANCE_REQUIRED');
   });
 
   it('does not apply the Intake gate to other transitions', () => {

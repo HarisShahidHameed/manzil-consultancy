@@ -75,6 +75,7 @@ export const updateClient = async (req: Request, res: Response): Promise<void> =
     }
     if (error?.code === 'P2025') { sendError(res, 'Client not found', 404); return; }
     if (error?.code === 'P2002') { sendError(res, 'A client with this passport number already exists', 409); return; }
+    if (error?.message === 'CLIENT_LOCKED') { sendError(res, 'This client is locked because all cases are completed', 409); return; }
     sendError(res, 'Failed to update client', 500);
   }
 };

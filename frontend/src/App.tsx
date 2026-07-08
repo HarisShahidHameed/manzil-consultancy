@@ -65,6 +65,7 @@ const App: React.FC = () => (
                 </Route>
                 <Route element={<RoleGuard permissions={['clients:write']} />}>
                   <Route path="/clients/new" element={<ClientForm />} />
+                  <Route path="/clients/:id/edit" element={<ClientForm />} />
                 </Route>
                 <Route element={<RoleGuard permissions={['clients:read']} />}>
                   <Route path="/clients/:id" element={<ClientDetail />} />

@@ -36,7 +36,6 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
   INTAKE_INCOMPLETE:  { status: 422, message: 'Fill in the required Intake fields before moving this case forward.' },
-  ADVANCE_REQUIRED:   { status: 422, message: 'Mark the advance payment as paid before moving this case out of Intake.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
 };
 

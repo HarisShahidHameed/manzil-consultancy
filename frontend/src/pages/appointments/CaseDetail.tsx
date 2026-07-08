@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, ChevronRight, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog } from 'lucide-react';
 import { getCase, updateCase } from '../../api/cases';
-import { updateClient } from '../../api/clients';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
 import { downloadAdvanceReceipt, downloadInvoicePdf } from '../../api/pdf';
-import type { AssignableUser, CaseStage, DocumentStatus, InvoiceStatus, MaritalStatus, VisaCase } from '../../types';
+import type { AssignableUser, CaseStage, DocumentStatus, InvoiceStatus, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
+import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
 
 const STAGE_ORDER: CaseStage[] = ['INTAKE', 'APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 const STAGE_LABELS: Record<CaseStage, string> = {
@@ -71,14 +71,6 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'ASSIGNED', label: 'Assigned' },
 ];
 
-interface ClientFields {
-  residentialAddress: string;
-  email: string;
-  maritalStatus: MaritalStatus | '';
-  previousSchengenVisa: string;
-  visaAndTravelHistory: string;
-}
-
 const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -86,9 +78,7 @@ const CaseDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<VisaCase>>({});
-  const [clientFields, setClientFields] = useState<ClientFields>({
-    residentialAddress: '', email: '', maritalStatus: '', previousSchengenVisa: '', visaAndTravelHistory: '',
-  });
+  const [activeSection, setActiveSection] = useState<CaseStage>('INTAKE');
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
@@ -138,13 +128,7 @@ const CaseDetail: React.FC = () => {
         advance: vc.advance,
         paymentReceived: vc.paymentReceived,
       });
-      setClientFields({
-        residentialAddress: vc.client?.residentialAddress ?? '',
-        email: vc.client?.email ?? '',
-        maritalStatus: vc.client?.maritalStatus ?? '',
-        previousSchengenVisa: vc.client?.previousSchengenVisa ?? '',
-        visaAndTravelHistory: vc.client?.visaAndTravelHistory ?? '',
-      });
+      setActiveSection(vc.stage === 'CANCELLED' ? 'INTAKE' : vc.stage);
       setDocPaidBy(prev => ({
         ...prev,
         docAppointment: (vc.docAppointmentCost != null && Number(vc.docAppointmentCost) > 0) ? 'agency' : 'client',
@@ -223,21 +207,6 @@ const CaseDetail: React.FC = () => {
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save'),
   });
 
-  const saveClientMut = useMutation({
-    mutationFn: () => updateClient(vc!.client!.id, {
-      residentialAddress: clientFields.residentialAddress || undefined,
-      email: clientFields.email || undefined,
-      maritalStatus: clientFields.maritalStatus || undefined,
-      previousSchengenVisa: clientFields.previousSchengenVisa || undefined,
-      visaAndTravelHistory: clientFields.visaAndTravelHistory || undefined,
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      showSuccess('Client information saved');
-    },
-    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save client info'),
-  });
-
   // Generic immediate patch (assignment, advance-paid toggle, pause/resume)
   const patchMut = useMutation({
     mutationFn: (vars: { patch: Record<string, unknown>; msg: string }) => updateCase(id!, vars.patch),
@@ -299,8 +268,6 @@ const CaseDetail: React.FC = () => {
 
   const setEF = (k: keyof VisaCase) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setEditFields(f => ({ ...f, [k]: e.target.value }));
-  const setCF = (k: keyof ClientFields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setClientFields(f => ({ ...f, [k]: e.target.value }));
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -317,6 +284,7 @@ const CaseDetail: React.FC = () => {
 
   const stageIdx = STAGE_ORDER.indexOf(vc.stage);
   const isTerminal = vc.stage === 'COMPLETED' || vc.stage === 'CANCELLED';
+  const locked = vc.stage === 'COMPLETED';
   const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
@@ -331,11 +299,14 @@ const CaseDetail: React.FC = () => {
     gateReason = 'This case is paused. Resume it to continue the workflow.';
   } else if (vc.stage === 'INTAKE' && missingIntakeFields.length > 0) {
     gateReason = `Missing required Intake info: ${missingIntakeFields.map(f => INTAKE_FIELD_LABELS[f] ?? f).join(', ')}.`;
-  } else if (vc.stage === 'INTAKE' && !vc.advancePaid) {
-    gateReason = 'Mark the advance payment as paid (below) before moving out of Intake.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
     gateReason = `All invoices must be marked Paid before completing (${unpaidInvoices.length} outstanding).`;
   }
+
+  // Advance payment is not a hard gate — it's a non-blocking warning that follows
+  // the case through every stage until it's paid (auto-marked paid once a non-zero
+  // advance amount is on file).
+  const advancePending = !vc.advancePaid && vc.stage !== 'CANCELLED';
 
   const togglePause = () => {
     if (vc.onHold) {
@@ -373,6 +344,16 @@ const CaseDetail: React.FC = () => {
         </div>
         {!isTerminal && (
           <div className="flex items-center gap-2">
+            <Can permissions={['clients:write']}>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<UserCog className="w-4 h-4" />}
+                onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}
+              >
+                Edit Client Info
+              </Button>
+            </Can>
             <Can permissions={['appointments:write', 'files:write', 'clients:write']} requireAll={false}>
               <Button
                 variant="outline"
@@ -405,22 +386,26 @@ const CaseDetail: React.FC = () => {
         <Alert variant="warning" message={`This case is paused${vc.onHoldReason ? ` — ${vc.onHoldReason}` : ''}. Resume it to continue.`} />
       )}
 
-      {/* Stage Stepper */}
+      {advancePending && (
+        <Alert variant="warning" message={`Advance payment is pending${vc.advance != null ? ` (${fmtMoney(vc.advance)} due)` : ''}.`} />
+      )}
+
+      {vc.stage === 'COMPLETED' && (
+        <Alert variant="info" message="This case is completed. All information — including client details — is now locked and read-only." />
+      )}
+
+      {/* Breadcrumb stage navigation */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-1 overflow-x-auto pb-1">
-          {STAGE_ORDER.map((s, i) => (
-            <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                vc.stage === s ? STAGE_COLORS[s] : i < stageIdx ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'
-              }`}>
-                {i < stageIdx && '✓ '}{STAGE_LABELS[s]}
-              </div>
-              {i < STAGE_ORDER.length - 1 && (
-                <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
-              )}
-            </React.Fragment>
-          ))}
-        </div>
+        <Breadcrumbs
+          activeKey={activeSection}
+          steps={STAGE_ORDER.map((s, i): BreadcrumbStep => ({
+            key: s,
+            label: STAGE_LABELS[s],
+            state: i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'upcoming',
+            onClick: i <= stageIdx ? () => setActiveSection(s) : undefined,
+          }))}
+          currentClass={STAGE_COLORS[vc.stage]}
+        />
 
         {vc.stage === 'CANCELLED' && (
           <div className="mt-4"><Alert variant="error" message="This case has been cancelled." /></div>
@@ -451,16 +436,19 @@ const CaseDetail: React.FC = () => {
       </div>
 
       {/* Onboarding — charges, advance & advance receipt (Intake) */}
-      {vc.stage === 'INTAKE' && (
+      {activeSection === 'INTAKE' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Onboarding — Charges & Advance</h3>
-            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveOnboardingMut.isPending} onClick={() => saveOnboardingMut.mutate()}>
-                Save
-              </Button>
-            </Can>
+            {!locked && (
+              <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveOnboardingMut.isPending} onClick={() => saveOnboardingMut.mutate()}>
+                  Save
+                </Button>
+              </Can>
+            )}
           </div>
+          <fieldset disabled={locked} className="space-y-4">
 
           {missingIntakeFields.length > 0 && (
             <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
@@ -475,7 +463,7 @@ const CaseDetail: React.FC = () => {
                   <button
                     type="button"
                     className="text-amber-800 underline font-medium mt-1"
-                    onClick={() => navigate(`/clients/${vc.client!.id}`)}
+                    onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}
                   >
                     Complete client info →
                   </button>
@@ -536,20 +524,27 @@ const CaseDetail: React.FC = () => {
               Advance Receipt
             </Button>
           </div>
-          <p className="text-xs text-gray-400">Mark the advance as paid to unlock progression to the Appointment stage and enable the receipt.</p>
+          <p className="text-xs text-gray-400">
+            Automatically marked paid once a non-zero advance amount is saved. Use the toggle only to correct it manually.
+          </p>
+          </fieldset>
         </div>
       )}
 
       {/* Appointment Section */}
+      {activeSection === 'APPOINTMENT' && (
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
-          <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-            <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
-              Save
-            </Button>
-          </Can>
+          {!locked && (
+            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+                Save
+              </Button>
+            </Can>
+          )}
         </div>
+        <fieldset disabled={locked} className="space-y-4">
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -615,19 +610,24 @@ const CaseDetail: React.FC = () => {
           <label className="text-xs text-gray-500">Appointment Notes</label>
           <textarea className={`${inputCls} mt-1`} rows={3} value={editFields.appointmentNotes as string ?? ''} onChange={setEF('appointmentNotes')} />
         </div>
+        </fieldset>
       </div>
+      )}
 
       {/* File Processing Section */}
-      {(stageIdx >= 2 || vc.stage === 'FILE_PROCESSING') && (
+      {activeSection === 'FILE_PROCESSING' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
-            <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
-                Save
-              </Button>
-            </Can>
+            {!locked && (
+              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
+                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
+                  Save
+                </Button>
+              </Can>
+            )}
           </div>
+          <fieldset disabled={locked} className="space-y-4">
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -654,46 +654,17 @@ const CaseDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Remaining client info collected at file stage */}
-          <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-semibold text-gray-600">Client Information (collected at this stage)</h4>
-              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-                <Button size="sm" variant="outline" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveClientMut.isPending} onClick={() => saveClientMut.mutate()}>
-                  Save Info
-                </Button>
-              </Can>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs text-gray-500">Marital Status</label>
-                <select className={`${inputCls} mt-1`} value={clientFields.maritalStatus} onChange={setCF('maritalStatus')}>
-                  <option value="">— Select —</option>
-                  <option value="SINGLE">Single</option>
-                  <option value="MARRIED">Married</option>
-                  <option value="DIVORCED">Divorced</option>
-                  <option value="WIDOWED">Widowed</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Email</label>
-                <input type="email" className={`${inputCls} mt-1`} value={clientFields.email} onChange={setCF('email')} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Current Address</label>
-                <input className={`${inputCls} mt-1`} value={clientFields.residentialAddress} onChange={setCF('residentialAddress')} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-gray-500">Previous Schengen Visa Details</label>
-                <textarea className={`${inputCls} mt-1`} rows={2} value={clientFields.previousSchengenVisa} onChange={setCF('previousSchengenVisa')} placeholder="Prior Schengen visas, dates, type…" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500">Travel History</label>
-                <textarea className={`${inputCls} mt-1`} rows={2} value={clientFields.visaAndTravelHistory} onChange={setCF('visaAndTravelHistory')} placeholder="Countries visited…" />
-              </div>
-            </div>
+          {/* Client-level fields (marital status, address, travel history, etc.) live on the
+              client record itself — edited via the unified client form, not duplicated here. */}
+          <div className="flex items-center justify-between border border-gray-100 rounded-lg p-4 bg-gray-50/50">
+            <p className="text-xs text-gray-500">
+              Marital status, address, email and travel history are managed on the client's own record.
+            </p>
+            <Can permissions={['clients:write']}>
+              <Button size="sm" variant="outline" leftIcon={<UserCircle className="w-3.5 h-3.5" />} onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}>
+                Edit Client Info
+              </Button>
+            </Can>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -816,6 +787,7 @@ const CaseDetail: React.FC = () => {
               </span>
             </div>
           </div>
+          </fieldset>
         </div>
       )}
 
@@ -825,11 +797,13 @@ const CaseDetail: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
             Invoices ({vc.invoices?.length ?? 0})
           </h3>
-          <Can permissions={['invoices:write']}>
-            <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setInvoiceOpen(true)}>
-              Create Invoice
-            </Button>
-          </Can>
+          {!locked && (
+            <Can permissions={['invoices:write']}>
+              <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setInvoiceOpen(true)}>
+                Create Invoice
+              </Button>
+            </Can>
+          )}
         </div>
         {(vc.invoices?.length ?? 0) === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">No invoices yet</p>

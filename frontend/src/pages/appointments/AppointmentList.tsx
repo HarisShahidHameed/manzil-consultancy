@@ -98,6 +98,7 @@ const AppointmentList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Assigned To</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
@@ -134,6 +135,17 @@ const AppointmentList: React.FC = () => {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.stage === 'CANCELLED' ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : c.advancePaid ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                          <AlertTriangle className="w-2.5 h-2.5" /> Pending
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">

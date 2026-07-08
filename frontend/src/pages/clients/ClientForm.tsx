@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { ArrowLeft, Save } from 'lucide-react';
-import { createClient } from '../../api/clients';
+import { createClient, getClient, updateClient } from '../../api/clients';
+import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
@@ -30,55 +31,136 @@ const Field: React.FC<{
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors';
 
+const emptyForm = {
+  receivedDate: new Date().toISOString().split('T')[0],
+  firstName: '', lastName: '', gender: 'MALE' as 'MALE' | 'FEMALE' | 'OTHER',
+  dob: '', phone: '', email: '', whatsapp: '', residentialAddress: '',
+  passportNumber: '', passportIssue: '', passportExpiry: '',
+  birthCity: '', nationality: '', maritalStatus: '' as '' | 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED',
+  previousSchengenVisa: '', registeredEmail: '',
+  eVisa: false, contract: false,
+  visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
+  destination: '', city: '', visaType: '', ukVisaExpiry: '',
+  priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
+  advance: '', charges: '', discount: '', groupId: '',
+};
+
 const ClientForm: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const isEdit = !!id;
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    receivedDate: new Date().toISOString().split('T')[0],
-    firstName: '', lastName: '', gender: 'MALE' as 'MALE' | 'FEMALE' | 'OTHER',
-    dob: '', phone: '', email: '', whatsapp: '', residentialAddress: '',
-    passportNumber: '', passportIssue: '', passportExpiry: '',
-    birthCity: '', nationality: '', registeredEmail: '',
-    eVisa: false, contract: false,
-    visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
-    destination: '', city: '', visaType: '', ukVisaExpiry: '',
-    priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
-    advance: '', charges: '', discount: '', groupId: '',
-  });
-
+  const [form, setForm] = useState(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const { data: groupsData } = useQuery({ queryKey: ['groups'], queryFn: () => getGroups() });
   const groups = groupsData?.data ?? [];
 
+  const { data: clientData, isLoading: clientLoading } = useQuery({
+    queryKey: ['client', id],
+    queryFn:  () => getClient(id!),
+    enabled:  isEdit,
+  });
+  const client = clientData?.data;
+
+  // The case whose destination/priority/financials this form edits alongside the
+  // client — the client's most recent still-active case, if any.
+  const targetCase = client?.visaCases.find(vc => vc.stage !== 'CANCELLED' && vc.stage !== 'COMPLETED') ?? null;
+
+  useEffect(() => {
+    if (!client) return;
+    setForm({
+      receivedDate: client.receivedDate?.split('T')[0] ?? emptyForm.receivedDate,
+      firstName: client.firstName ?? '', lastName: client.lastName ?? '',
+      gender: client.gender ?? 'MALE',
+      dob: client.dob?.split('T')[0] ?? '', phone: client.phone ?? '',
+      email: client.email ?? '', whatsapp: client.whatsapp ?? '',
+      residentialAddress: client.residentialAddress ?? '',
+      passportNumber: client.passportNumber ?? '',
+      passportIssue: client.passportIssue?.split('T')[0] ?? '',
+      passportExpiry: client.passportExpiry?.split('T')[0] ?? '',
+      birthCity: client.birthCity ?? '', nationality: client.nationality ?? '',
+      maritalStatus: client.maritalStatus ?? '',
+      previousSchengenVisa: client.previousSchengenVisa ?? '',
+      registeredEmail: client.registeredEmail ?? '',
+      eVisa: client.eVisa ?? false, contract: client.contract ?? false,
+      visaAndTravelHistory: client.visaAndTravelHistory ?? '',
+      source: client.source ?? '', referredBy: client.referredBy ?? '',
+      hrComments: client.hrComments ?? '', folderUrl: client.folderUrl ?? '',
+      destination: targetCase?.destination ?? '',
+      city: targetCase?.city ?? '',
+      visaType: targetCase?.visaType ?? '',
+      ukVisaExpiry: targetCase?.ukVisaExpiry?.split('T')[0] ?? '',
+      priority: targetCase?.priority ?? 'MEDIUM',
+      advance:  targetCase?.advance  != null ? String(targetCase.advance)  : '',
+      charges:  targetCase?.charges  != null ? String(targetCase.charges)  : '',
+      discount: targetCase?.discount != null ? String(targetCase.discount) : '',
+      groupId: client.groupId ?? '',
+    });
+  }, [client]);
+
+  const isLocked = isEdit && !!client && client.visaCases.length > 0 &&
+    client.visaCases.every(vc => vc.stage === 'COMPLETED');
+
   const save = useMutation({
-    mutationFn: () => {
-      const payload: any = {
+    mutationFn: async () => {
+      const clientPayload: any = {
         ...form,
-        advance:  form.advance  ? parseFloat(form.advance)  : undefined,
-        charges:  form.charges  ? parseFloat(form.charges)  : undefined,
-        discount: form.discount ? parseFloat(form.discount) : undefined,
+        maritalStatus: form.maritalStatus || undefined,
         email:          form.email          || undefined,
         whatsapp:       form.whatsapp       || undefined,
         registeredEmail:form.registeredEmail|| undefined,
         folderUrl:      form.folderUrl      || undefined,
-        ukVisaExpiry:   form.ukVisaExpiry   || undefined,
         birthCity:      form.birthCity      || undefined,
-        city:           form.city           || undefined,
-        visaType:       form.visaType       || undefined,
         source:         form.source         || undefined,
         referredBy:     form.referredBy     || undefined,
         hrComments:     form.hrComments     || undefined,
         visaAndTravelHistory: form.visaAndTravelHistory || undefined,
+        previousSchengenVisa: form.previousSchengenVisa || undefined,
         residentialAddress:   form.residentialAddress  || undefined,
         groupId:              form.groupId             || undefined,
       };
-      return createClient(payload);
+      delete clientPayload.destination; delete clientPayload.city; delete clientPayload.visaType;
+      delete clientPayload.ukVisaExpiry; delete clientPayload.priority; delete clientPayload.advance;
+      delete clientPayload.charges; delete clientPayload.discount;
+
+      if (!isEdit) {
+        return createClient({
+          ...clientPayload,
+          destination:  form.destination,
+          city:         form.city         || undefined,
+          visaType:     form.visaType     || undefined,
+          ukVisaExpiry: form.ukVisaExpiry || undefined,
+          priority:     form.priority,
+          advance:  form.advance  ? parseFloat(form.advance)  : undefined,
+          charges:  form.charges  ? parseFloat(form.charges)  : undefined,
+          discount: form.discount ? parseFloat(form.discount) : undefined,
+        });
+      }
+
+      const clientResp = await updateClient(id!, clientPayload);
+      if (targetCase) {
+        await updateCase(targetCase.id, {
+          destination:  form.destination  || undefined,
+          city:         form.city         || undefined,
+          visaType:     form.visaType     || undefined,
+          ukVisaExpiry: form.ukVisaExpiry || undefined,
+          priority:     form.priority,
+          advance:  form.advance  ? parseFloat(form.advance)  : 0,
+          charges:  form.charges  ? parseFloat(form.charges)  : undefined,
+          discount: form.discount ? parseFloat(form.discount) : undefined,
+        });
+      }
+      return clientResp;
     },
     onSuccess: (resp) => {
       qc.invalidateQueries({ queryKey: ['clients'] });
+      if (isEdit) {
+        qc.invalidateQueries({ queryKey: ['client', id] });
+        if (targetCase) qc.invalidateQueries({ queryKey: ['case', targetCase.id] });
+        qc.invalidateQueries({ queryKey: ['cases'] });
+      }
       navigate(`/clients/${resp.data!.id}`);
     },
     onError: (e: AxiosError<{ message: string; errors?: Record<string, string[]> }>) => {
@@ -88,7 +170,7 @@ const ClientForm: React.FC = () => {
         for (const [k, v] of Object.entries(resp.errors)) errs[k] = v[0];
         setFieldErrors(errs);
       }
-      setError(resp?.message ?? 'Failed to create client');
+      setError(resp?.message ?? `Failed to ${isEdit ? 'update' : 'create'} client`);
     },
   });
 
@@ -98,20 +180,34 @@ const ClientForm: React.FC = () => {
   const setCheck = (k: 'eVisa' | 'contract') => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.checked }));
 
+  if (isEdit && clientLoading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  const backTo = isEdit ? `/clients/${id}` : '/clients';
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate('/clients')} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <button onClick={() => navigate(backTo)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Add New Client</h1>
-          <p className="text-gray-500 text-sm mt-1">Enter client passport & visa application details</p>
+          <h1 className="text-2xl font-bold text-gray-900">{isEdit ? 'Edit Client' : 'Add New Client'}</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {isEdit ? 'Update client passport & visa application details' : 'Enter client passport & visa application details'}
+          </p>
         </div>
       </div>
 
       {error && <Alert variant="error" message={error} onClose={() => setError(null)} />}
+      {isLocked && (
+        <Alert variant="warning" message="This client is locked — all cases are completed and information can no longer be changed." />
+      )}
 
+      <fieldset disabled={isLocked} className="space-y-6">
       <Section title="Personal Information">
         <div className="grid grid-cols-2 gap-4">
           <Field label="First Name" required error={fieldErrors.firstName}>
@@ -137,6 +233,20 @@ const ClientForm: React.FC = () => {
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
+          <Field label="Marital Status">
+            <select className={inputCls} value={form.maritalStatus} onChange={set('maritalStatus')}>
+              <option value="">— Select —</option>
+              <option value="SINGLE">Single</option>
+              <option value="MARRIED">Married</option>
+              <option value="DIVORCED">Divorced</option>
+              <option value="WIDOWED">Widowed</option>
+            </select>
+          </Field>
+          <Field label="Birth City">
+            <input className={inputCls} value={form.birthCity} onChange={set('birthCity')} placeholder="Lahore" />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Phone" required error={fieldErrors.phone}>
             <input className={inputCls} value={form.phone} onChange={set('phone')} placeholder="+92 300 0000000" />
           </Field>
@@ -152,9 +262,6 @@ const ClientForm: React.FC = () => {
             <input type="email" className={inputCls} value={form.registeredEmail} onChange={set('registeredEmail')} />
           </Field>
         </div>
-        <Field label="Birth City">
-          <input className={inputCls} value={form.birthCity} onChange={set('birthCity')} placeholder="Lahore" />
-        </Field>
         <Field label="Residential Address">
           <textarea className={inputCls} rows={2} value={form.residentialAddress} onChange={set('residentialAddress')} />
         </Field>
@@ -182,51 +289,61 @@ const ClientForm: React.FC = () => {
             <span className="text-sm font-medium text-gray-700">Contract Signed</span>
           </label>
         </div>
+        <Field label="Previous Schengen Visa Details">
+          <textarea className={inputCls} rows={2} value={form.previousSchengenVisa} onChange={set('previousSchengenVisa')} placeholder="Prior Schengen visas, dates, type…" />
+        </Field>
         <Field label="Visa & Travel History">
           <textarea className={inputCls} rows={3} value={form.visaAndTravelHistory} onChange={set('visaAndTravelHistory')} placeholder="Previous visas, travel history..." />
         </Field>
       </Section>
 
-      <Section title="Visa Application">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Destination Country" required error={fieldErrors.destination}>
-            <input className={inputCls} value={form.destination} onChange={set('destination')} placeholder="Netherlands" />
-          </Field>
-          <Field label="Appointment City">
-            <input className={inputCls} value={form.city} onChange={set('city')} placeholder="Islamabad" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Visa Type">
-            <input className={inputCls} value={form.visaType} onChange={set('visaType')} placeholder="Tourist / Work / Study" />
-          </Field>
-          <Field label="UK Visa Expiry">
-            <input type="date" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
-          </Field>
-          <Field label="Priority">
-            <select className={inputCls} value={form.priority} onChange={set('priority')}>
-              <option value="LOW">Low</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HIGH">High</option>
-              <option value="URGENT">Urgent</option>
-            </select>
-          </Field>
-        </div>
-      </Section>
+      {(!isEdit || targetCase) && (
+        <Section title="Visa Application">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Destination Country" required error={fieldErrors.destination}>
+              <input className={inputCls} value={form.destination} onChange={set('destination')} placeholder="Netherlands" />
+            </Field>
+            <Field label="Appointment City">
+              <input className={inputCls} value={form.city} onChange={set('city')} placeholder="Islamabad" />
+            </Field>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Visa Type">
+              <input className={inputCls} value={form.visaType} onChange={set('visaType')} placeholder="Tourist / Work / Study" />
+            </Field>
+            <Field label="UK Visa Expiry">
+              <input type="date" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
+            </Field>
+            <Field label="Priority">
+              <select className={inputCls} value={form.priority} onChange={set('priority')}>
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </Field>
+          </div>
+        </Section>
+      )}
 
-      <Section title="Financial">
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Charges (£)">
-            <input type="number" min="0" step="0.01" className={inputCls} value={form.charges} onChange={set('charges')} placeholder="0.00" />
-          </Field>
-          <Field label="Discount (£)">
-            <input type="number" min="0" step="0.01" className={inputCls} value={form.discount} onChange={set('discount')} placeholder="0.00" />
-          </Field>
-          <Field label="Advance Paid (£)">
-            <input type="number" min="0" step="0.01" className={inputCls} value={form.advance} onChange={set('advance')} placeholder="0.00" />
-          </Field>
-        </div>
-      </Section>
+      {(!isEdit || targetCase) && (
+        <Section title="Financial">
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Charges (£)">
+              <input type="number" min="0" step="0.01" className={inputCls} value={form.charges} onChange={set('charges')} placeholder="0.00" />
+            </Field>
+            <Field label="Discount (£)">
+              <input type="number" min="0" step="0.01" className={inputCls} value={form.discount} onChange={set('discount')} placeholder="0.00" />
+            </Field>
+            <Field label="Advance Amount (£)">
+              <input type="number" min="0" step="0.01" className={inputCls} value={form.advance} onChange={set('advance')} placeholder="0.00" />
+            </Field>
+          </div>
+          <p className="text-xs text-gray-400">
+            A non-zero advance is automatically marked as paid. Leaving it at £0 shows a pending-advance warning on the case until it's filled in.
+          </p>
+        </Section>
+      )}
 
       <Section title="Administrative">
         <div className="grid grid-cols-2 gap-4">
@@ -257,16 +374,19 @@ const ClientForm: React.FC = () => {
           <textarea className={inputCls} rows={3} value={form.hrComments} onChange={set('hrComments')} />
         </Field>
       </Section>
+      </fieldset>
 
       <div className="flex justify-end gap-3 pb-6">
-        <Button variant="outline" onClick={() => navigate('/clients')}>Cancel</Button>
-        <Button
-          leftIcon={<Save className="w-4 h-4" />}
-          loading={save.isPending}
-          onClick={() => save.mutate()}
-        >
-          Create Client
-        </Button>
+        <Button variant="outline" onClick={() => navigate(backTo)}>Cancel</Button>
+        {!isLocked && (
+          <Button
+            leftIcon={<Save className="w-4 h-4" />}
+            loading={save.isPending}
+            onClick={() => save.mutate()}
+          >
+            {isEdit ? 'Save Changes' : 'Create Client'}
+          </Button>
+        )}
       </div>
     </div>
   );
