@@ -72,16 +72,22 @@ const decorateClient = <
   ),
 });
 
+// Numeric max rather than a lexicographic ORDER BY — imported clientRefs (e.g. CL-9000,
+// carried over as-is, see bulkImportClients) sort before CL-101 as strings, which would
+// make findFirst({ orderBy: clientRef desc }) miss the true high-water mark and hand out
+// a ref that collides with one already imported.
 export const generateClientRef = async (): Promise<string> => {
-  const last = await prisma.client.findFirst({
-    orderBy: { clientRef: 'desc' },
-    select: { clientRef: true },
-  });
-  const num = last ? parseInt(last.clientRef.replace('CL-', ''), 10) + 1 : 100;
+  const [{ max }] = await prisma.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING("clientRef" FROM 4) AS INTEGER)) AS max
+    FROM "clients"
+    WHERE "clientRef" ~ '^CL-\d+$'
+  `;
+  const num = max != null ? max + 1 : 100;
   return `CL-${num}`;
 };
 
 export const createClient = async (data: {
+  clientRef?: string;
   receivedDate: string; firstName: string; lastName?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER'; dob?: string; phone: string;
   email?: string; whatsapp?: string; residentialAddress?: string;
@@ -96,10 +102,10 @@ export const createClient = async (data: {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
-  const clientRef = await generateClientRef();
+  const clientRef = data.clientRef?.trim() || await generateClientRef();
   const {
     destination, city, visaType, ukVisaExpiry, priority,
-    advance, charges, discount, createdById, ...rest
+    advance, charges, discount, createdById, clientRef: _clientRef, ...rest
   } = data;
 
   return prisma.client.create({
@@ -208,8 +214,11 @@ export const bulkImportClients = async (
       else seenNameKeys.add(key);
     } catch (e: any) {
       results.failed++;
+      const target = e?.meta?.target;
       const message = e?.code === 'P2002'
-        ? 'Duplicate: passport number already exists'
+        ? target?.includes?.('clientRef')
+          ? `Duplicate: client ID ${row.clientRef} already exists`
+          : 'Duplicate: passport number already exists'
         : e?.message ?? 'Unknown error';
       if (e?.code === 'P2002') results.duplicates++;
       results.errors.push({ row: i + 1, message });

@@ -46,6 +46,9 @@ const optionalDate = () =>
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format').optional().or(z.literal('')).transform(v => v || undefined);
 
 export const importClientSchema = createClientSchema.extend({
+  // Carried over as-is from the source file's "#" column when present, instead of
+  // auto-generating a new CL-NNN ref. See generateClientRef for the collision guard.
+  clientRef: optionalText(30),
   phone: z.string().max(30).optional().transform(v => (v && v.trim().length >= 7 ? v.trim() : 'N/A')),
   lastName:       optionalText(100),
   gender:         z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')).transform(v => v || undefined),

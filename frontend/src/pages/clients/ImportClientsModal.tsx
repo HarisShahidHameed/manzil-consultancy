@@ -47,6 +47,7 @@ const bool = (v: unknown) => Boolean(v);
 // 32:Source  33:Refered By  34:HR Comments
 type RawRow = unknown[];
 interface MappedRow {
+  clientRef?: string;
   receivedDate: string;
   firstName: string;
   lastName: string;
@@ -113,6 +114,7 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   if (!passportExpiry) warnings.push('Passport Expiry');
 
   return {
+    clientRef:       str(row[0]),
     receivedDate,
     firstName,
     lastName,
