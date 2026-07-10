@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
-import { getCases, getCaseFilterOptions } from '../../api/cases';
+import { getCases } from '../../api/cases';
 import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT:     'bg-blue-100 text-blue-700',
@@ -62,13 +63,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
     queryFn:  () => getCases(params),
   });
 
-  const { data: filterOptionsData } = useQuery({
-    queryKey: ['case-filter-options'],
-    queryFn:  () => getCaseFilterOptions(),
-  });
-  const destinations = filterOptionsData?.data?.destinations ?? [];
-  const cities = filterOptionsData?.data?.cities ?? [];
-
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
 
@@ -121,7 +115,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               onChange={e => { setDestination(e.target.value); setPage(1); }}
             >
               <option value="">All destinations</option>
-              {destinations.map(d => <option key={d} value={d}>{d}</option>)}
+              {DESTINATION_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
             <select
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -129,7 +123,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               onChange={e => { setCity(e.target.value); setPage(1); }}
             >
               <option value="">All cities</option>
-              {cities.map(c => <option key={c} value={c}>{c}</option>)}
+              {APPOINTMENT_CITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             {(search || destination || city || tab !== 'ALL') && (
               <button

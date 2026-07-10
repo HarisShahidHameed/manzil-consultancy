@@ -27,11 +27,6 @@ export const listCases = async (req: Request, res: Response): Promise<void> => {
   });
 };
 
-export const getCaseFilterOptions = async (_req: Request, res: Response): Promise<void> => {
-  const options = await visaCaseService.getCaseFilterOptions();
-  sendSuccess(res, 'Filter options retrieved', options);
-};
-
 export const getCase = async (req: Request, res: Response): Promise<void> => {
   const visaCase = await visaCaseService.getCaseById(req.params.id);
   if (!visaCase) { sendError(res, 'Case not found', 404); return; }

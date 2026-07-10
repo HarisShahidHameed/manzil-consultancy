@@ -80,7 +80,7 @@ export const generateClientRef = async (): Promise<string> => {
   const [{ max }] = await prisma.$queryRaw<{ max: number | null }[]>`
     SELECT MAX(CAST(SUBSTRING("clientRef" FROM 4) AS INTEGER)) AS max
     FROM "clients"
-    WHERE "clientRef" ~ '^CL-\d+$'
+    WHERE "clientRef" ~ '^CL-\\d+$'
   `;
   const num = max != null ? max + 1 : 100;
   return `CL-${num}`;

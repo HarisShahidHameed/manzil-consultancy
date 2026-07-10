@@ -144,28 +144,6 @@ export const listCases = async (
   return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
-// Distinct, non-empty destination/city values across all cases — powers the filter dropdowns.
-export const getCaseFilterOptions = async () => {
-  const [destinations, cities] = await Promise.all([
-    prisma.visaCase.findMany({
-      where: { destination: { not: null } },
-      distinct: ['destination'],
-      select: { destination: true },
-      orderBy: { destination: 'asc' },
-    }),
-    prisma.visaCase.findMany({
-      where: { city: { not: null } },
-      distinct: ['city'],
-      select: { city: true },
-      orderBy: { city: 'asc' },
-    }),
-  ]);
-  return {
-    destinations: destinations.map(d => d.destination).filter((d): d is string => !!d?.trim()),
-    cities: cities.map(c => c.city).filter((c): c is string => !!c?.trim()),
-  };
-};
-
 export const getCaseById = async (id: string) => {
   const c = await prisma.visaCase.findUnique({ where: { id }, select: CASE_SELECT });
   return c ? decorateCase(c) : null;
