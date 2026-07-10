@@ -496,7 +496,7 @@ const CaseDetail: React.FC = () => {
               className={`${inputCls} mt-1`}
               value={vc.appointmentAssignedToId ?? ''}
               disabled={patchMut.isPending}
-              onChange={e => e.target.value && patchMut.mutate({ patch: { appointmentAssignedToId: e.target.value }, msg: 'Assignment updated' })}
+              onChange={e => patchMut.mutate({ patch: { appointmentAssignedToId: e.target.value || null }, msg: 'Assignment updated' })}
             >
               <option value="">— Unassigned —</option>
               {apptUsers.map(u => (
@@ -521,7 +521,7 @@ const CaseDetail: React.FC = () => {
               className={`${inputCls} mt-1`}
               value={vc.bookedById ?? ''}
               disabled={patchMut.isPending}
-              onChange={e => e.target.value && patchMut.mutate({ patch: { bookedById: e.target.value }, msg: 'Booked-by updated' })}
+              onChange={e => patchMut.mutate({ patch: { bookedById: e.target.value || null }, msg: 'Booked-by updated' })}
             >
               <option value="">— Not set —</option>
               {apptUsers.map(u => (
@@ -673,7 +673,7 @@ const CaseDetail: React.FC = () => {
                 className={`${inputCls} mt-1`}
                 value={vc.fileAssignedToId ?? ''}
                 disabled={patchMut.isPending}
-                onChange={e => e.target.value && patchMut.mutate({ patch: { fileAssignedToId: e.target.value }, msg: 'Assignment updated' })}
+                onChange={e => patchMut.mutate({ patch: { fileAssignedToId: e.target.value || null }, msg: 'Assignment updated' })}
               >
                 <option value="">— Unassigned —</option>
                 {fileUsers.map(u => (

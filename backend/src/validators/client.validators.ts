@@ -129,6 +129,12 @@ export const createCaseSchema = z.object({
   discount:     z.number().nonnegative().optional(),
 });
 
+// Assignee fields: a uuid to assign, or '' / null from the "— Unassigned —" option to
+// explicitly clear it. Plain .optional() alone can't express "clear" — an absent key
+// just leaves the field untouched, so unassigning needs to send null through.
+const clearableAssignee = () =>
+  z.string().uuid().nullable().optional().or(z.literal('').transform(() => null));
+
 export const updateCaseSchema = z.object({
   destination:  z.string().min(1).max(100).optional(),
   city:         z.string().max(100).optional(),
@@ -147,9 +153,9 @@ export const updateCaseSchema = z.object({
   // Stage 2
   appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
   appointmentDate:         z.string().optional(),
-  bookedById:              z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
-  appointmentAssignedToId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
-  fileAssignedToId:        z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
+  bookedById:              clearableAssignee(),
+  appointmentAssignedToId: clearableAssignee(),
+  fileAssignedToId:        clearableAssignee(),
   fraNo:           z.string().max(100).optional(),
   tlsAccount:      z.string().max(100).optional(),
   appointmentNotes: z.string().optional(),
