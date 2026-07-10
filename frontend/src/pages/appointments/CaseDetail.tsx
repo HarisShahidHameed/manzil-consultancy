@@ -648,6 +648,7 @@ const CaseDetail: React.FC = () => {
                 ['Visa Type', vc.visaType ?? '—'],
                 ['Appointment Date', fmtDate(vc.appointmentDate)],
                 ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
+                ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
                 ['TLS Account', vc.tlsAccount ?? '—'],
                 ['FRA No.', vc.fraNo ?? '—'],
                 ['Charges', fmtMoney(vc.charges)],
