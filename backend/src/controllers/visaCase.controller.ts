@@ -12,17 +12,24 @@ const caseQuerySchema = z.object({
   stage:  z.string().optional(),
   search: z.string().optional(),
   appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
+  destination: z.string().optional(),
+  city:        z.string().optional(),
 });
 
 export const listCases = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, stage, search, appointmentStatus } = caseQuerySchema.parse(req.query);
-  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus);
+  const { page, limit, stage, search, appointmentStatus, destination, city } = caseQuerySchema.parse(req.query);
+  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus, destination, city);
   sendSuccess(res, 'Cases retrieved', result.cases, 200, {
     total: result.total,
     page: result.page,
     limit: result.limit,
     totalPages: result.totalPages,
   });
+};
+
+export const getCaseFilterOptions = async (_req: Request, res: Response): Promise<void> => {
+  const options = await visaCaseService.getCaseFilterOptions();
+  sendSuccess(res, 'Filter options retrieved', options);
 };
 
 export const getCase = async (req: Request, res: Response): Promise<void> => {

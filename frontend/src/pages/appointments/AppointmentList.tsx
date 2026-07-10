@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
-import { getCases } from '../../api/cases';
+import { getCases, getCaseFilterOptions } from '../../api/cases';
 import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -46,16 +46,28 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
+  const [destination, setDestination] = useState('');
+  const [city, setCity] = useState('');
   const [page, setPage] = useState(1);
 
+  // All filters are ANDed together server-side, so status + destination + city + search narrow the list in sync.
   const params: Record<string, string> = { page: String(page), limit: '20', stage };
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
+  if (destination) params.destination = destination;
+  if (city) params.city = city;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, tab, search, page],
+    queryKey: ['cases', stage, tab, search, destination, city, page],
     queryFn:  () => getCases(params),
   });
+
+  const { data: filterOptionsData } = useQuery({
+    queryKey: ['case-filter-options'],
+    queryFn:  () => getCaseFilterOptions(),
+  });
+  const destinations = filterOptionsData?.data?.destinations ?? [];
+  const cities = filterOptionsData?.data?.cities ?? [];
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
@@ -95,13 +107,39 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               ))}
             </div>
           )}
-          <Input
-            placeholder="Search by client, destination..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            leftIcon={<Search className="w-4 h-4" />}
-            className="max-w-xs"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              placeholder="Search by client, destination..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              leftIcon={<Search className="w-4 h-4" />}
+              className="max-w-xs"
+            />
+            <select
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={destination}
+              onChange={e => { setDestination(e.target.value); setPage(1); }}
+            >
+              <option value="">All destinations</option>
+              {destinations.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={city}
+              onChange={e => { setCity(e.target.value); setPage(1); }}
+            >
+              <option value="">All cities</option>
+              {cities.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {(search || destination || city || tab !== 'ALL') && (
+              <button
+                onClick={() => { setSearch(''); setDestination(''); setCity(''); setTab('ALL'); setPage(1); }}
+                className="text-xs text-indigo-600 hover:underline"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (

@@ -11,6 +11,12 @@ router.get(
   requireAnyPermission('appointments:read', 'files:read', 'clients:read'),
   visaCaseController.listCases
 );
+// Static path before /:id — distinct destination/city values to populate the list filters
+router.get(
+  '/filter-options',
+  requireAnyPermission('appointments:read', 'files:read', 'clients:read'),
+  visaCaseController.getCaseFilterOptions
+);
 router.get(
   '/:id',
   requireAnyPermission('appointments:read', 'files:read', 'clients:read'),

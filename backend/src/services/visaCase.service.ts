@@ -117,11 +117,18 @@ const decorateCase = <T extends { stage: string; destination: string | null; cli
     ? { ...c, missingRequiredFields: getMissingRequiredFields(c.client, { destination: c.destination }) }
     : c;
 
-export const listCases = async (page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string) => {
+export const listCases = async (
+  page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
+  destination?: string, city?: string,
+) => {
   const skip = (page - 1) * limit;
+  // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
+  // destination, city and free-text search can all narrow the result set at once.
   const where: Prisma.VisaCaseWhereInput = {};
   if (stage) where.stage = stage as any;
   if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
+  if (destination) where.destination = { contains: destination, mode: 'insensitive' };
+  if (city) where.city = { contains: city, mode: 'insensitive' };
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },
@@ -135,6 +142,28 @@ export const listCases = async (page = 1, limit = 20, stage?: string, search?: s
     prisma.visaCase.count({ where }),
   ]);
   return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
+};
+
+// Distinct, non-empty destination/city values across all cases — powers the filter dropdowns.
+export const getCaseFilterOptions = async () => {
+  const [destinations, cities] = await Promise.all([
+    prisma.visaCase.findMany({
+      where: { destination: { not: null } },
+      distinct: ['destination'],
+      select: { destination: true },
+      orderBy: { destination: 'asc' },
+    }),
+    prisma.visaCase.findMany({
+      where: { city: { not: null } },
+      distinct: ['city'],
+      select: { city: true },
+      orderBy: { city: 'asc' },
+    }),
+  ]);
+  return {
+    destinations: destinations.map(d => d.destination).filter((d): d is string => !!d?.trim()),
+    cities: cities.map(c => c.city).filter((c): c is string => !!c?.trim()),
+  };
 };
 
 export const getCaseById = async (id: string) => {
