@@ -9,6 +9,7 @@ jest.mock('../config/database', () => ({
     visaCase: {
       findMany: jest.fn(),
     },
+    $queryRaw: jest.fn(),
   },
 }));
 
@@ -28,7 +29,7 @@ const baseRow = (overrides: Partial<Parameters<typeof bulkImportClients>[0][numb
 describe('bulkImportClients', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (prisma.client.findFirst as jest.Mock).mockResolvedValue(null); // generateClientRef
+    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ max: null }]); // generateClientRef
     (prisma.client.create as jest.Mock).mockImplementation(({ data }: any) =>
       Promise.resolve({ id: 'new-id', clientRef: 'CL-100', ...data })
     );
