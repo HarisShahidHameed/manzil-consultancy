@@ -107,7 +107,9 @@ export const importClients = async (req: Request, res: Response): Promise<void> 
     for (let i = 0; i < rows.length; i++) {
       const result = importClientSchema.safeParse(rows[i]);
       if (result.success) {
-        validated.push(result.data);
+        // Schema guarantees at least one of the two is set; fall back to whichever is present.
+        const { firstName, lastName, ...restData } = result.data;
+        validated.push({ ...restData, firstName: firstName ?? lastName!, lastName });
       } else {
         parseErrors.push({ row: i + 1, message: Object.values(result.error.flatten().fieldErrors).flat().join(', ') });
       }

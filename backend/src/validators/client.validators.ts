@@ -50,6 +50,9 @@ export const importClientSchema = createClientSchema.extend({
   // auto-generating a new CL-NNN ref. See generateClientRef for the collision guard.
   clientRef: optionalText(30),
   phone: z.string().max(30).optional().transform(v => (v && v.trim().length >= 7 ? v.trim() : 'N/A')),
+  // Neither name is individually required on import — a row just needs at least
+  // one of them (see the refine below), unlike manual creation where both are mandatory.
+  firstName:      optionalText(100),
   lastName:       optionalText(100),
   gender:         z.enum(['MALE', 'FEMALE', 'OTHER']).optional().or(z.literal('')).transform(v => v || undefined),
   dob:            optionalDate(),
@@ -58,6 +61,9 @@ export const importClientSchema = createClientSchema.extend({
   passportExpiry: optionalDate(),
   nationality:    optionalText(100),
   destination:    optionalText(100),
+}).refine(data => !!(data.firstName || data.lastName), {
+  message: 'First Name or Last Name is required',
+  path: ['firstName'],
 });
 
 export const updateClientSchema = z.object({

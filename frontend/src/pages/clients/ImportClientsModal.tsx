@@ -101,12 +101,13 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   const ukVisaExpiry  = ukVisaExpiryRaw ? excelDateToISO(ukVisaExpiryRaw) : undefined;
 
   // Hard requirements — a row can't be imported at all without these.
-  if (!firstName)     errors.push('First Name missing');
+  if (!firstName && !lastName) errors.push('First Name or Last Name missing');
   if (!receivedDate)  errors.push('Received Date missing');
 
   // Required for file processing, but fine to import as-is — stays flagged "incomplete" until filled in.
-  if (!lastName)       warnings.push('Last Name');
-  if (!passportNumber) warnings.push('Passport Number');
+  if (!firstName)       warnings.push('First Name');
+  if (!lastName)        warnings.push('Last Name');
+  if (!passportNumber)  warnings.push('Passport Number');
   if (!nationality)    warnings.push('Nationality');
   if (!destination)    warnings.push('Destination');
   if (!dob)            warnings.push('DOB');
