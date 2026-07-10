@@ -202,11 +202,11 @@ export interface VisaCase {
   docHotelClientPaid?: number | string | null;
   paymentReceived?: number | string;
   client?: {
-    id: string; clientRef: string; firstName: string; lastName: string;
-    phone: string; email?: string; nationality: string; passportNumber: string;
-    dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null;
+    id: string; clientRef: string; firstName: string; lastName: string; gender?: Gender;
+    phone: string; email?: string; whatsapp?: string; nationality: string; passportNumber: string;
+    dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null; birthCity?: string;
     residentialAddress?: string; maritalStatus?: MaritalStatus;
-    previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string;
+    previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string; folderUrl?: string;
   };
   bookedBy?: { id: string; firstName: string; lastName: string };
   appointmentAssigned?: { id: string; firstName: string; lastName: string };

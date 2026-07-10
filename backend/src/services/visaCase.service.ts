@@ -20,11 +20,11 @@ const CASE_SELECT = {
   createdAt: true, updatedAt: true,
   client: {
     select: {
-      id: true, clientRef: true, firstName: true, lastName: true,
-      phone: true, email: true, nationality: true, passportNumber: true,
-      dob: true, passportIssue: true, passportExpiry: true,
+      id: true, clientRef: true, firstName: true, lastName: true, gender: true,
+      phone: true, email: true, whatsapp: true, nationality: true, passportNumber: true,
+      dob: true, passportIssue: true, passportExpiry: true, birthCity: true,
       residentialAddress: true, maritalStatus: true, previousSchengenVisa: true,
-      visaAndTravelHistory: true, registeredEmail: true,
+      visaAndTravelHistory: true, registeredEmail: true, folderUrl: true,
     },
   },
   bookedBy:           { select: { id: true, firstName: true, lastName: true } },

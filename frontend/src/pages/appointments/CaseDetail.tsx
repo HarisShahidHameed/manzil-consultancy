@@ -643,7 +643,13 @@ const CaseDetail: React.FC = () => {
                 ['Passport Issue', fmtDate(vc.client?.passportIssue)],
                 ['Passport Expiry', fmtDate(vc.client?.passportExpiry)],
                 ['Phone', vc.client?.phone ?? '—'],
+                ['WhatsApp', vc.client?.whatsapp ?? '—'],
+                ['Email', vc.client?.email ?? '—'],
                 ['Registered Email', vc.client?.registeredEmail ?? '—'],
+                ['Gender', vc.client?.gender ?? '—'],
+                ['Birth City', vc.client?.birthCity ?? '—'],
+                ['Marital Status', vc.client?.maritalStatus ?? '—'],
+                ['Address', vc.client?.residentialAddress ?? '—'],
                 ['Destination', `${vc.destination ?? '—'}${vc.city ? ` (${vc.city})` : ''}`],
                 ['Visa Type', vc.visaType ?? '—'],
                 ['Appointment Date', fmtDate(vc.appointmentDate)],
@@ -660,8 +666,22 @@ const CaseDetail: React.FC = () => {
                 </div>
               ))}
             </dl>
+            {vc.client?.previousSchengenVisa && (
+              <p className="mt-3 text-xs text-gray-500"><span className="text-gray-400">Previous Schengen visa:</span> {vc.client.previousSchengenVisa}</p>
+            )}
+            {vc.client?.visaAndTravelHistory && (
+              <p className="mt-1 text-xs text-gray-500"><span className="text-gray-400">Visa & travel history:</span> {vc.client.visaAndTravelHistory}</p>
+            )}
+            {vc.client?.folderUrl && (
+              <p className="mt-1 text-xs text-gray-500">
+                <span className="text-gray-400">Folder:</span>{' '}
+                <a href={vc.client.folderUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                  {vc.client.folderUrl}
+                </a>
+              </p>
+            )}
             {vc.appointmentNotes && (
-              <p className="mt-3 text-xs text-gray-500"><span className="text-gray-400">Appointment notes:</span> {vc.appointmentNotes}</p>
+              <p className="mt-1 text-xs text-gray-500"><span className="text-gray-400">Appointment notes:</span> {vc.appointmentNotes}</p>
             )}
           </div>
 
@@ -692,11 +712,11 @@ const CaseDetail: React.FC = () => {
             </div>
           </div>
 
-          {/* Client-level fields (marital status, address, travel history, etc.) live on the
-              client record itself — edited via the unified client form, not duplicated here. */}
+          {/* Client-level fields (marital status, address, travel history, etc.) are shown read-only
+              in the summary above — editing them still goes through the unified client form. */}
           <div className="flex items-center justify-between border border-gray-100 rounded-lg p-4 bg-gray-50/50">
             <p className="text-xs text-gray-500">
-              Marital status, address, email and travel history are managed on the client's own record.
+              Need to correct any client detail shown above?
             </p>
             <Can permissions={['clients:write']}>
               <Button size="sm" variant="outline" leftIcon={<UserCircle className="w-3.5 h-3.5" />} onClick={() => navigate(`/clients/${vc.client!.id}/edit`)}>
