@@ -496,7 +496,7 @@ const CaseDetail: React.FC = () => {
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
-            <label className="text-xs text-gray-500 flex items-center gap-1"><UserCircle className="w-3.5 h-3.5" /> Appointment Team Assignee</label>
+            <label className="text-xs text-gray-500">Appointment Team Assignee</label>
             <select
               className={`${inputCls} mt-1`}
               value={vc.appointmentAssignedToId ?? ''}
@@ -521,7 +521,7 @@ const CaseDetail: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-500 flex items-center gap-1"><UserCircle className="w-3.5 h-3.5" /> Booked By</label>
+            <label className="text-xs text-gray-500">Booked By</label>
             <select
               className={`${inputCls} mt-1`}
               value={vc.bookedById ?? ''}
@@ -732,7 +732,7 @@ const CaseDetail: React.FC = () => {
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs text-gray-500 flex items-center gap-1"><UserCircle className="w-3.5 h-3.5" /> File Team Assignee</label>
+              <label className="text-xs text-gray-500">File Team Assignee</label>
               <select
                 className={`${inputCls} mt-1`}
                 value={vc.fileAssignedToId ?? ''}
