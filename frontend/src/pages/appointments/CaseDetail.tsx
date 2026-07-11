@@ -52,6 +52,11 @@ const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-G
 const num = (v?: number | string | null) => (v != null && v !== '' ? parseFloat(String(v)) : 0);
 const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloat(String(v)) : undefined);
 
+// A case's destination is either decided (`destination`) or still a shortlist
+// (`destinationOptions`) awaiting finalization in File Processing.
+const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
+  vc.destination ?? (vc.destinationOptions?.length ? `${vc.destinationOptions.join(', ')} (undecided)` : '—');
+
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm';
@@ -357,7 +362,7 @@ const CaseDetail: React.FC = () => {
               </span>
             )}
           </div>
-          <p className="text-gray-500 text-sm mt-0.5">{vc.destination ?? '—'} · {vc.client?.phone}</p>
+          <p className="text-gray-500 text-sm mt-0.5">{destinationLabel(vc)} · {vc.client?.phone}</p>
         </div>
         {!isTerminal && (
           <div className="flex items-center gap-2">
@@ -538,7 +543,23 @@ const CaseDetail: React.FC = () => {
           </div>
           <div>
             <label className="text-xs text-gray-500">Destination</label>
-            <input className={`${inputCls} mt-1`} value={editFields.destination as string ?? ''} onChange={setEF('destination')} placeholder="e.g. Netherlands" />
+            {vc.destinationOptions?.length ? (
+              <>
+                <select
+                  className={`${inputCls} mt-1`}
+                  value={editFields.destination as string ?? vc.destination ?? ''}
+                  onChange={setEF('destination')}
+                >
+                  <option value="" disabled>Not yet decided</option>
+                  {vc.destinationOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Shortlisted: {vc.destinationOptions.join(', ')} — edit the shortlist via Edit Client Info.
+                </p>
+              </>
+            ) : (
+              <input className={`${inputCls} mt-1`} value={editFields.destination as string ?? ''} onChange={setEF('destination')} placeholder="e.g. Netherlands" />
+            )}
           </div>
           <div>
             <label className="text-xs text-gray-500">Appointment Date</label>
@@ -650,7 +671,7 @@ const CaseDetail: React.FC = () => {
                 ['Birth City', vc.client?.birthCity ?? '—'],
                 ['Marital Status', vc.client?.maritalStatus ?? '—'],
                 ['Address', vc.client?.residentialAddress ?? '—'],
-                ['Destination', `${vc.destination ?? '—'}${vc.city ? ` (${vc.city})` : ''}`],
+                ['Destination', `${destinationLabel(vc)}${vc.city ? ` (${vc.city})` : ''}`],
                 ['Visa Type', vc.visaType ?? '—'],
                 ['Appointment Date', fmtDate(vc.appointmentDate)],
                 ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
@@ -686,6 +707,28 @@ const CaseDetail: React.FC = () => {
           </div>
 
           <fieldset disabled={locked} className="space-y-4">
+
+          {vc.destinationOptions && vc.destinationOptions.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  {vc.destination ? `Finalized destination: ${vc.destination}` : 'Destination not yet finalized'}
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {vc.destinationOptions.join(', ')}</p>
+              </div>
+              {!vc.destination && (
+                <select
+                  className={`${inputCls} max-w-[220px]`}
+                  disabled={patchMut.isPending}
+                  value=""
+                  onChange={e => e.target.value && patchMut.mutate({ patch: { destination: e.target.value }, msg: 'Destination finalized' })}
+                >
+                  <option value="" disabled>Finalize destination…</option>
+                  {vc.destinationOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div>

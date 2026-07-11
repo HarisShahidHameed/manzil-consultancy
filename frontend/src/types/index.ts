@@ -155,6 +155,9 @@ export interface VisaCase {
   id: string;
   clientId: string;
   destination: string | null;
+  // Candidate countries picked at Appointment stage when not yet decided — non-empty
+  // only until File Processing finalizes down to a single `destination`.
+  destinationOptions?: string[];
   city?: string;
   visaType?: string;
   ukVisaExpiry?: string;

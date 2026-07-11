@@ -9,6 +9,8 @@ import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { MultiCombobox } from '../../components/ui/MultiCombobox';
+import { DESTINATION_OPTIONS } from '../../constants/options';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
@@ -25,6 +27,10 @@ const PRI_COLORS: Record<Priority, string> = {
 };
 
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+
+// A case's destination is either decided or, before File Processing finalizes it, a shortlist.
+const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
+  vc.destination ?? (vc.destinationOptions?.length ? `${vc.destinationOptions.join(', ')} (undecided)` : '—');
 
 const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({ label, value }) => (
   <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
@@ -45,7 +51,7 @@ const ClientDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [caseForm, setCaseForm] = useState({ destination: '', city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
+  const [caseForm, setCaseForm] = useState({ destinations: [] as string[], city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
 
   const { data, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -57,15 +63,20 @@ const ClientDetail: React.FC = () => {
 
   const addCaseMut = useMutation({
     mutationFn: () => addCase(id!, {
-      ...caseForm,
-      ukVisaExpiry: caseForm.ukVisaExpiry || undefined,
       city: caseForm.city || undefined,
       visaType: caseForm.visaType || undefined,
+      ukVisaExpiry: caseForm.ukVisaExpiry || undefined,
+      priority: caseForm.priority,
+      // A single pick is the decided destination directly; more than one is a
+      // shortlist File Processing finalizes down to one later.
+      ...(caseForm.destinations.length > 1
+        ? { destinationOptions: caseForm.destinations }
+        : { destination: caseForm.destinations[0] }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client', id] });
       setAddCaseOpen(false);
-      setCaseForm({ destination: '', city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' });
+      setCaseForm({ destinations: [], city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' });
       showSuccess('Case added');
     },
     onError: (e: AxiosError<{ message: string }>) =>
@@ -205,7 +216,7 @@ const ClientDetail: React.FC = () => {
             {client.visaCases.map((vc: VisaCase) => (
               <div key={vc.id} className="border border-gray-200 rounded-lg p-4 space-y-2 hover:border-indigo-300 transition-colors">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-900">{vc.destination}</span>
+                  <span className="font-semibold text-gray-900">{destinationLabel(vc)}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[vc.stage]}`}>
                     {vc.stage.replace('_', ' ')}
                   </span>
@@ -245,7 +256,19 @@ const ClientDetail: React.FC = () => {
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-gray-700">Destination <span className="text-red-500">*</span></label>
-            <input className={`${inputCls} mt-1`} value={caseForm.destination} onChange={e => setCaseForm(f => ({ ...f, destination: e.target.value }))} placeholder="Netherlands" />
+            <div className="mt-1">
+              <MultiCombobox
+                values={caseForm.destinations}
+                onChange={v => setCaseForm(f => ({ ...f, destinations: v }))}
+                options={DESTINATION_OPTIONS}
+                placeholder="Select destination(s)"
+              />
+            </div>
+            {caseForm.destinations.length > 1 && (
+              <p className="text-xs text-amber-600 mt-1">
+                Multiple destinations shortlisted — a single one is finalized later in File Processing.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

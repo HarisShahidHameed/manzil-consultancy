@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
-export const createClientSchema = z.object({
+// A case's destination is either a single decided country (`destination`) or, when the
+// client hasn't chosen yet, a shortlist of candidates (`destinationOptions`) — File
+// Processing finalizes down to one. Exactly one of the two must be given.
+const destinationFields = {
+  destination:        z.string().min(1).max(100).trim().optional(),
+  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+};
+const requireDestination = <T extends { destination?: string; destinationOptions?: string[] }>(data: T) =>
+  !!data.destination || (data.destinationOptions?.length ?? 0) > 0;
+
+const createClientObjectSchema = z.object({
   receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
   firstName:    z.string().min(1).max(100).trim(),
   lastName:     z.string().min(1).max(100).trim(),
@@ -27,7 +37,7 @@ export const createClientSchema = z.object({
   assignedToId: z.string().uuid().optional(),
   groupId:    z.string().uuid().optional(),
   // First visa case
-  destination:  z.string().min(1).max(100).trim(),
+  ...destinationFields,
   city:         z.string().max(100).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
@@ -35,6 +45,9 @@ export const createClientSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
+});
+export const createClientSchema = createClientObjectSchema.refine(requireDestination, {
+  message: 'Destination (or destination options) is required', path: ['destination'],
 });
 
 // Bulk import accepts incomplete records — anything not on file yet is left blank
@@ -45,7 +58,7 @@ const optionalText = (max: number) =>
 const optionalDate = () =>
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format').optional().or(z.literal('')).transform(v => v || undefined);
 
-export const importClientSchema = createClientSchema.extend({
+export const importClientSchema = createClientObjectSchema.extend({
   // Carried over as-is from the source file's "#" column when present, instead of
   // auto-generating a new CL-NNN ref. See generateClientRef for the collision guard.
   clientRef: optionalText(30),
@@ -119,7 +132,7 @@ export const groupMembersSchema = z.object({
 });
 
 export const createCaseSchema = z.object({
-  destination:  z.string().min(1).max(100).trim(),
+  ...destinationFields,
   city:         z.string().max(100).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
@@ -127,7 +140,7 @@ export const createCaseSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
-});
+}).refine(requireDestination, { message: 'Destination (or destination options) is required', path: ['destination'] });
 
 // Assignee fields: a uuid to assign, or '' / null from the "— Unassigned —" option to
 // explicitly clear it. Plain .optional() alone can't express "clear" — an absent key
@@ -136,7 +149,8 @@ const clearableAssignee = () =>
   z.string().uuid().nullable().optional().or(z.literal('').transform(() => null));
 
 export const updateCaseSchema = z.object({
-  destination:  z.string().min(1).max(100).optional(),
+  destination:        z.string().min(1).max(100).optional(),
+  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
   city:         z.string().max(100).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().optional(),

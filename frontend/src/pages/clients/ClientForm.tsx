@@ -9,6 +9,7 @@ import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Combobox } from '../../components/ui/Combobox';
+import { MultiCombobox } from '../../components/ui/MultiCombobox';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -42,7 +43,7 @@ const emptyForm = {
   previousSchengenVisa: '', registeredEmail: '',
   eVisa: false,
   visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
-  destination: '', city: '', visaType: '', ukVisaExpiry: '',
+  destinations: [] as string[], city: '', visaType: '', ukVisaExpiry: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
 };
@@ -90,7 +91,9 @@ const ClientForm: React.FC = () => {
       visaAndTravelHistory: client.visaAndTravelHistory ?? '',
       source: client.source ?? '', referredBy: client.referredBy ?? '',
       hrComments: client.hrComments ?? '', folderUrl: client.folderUrl ?? '',
-      destination: targetCase?.destination ?? '',
+      destinations: targetCase?.destinationOptions?.length
+        ? targetCase.destinationOptions
+        : (targetCase?.destination ? [targetCase.destination] : []),
       city: targetCase?.city ?? '',
       visaType: targetCase?.visaType ?? '',
       ukVisaExpiry: targetCase?.ukVisaExpiry?.split('T')[0] ?? '',
@@ -123,14 +126,20 @@ const ClientForm: React.FC = () => {
         residentialAddress:   form.residentialAddress  || undefined,
         groupId:              form.groupId             || undefined,
       };
-      delete clientPayload.destination; delete clientPayload.city; delete clientPayload.visaType;
+      delete clientPayload.destinations; delete clientPayload.city; delete clientPayload.visaType;
       delete clientPayload.ukVisaExpiry; delete clientPayload.priority; delete clientPayload.advance;
       delete clientPayload.charges; delete clientPayload.discount;
+
+      // A single pick sets the decided destination directly; more than one leaves it
+      // as a shortlist for File Processing to finalize down to one later.
+      const destinationFields = form.destinations.length > 1
+        ? { destination: undefined, destinationOptions: form.destinations }
+        : { destination: form.destinations[0], destinationOptions: undefined };
 
       if (!isEdit) {
         return createClient({
           ...clientPayload,
-          destination:  form.destination,
+          ...destinationFields,
           city:         form.city         || undefined,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
@@ -144,7 +153,7 @@ const ClientForm: React.FC = () => {
       const clientResp = await updateClient(id!, clientPayload);
       if (targetCase) {
         await updateCase(targetCase.id, {
-          destination:  form.destination  || undefined,
+          ...destinationFields,
           city:         form.city         || undefined,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
@@ -299,12 +308,17 @@ const ClientForm: React.FC = () => {
         <Section title="Visa Application">
           <div className="grid grid-cols-2 gap-4">
             <Field label="Destination Country" required error={fieldErrors.destination}>
-              <Combobox
-                value={form.destination}
-                onChange={v => setForm(f => ({ ...f, destination: v }))}
+              <MultiCombobox
+                values={form.destinations}
+                onChange={v => setForm(f => ({ ...f, destinations: v }))}
                 options={DESTINATION_OPTIONS}
-                placeholder="Select destination"
+                placeholder="Select destination(s)"
               />
+              {form.destinations.length > 1 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Multiple destinations shortlisted — a single one is finalized later in File Processing.
+                </p>
+              )}
             </Field>
             <Field label="Appointment City">
               <Combobox

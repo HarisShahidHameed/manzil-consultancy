@@ -2,8 +2,20 @@ import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 
+// A case is created with either a single decided `destination` or a shortlist of
+// `destinationOptions` when it isn't decided yet. A single-entry shortlist has no real
+// ambiguity, so it's collapsed straight to `destination` — `destinationOptions` only stays
+// populated (for the File Processing "finalize" step) when there's genuinely more than one.
+const resolveDestination = (data: { destination?: string; destinationOptions?: string[] }) => {
+  const options = data.destinationOptions?.map(d => d.trim()).filter(Boolean) ?? [];
+  if (options.length <= 1) {
+    return { destination: data.destination ?? options[0], destinationOptions: [] as string[] };
+  }
+  return { destination: data.destination, destinationOptions: options };
+};
+
 const CASE_SELECT = {
-  id: true, clientId: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
+  id: true, clientId: true, destination: true, destinationOptions: true, city: true, visaType: true, ukVisaExpiry: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
   advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
@@ -67,7 +79,7 @@ export const assertTransitionAllowed = (
   next: CaseStageName,
   caseRecord: {
     advancePaid: boolean; onHold: boolean; invoices: { status: string }[];
-    destination: string | null;
+    destination: string | null; destinationOptions?: string[];
     appointmentDate: Date | null;
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
@@ -93,7 +105,7 @@ export const assertTransitionAllowed = (
   // Gate 1: before the appointment team hands a case over to file processing,
   // the client's required info must be complete and the appointment booked.
   if (current === 'APPOINTMENT' && next === 'FILE_PROCESSING') {
-    const missingFields = getMissingRequiredFields(caseRecord.client, { destination: caseRecord.destination });
+    const missingFields = getMissingRequiredFields(caseRecord.client, { destination: caseRecord.destination, destinationOptions: caseRecord.destinationOptions });
     if (missingFields.length > 0) {
       const e = new Error('CLIENT_INFO_INCOMPLETE') as Error & { missingFields: CaseRequiredField[] };
       e.missingFields = missingFields;
@@ -102,7 +114,15 @@ export const assertTransitionAllowed = (
     if (!caseRecord.appointmentDate) throw new Error('APPOINTMENT_NOT_BOOKED');
   }
 
-  // Gate 2: all invoices must be marked Paid before completing (payment handled manually)
+  // Gate 2: a shortlisted-but-undecided destination must be finalized to a single
+  // country before file processing can move on to invoicing.
+  if (current === 'FILE_PROCESSING' && next === 'INVOICED') {
+    if ((caseRecord.destinationOptions?.length ?? 0) > 0 && !caseRecord.destination) {
+      throw new Error('DESTINATION_NOT_FINALIZED');
+    }
+  }
+
+  // Gate 3: all invoices must be marked Paid before completing (payment handled manually)
   if (current === 'INVOICED' && next === 'COMPLETED') {
     const hasUnpaid = caseRecord.invoices.some(i => i.status !== 'PAID');
     if (hasUnpaid) throw new Error('DUES_PENDING');
@@ -110,11 +130,11 @@ export const assertTransitionAllowed = (
 };
 
 // Flags Appointment-stage cases with what's left to fill in before they can move to file processing.
-const decorateCase = <T extends { stage: string; destination: string | null; client: Parameters<typeof getMissingRequiredFields>[0] }>(
+const decorateCase = <T extends { stage: string; destination: string | null; destinationOptions?: string[]; client: Parameters<typeof getMissingRequiredFields>[0] }>(
   c: T
 ): T & { missingRequiredFields?: CaseRequiredField[] } =>
   c.stage === 'APPOINTMENT'
-    ? { ...c, missingRequiredFields: getMissingRequiredFields(c.client, { destination: c.destination }) }
+    ? { ...c, missingRequiredFields: getMissingRequiredFields(c.client, { destination: c.destination, destinationOptions: c.destinationOptions }) }
     : c;
 
 export const listCases = async (
@@ -152,18 +172,19 @@ export const getCaseById = async (id: string) => {
 export const createCase = async (
   clientId: string,
   data: {
-    destination: string; city?: string; visaType?: string; ukVisaExpiry?: string;
+    destination?: string; destinationOptions?: string[]; city?: string; visaType?: string; ukVisaExpiry?: string;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
   const advancePaid = (data.advance ?? 0) > 0;
+  const { destination, destinationOptions } = resolveDestination(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
   return prisma.visaCase.create({
     data: {
       clientId,
       appointmentStatus: 'WAITING',
-      destination: data.destination,
+      destination, destinationOptions,
       city:        data.city,
       visaType:    data.visaType,
       ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
@@ -179,12 +200,13 @@ export const createCase = async (
 };
 
 export const updateCase = async (id: string, data: Record<string, any>) => {
-  // If a stage change is requested, enforce the workflow rules first.
-  if (data.stage) {
+  // If a stage change or destination finalization is requested, enforce workflow rules first.
+  if (data.stage || data.destination !== undefined) {
     const existing = await prisma.visaCase.findUnique({
       where: { id },
       select: {
-        stage: true, advancePaid: true, onHold: true, destination: true, appointmentDate: true,
+        stage: true, advancePaid: true, onHold: true, destination: true, destinationOptions: true,
+        appointmentDate: true,
         invoices: { select: { status: true } },
         client: {
           select: {
@@ -197,7 +219,14 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (!existing) {
       const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
     }
-    assertTransitionAllowed(existing.stage as CaseStageName, data.stage as CaseStageName, existing);
+    // Finalizing the destination must land on one of the shortlisted candidates.
+    if (data.destination !== undefined && existing.destinationOptions.length > 0
+        && !existing.destinationOptions.includes(data.destination)) {
+      throw new Error('DESTINATION_NOT_SHORTLISTED');
+    }
+    if (data.stage) {
+      assertTransitionAllowed(existing.stage as CaseStageName, data.stage as CaseStageName, existing);
+    }
   }
 
   const d: any = { ...data };

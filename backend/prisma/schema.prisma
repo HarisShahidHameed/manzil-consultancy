@@ -230,6 +230,10 @@ model VisaCase {
   id                      String         @id @default(uuid())
   clientId                String
   destination             String?
+  // Candidate destination countries picked at Appointment stage when the client hasn't
+  // decided yet — File Processing finalizes down to a single `destination` from this list.
+  // Empty for the common single-destination case (destination is set directly).
+  destinationOptions      String[]       @default([])
   city                    String?
   visaType                String?
   ukVisaExpiry            DateTime?

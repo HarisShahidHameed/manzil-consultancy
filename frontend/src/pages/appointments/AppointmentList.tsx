@@ -23,6 +23,10 @@ const PRI_COLORS: Record<Priority, string> = {
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
+// A case's destination is either decided or, before File Processing finalizes it, a shortlist.
+const destinationLabel = (c: { destination: string | null; destinationOptions?: string[] }) =>
+  c.destination ?? (c.destinationOptions?.length ? `${c.destinationOptions.join(', ')} (undecided)` : '—');
+
 const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'bg-amber-100 text-amber-700',
   ASSIGNED:   'bg-blue-100 text-blue-700',
@@ -172,7 +176,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       <p className="text-xs font-bold text-indigo-600">{c.client?.clientRef}</p>
                       <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{c.destination ?? '—'}{c.city ? ` (${c.city})` : ''}</td>
+                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}{c.city ? ` (${c.city})` : ''}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
                         {c.priority}

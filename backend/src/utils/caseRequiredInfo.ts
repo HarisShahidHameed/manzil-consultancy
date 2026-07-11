@@ -18,6 +18,7 @@ interface RequiredClientFields {
 
 interface RequiredCaseFields {
   destination: string | null;
+  destinationOptions?: string[];
 }
 
 export const getMissingRequiredFields = (
@@ -30,6 +31,8 @@ export const getMissingRequiredFields = (
   if (!client.dob) missing.push('dob');
   if (!client.passportIssue) missing.push('passportIssue');
   if (!client.passportExpiry) missing.push('passportExpiry');
-  if (!caseRecord.destination) missing.push('destination');
+  // A shortlisted-but-undecided destination is fine going into File Processing —
+  // that's exactly where it gets finalized (see the FILE_PROCESSING>INVOICED gate).
+  if (!caseRecord.destination && !caseRecord.destinationOptions?.length) missing.push('destination');
   return missing;
 };

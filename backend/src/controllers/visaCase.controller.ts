@@ -41,6 +41,8 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move to File Processing.' },
   APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case to File Processing.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
+  DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },
+  DESTINATION_NOT_SHORTLISTED: { status: 422, message: 'The finalized destination must be one of the shortlisted options.' },
 };
 
 export const updateCase = async (req: Request, res: Response): Promise<void> => {

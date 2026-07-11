@@ -15,7 +15,7 @@ const CLIENT_SELECT = {
   group: { select: { id: true, groupRef: true, name: true, relation: true } },
   visaCases: {
     select: {
-      id: true, destination: true, city: true, visaType: true, stage: true, priority: true,
+      id: true, destination: true, destinationOptions: true, city: true, visaType: true, stage: true, priority: true,
       appointmentDate: true, advance: true, charges: true, discount: true,
       createdAt: true, updatedAt: true,
     },
@@ -36,7 +36,7 @@ const CLIENT_DETAIL_SELECT = {
   group: { select: { id: true, groupRef: true, name: true, relation: true } },
   visaCases: {
     select: {
-      id: true, destination: true, city: true, visaType: true, ukVisaExpiry: true,
+      id: true, destination: true, destinationOptions: true, city: true, visaType: true, ukVisaExpiry: true,
       stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
@@ -61,13 +61,13 @@ const decorateClient = <
   T extends {
     passportNumber: string | null; nationality: string | null; dob: Date | null;
     passportIssue: Date | null; passportExpiry: Date | null;
-    visaCases: Array<{ stage: string; destination: string | null } & Record<string, unknown>>;
+    visaCases: Array<{ stage: string; destination: string | null; destinationOptions?: string[] } & Record<string, unknown>>;
   }
 >(client: T) => ({
   ...client,
   visaCases: client.visaCases.map(vc =>
     vc.stage === 'APPOINTMENT'
-      ? { ...vc, missingRequiredFields: getMissingRequiredFields(client, { destination: vc.destination }) as CaseRequiredField[] }
+      ? { ...vc, missingRequiredFields: getMissingRequiredFields(client, { destination: vc.destination, destinationOptions: vc.destinationOptions }) as CaseRequiredField[] }
       : vc
   ),
 });
@@ -86,6 +86,16 @@ export const generateClientRef = async (): Promise<string> => {
   return `CL-${num}`;
 };
 
+// Mirrors visaCase.service's resolveDestination — a single-entry shortlist collapses
+// straight to `destination`; only a genuine multi-country shortlist stays as options.
+const resolveDestination = (data: { destination?: string; destinationOptions?: string[] }) => {
+  const options = data.destinationOptions?.map(d => d.trim()).filter(Boolean) ?? [];
+  if (options.length <= 1) {
+    return { destination: data.destination ?? options[0], destinationOptions: [] as string[] };
+  }
+  return { destination: data.destination, destinationOptions: options };
+};
+
 export const createClient = async (data: {
   clientRef?: string;
   receivedDate: string; firstName: string; lastName?: string;
@@ -98,14 +108,16 @@ export const createClient = async (data: {
   eVisa?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
-  destination?: string; city?: string; visaType?: string; ukVisaExpiry?: string;
+  destination?: string; destinationOptions?: string[]; city?: string; visaType?: string; ukVisaExpiry?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
   const clientRef = data.clientRef?.trim() || await generateClientRef();
+  const { destination, destinationOptions } = resolveDestination(data);
   const {
-    destination, city, visaType, ukVisaExpiry, priority,
-    advance, charges, discount, createdById, clientRef: _clientRef, ...rest
+    city, visaType, ukVisaExpiry, priority,
+    advance, charges, discount, createdById, clientRef: _clientRef,
+    destination: _destination, destinationOptions: _destinationOptions, ...rest
   } = data;
 
   return prisma.client.create({
@@ -122,7 +134,7 @@ export const createClient = async (data: {
       visaCases: {
         create: {
           appointmentStatus: 'WAITING',
-          destination,
+          destination, destinationOptions,
           city,
           visaType,
           ukVisaExpiry: ukVisaExpiry ? new Date(ukVisaExpiry) : undefined,
