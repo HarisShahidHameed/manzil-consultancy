@@ -598,7 +598,7 @@ const CaseDetail: React.FC = () => {
             <input className={`${inputCls} mt-1`} value={editFields.fraNo as string ?? ''} onChange={setEF('fraNo')} />
           </div>
           <div>
-            <label className="text-xs text-gray-500">TLS Account</label>
+            <label className="text-xs text-gray-500">VSF/TLS Account</label>
             <input className={`${inputCls} mt-1`} value={editFields.tlsAccount as string ?? ''} onChange={setEF('tlsAccount')} />
           </div>
         </div>
