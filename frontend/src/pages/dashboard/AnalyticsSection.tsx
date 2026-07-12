@@ -59,11 +59,11 @@ export const AnalyticsSection: React.FC = () => {
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap items-end gap-3">
         <Input
-          label="From" type="date" value={draft.dateFrom ?? ''}
+          label="From" type="date" min="1900-01-01" max="2099-12-31" value={draft.dateFrom ?? ''}
           onChange={e => setDraft(d => ({ ...d, dateFrom: e.target.value || undefined }))}
         />
         <Input
-          label="To" type="date" value={draft.dateTo ?? ''}
+          label="To" type="date" min="1900-01-01" max="2099-12-31" value={draft.dateTo ?? ''}
           onChange={e => setDraft(d => ({ ...d, dateTo: e.target.value || undefined }))}
         />
         <div className="flex flex-col gap-1">

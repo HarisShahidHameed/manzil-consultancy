@@ -316,7 +316,7 @@ const InvoiceList: React.FC = () => {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Due Date</label>
-            <input type="date" className={`${inputCls} mt-1`} value={newForm.dueDate} onChange={e => setNewForm(f => ({ ...f, dueDate: e.target.value }))} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={newForm.dueDate} onChange={e => setNewForm(f => ({ ...f, dueDate: e.target.value }))} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Notes</label>
@@ -364,7 +364,7 @@ const InvoiceList: React.FC = () => {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Due Date</label>
-            <input type="date" className={`${inputCls} mt-1`} value={editForm.dueDate} onChange={e => setEditForm(f => ({ ...f, dueDate: e.target.value }))} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editForm.dueDate} onChange={e => setEditForm(f => ({ ...f, dueDate: e.target.value }))} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Notes</label>

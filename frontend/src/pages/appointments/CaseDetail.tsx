@@ -591,7 +591,7 @@ const CaseDetail: React.FC = () => {
           </div>
           <div>
             <label className="text-xs text-gray-500">Appointment Date</label>
-            <input type="date" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
           </div>
           <div>
             <label className="text-xs text-gray-500">FRA No.</label>
@@ -797,11 +797,11 @@ const CaseDetail: React.FC = () => {
             </div>
             <div>
               <label className="text-xs text-gray-500">Travel Date</label>
-              <input type="date" className={`${inputCls} mt-1`} value={editFields.travelDate as string ?? ''} onChange={setEF('travelDate')} />
+              <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.travelDate as string ?? ''} onChange={setEF('travelDate')} />
             </div>
             <div>
               <label className="text-xs text-gray-500">Hotel Date</label>
-              <input type="date" className={`${inputCls} mt-1`} value={editFields.hotelDate as string ?? ''} onChange={setEF('hotelDate')} />
+              <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.hotelDate as string ?? ''} onChange={setEF('hotelDate')} />
             </div>
           </div>
 
@@ -1047,7 +1047,7 @@ const CaseDetail: React.FC = () => {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Due Date</label>
-            <input type="date" className={`${inputCls} mt-1`} value={invoiceForm.dueDate} onChange={e => setInvoiceForm(f => ({ ...f, dueDate: e.target.value }))} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={invoiceForm.dueDate} onChange={e => setInvoiceForm(f => ({ ...f, dueDate: e.target.value }))} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Notes</label>

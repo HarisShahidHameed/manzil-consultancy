@@ -309,7 +309,7 @@ const ClientDetail: React.FC = () => {
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">UK Visa Expiry</label>
-            <input type="date" className={`${inputCls} mt-1`} value={caseForm.ukVisaExpiry} onChange={e => setCaseForm(f => ({ ...f, ukVisaExpiry: e.target.value }))} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={caseForm.ukVisaExpiry} onChange={e => setCaseForm(f => ({ ...f, ukVisaExpiry: e.target.value }))} />
           </div>
         </div>
       </Modal>

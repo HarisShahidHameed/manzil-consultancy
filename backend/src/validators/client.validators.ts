@@ -175,7 +175,7 @@ export const updateCaseSchema = z.object({
   city:               z.string().max(100).optional(),
   cityOptions:        z.array(z.string().min(1).max(100).trim()).max(10).optional(),
   visaType:     z.string().max(100).optional(),
-  ukVisaExpiry: z.string().optional(),
+  ukVisaExpiry: optionalDate(),
   stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   advance:      z.number().nonnegative().optional(),
@@ -188,7 +188,7 @@ export const updateCaseSchema = z.object({
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
   appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
-  appointmentDate:         z.string().optional(),
+  appointmentDate:         optionalDate(),
   bookedById:              clearableAssignee(),
   appointmentAssignedToId: clearableAssignee(),
   fileAssignedToId:        clearableAssignee(),
@@ -196,8 +196,8 @@ export const updateCaseSchema = z.object({
   tlsAccount:      z.string().max(100).optional(),
   appointmentNotes: z.string().optional(),
   // Stage 3
-  travelDate:    z.string().optional(),
-  hotelDate:     z.string().optional(),
+  travelDate:    optionalDate(),
+  hotelDate:     optionalDate(),
   salamComments: z.string().optional(),
   hrComments:    z.string().optional(),
   docAppointment: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
@@ -223,7 +223,7 @@ export const updateCaseSchema = z.object({
 
 export const createInvoiceSchema = z.object({
   caseId:   z.string().uuid(),
-  dueDate:  z.string().optional(),
+  dueDate:  optionalDate(),
   charges:  z.number().nonnegative(),
   discount: z.number().nonnegative().default(0),
   advance:  z.number().nonnegative().default(0),
@@ -231,7 +231,7 @@ export const createInvoiceSchema = z.object({
 });
 
 export const updateInvoiceSchema = z.object({
-  dueDate:    z.string().optional(),
+  dueDate:    optionalDate(),
   charges:    z.number().nonnegative().optional(),
   discount:   z.number().nonnegative().optional(),
   advance:    z.number().nonnegative().optional(),
