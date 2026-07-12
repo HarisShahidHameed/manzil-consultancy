@@ -223,9 +223,10 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     </td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">
-                      {c.appointmentAssigned
-                        ? `${c.appointmentAssigned.firstName} ${c.appointmentAssigned.lastName}`
-                        : '—'}
+                      {(() => {
+                        const assignee = c.stage === 'FILE_PROCESSING' ? c.fileAssigned : c.appointmentAssigned;
+                        return assignee ? `${assignee.firstName} ${assignee.lastName}` : '—';
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                       <Button variant="outline" size="sm" onClick={() => navigate(`/cases/${c.id}`)}>
