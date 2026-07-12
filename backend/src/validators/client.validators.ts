@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Restricts the year to 1900-2099 (rather than any 4 digits) so a mistyped date like
+// "20002222-02-02" — a real bug where a date-picker's year segment accepted an
+// unbounded number of digits — fails validation instead of quietly truncating.
+const DATE_REGEX = /^(19|20)\d{2}-\d{2}-\d{2}$/;
+const DATE_FORMAT_MSG = 'Use YYYY-MM-DD format (year between 1900-2099)';
+
 // A case's destination is either a single decided country (`destination`) or, when the
 // client hasn't chosen yet, a shortlist of candidates (`destinationOptions`) — File
 // Processing finalizes down to one. Exactly one of the two must be given.
@@ -18,11 +24,11 @@ const cityFields = {
 };
 
 const createClientObjectSchema = z.object({
-  receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  receivedDate: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
   firstName:    z.string().min(1).max(100).trim(),
   lastName:     z.string().min(1).max(100).trim(),
   gender:       z.enum(['MALE', 'FEMALE', 'OTHER']),
-  dob:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  dob:          z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
   phone:        z.string().min(7).max(30).trim(),
   email:        z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   whatsapp:     z.string().max(30).optional(),
@@ -32,8 +38,8 @@ const createClientObjectSchema = z.object({
   addressPostalCode: z.string().max(20).optional(),
   addressCountry:    z.string().max(100).optional(),
   passportNumber: z.string().min(3).max(30).trim(),
-  passportIssue:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
-  passportExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
+  passportIssue:  z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
+  passportExpiry: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
   birthCity:      z.string().max(100).optional(),
   nationality:    z.string().min(1).max(100).trim(),
   maritalStatus:  z.enum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED']).optional(),
@@ -51,7 +57,7 @@ const createClientObjectSchema = z.object({
   ...destinationFields,
   ...cityFields,
   visaType:     z.string().max(100).optional(),
-  ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
+  ukVisaExpiry: z.string().regex(DATE_REGEX).optional().or(z.literal('')).transform(v => v || undefined),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
@@ -67,7 +73,7 @@ export const createClientSchema = createClientObjectSchema.refine(requireDestina
 const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
 const optionalDate = () =>
-  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format').optional().or(z.literal('')).transform(v => v || undefined);
+  z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).optional().or(z.literal('')).transform(v => v || undefined);
 
 export const importClientSchema = createClientObjectSchema.extend({
   // Carried over as-is from the source file's "#" column when present, instead of
@@ -91,11 +97,11 @@ export const importClientSchema = createClientObjectSchema.extend({
 });
 
 export const updateClientSchema = z.object({
-  receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  receivedDate: z.string().regex(DATE_REGEX).optional(),
   firstName:    z.string().min(1).max(100).trim().optional(),
   lastName:     z.string().min(1).max(100).trim().optional(),
   gender:       z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-  dob:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dob:          z.string().regex(DATE_REGEX).optional(),
   phone:        z.string().min(7).max(30).trim().optional(),
   email:        z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
   whatsapp:     z.string().max(30).optional(),
@@ -105,8 +111,8 @@ export const updateClientSchema = z.object({
   addressPostalCode: z.string().max(20).optional(),
   addressCountry:    z.string().max(100).optional(),
   passportNumber: z.string().min(3).max(30).trim().optional(),
-  passportIssue:  z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  passportExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  passportIssue:  z.string().regex(DATE_REGEX).optional(),
+  passportExpiry: z.string().regex(DATE_REGEX).optional(),
   birthCity:      z.string().max(100).optional(),
   nationality:    z.string().min(1).max(100).trim().optional(),
   maritalStatus:  z.enum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED']).optional(),
@@ -150,7 +156,7 @@ export const createCaseSchema = z.object({
   ...destinationFields,
   ...cityFields,
   visaType:     z.string().max(100).optional(),
-  ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
+  ukVisaExpiry: z.string().regex(DATE_REGEX).optional().or(z.literal('')).transform(v => v || undefined),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),

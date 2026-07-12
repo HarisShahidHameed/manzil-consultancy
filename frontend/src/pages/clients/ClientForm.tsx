@@ -250,7 +250,7 @@ const ClientForm: React.FC = () => {
             </select>
           </Field>
           <Field label="Date of Birth" required error={fieldErrors.dob}>
-            <input type="date" className={inputCls} value={form.dob} onChange={set('dob')} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.dob} onChange={set('dob')} />
           </Field>
           <Field label="Nationality" required error={fieldErrors.nationality}>
             <input className={inputCls} value={form.nationality} onChange={set('nationality')} placeholder="Pakistani" />
@@ -313,10 +313,10 @@ const ClientForm: React.FC = () => {
             <input className={inputCls} value={form.passportNumber} onChange={set('passportNumber')} placeholder="AB1234567" />
           </Field>
           <Field label="Issue Date" required error={fieldErrors.passportIssue}>
-            <input type="date" className={inputCls} value={form.passportIssue} onChange={set('passportIssue')} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportIssue} onChange={set('passportIssue')} />
           </Field>
           <Field label="Expiry Date" required error={fieldErrors.passportExpiry}>
-            <input type="date" className={inputCls} value={form.passportExpiry} onChange={set('passportExpiry')} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportExpiry} onChange={set('passportExpiry')} />
           </Field>
         </div>
         <div className="flex gap-6">
@@ -368,7 +368,7 @@ const ClientForm: React.FC = () => {
               <input className={inputCls} value={form.visaType} onChange={set('visaType')} placeholder="Tourist / Work / Study" />
             </Field>
             <Field label="UK Visa Expiry">
-              <input type="date" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
+              <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
             </Field>
             <Field label="Priority">
               <select className={inputCls} value={form.priority} onChange={set('priority')}>
@@ -404,7 +404,7 @@ const ClientForm: React.FC = () => {
       <Section title="Administrative">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Received Date" required>
-            <input type="date" className={inputCls} value={form.receivedDate} onChange={set('receivedDate')} />
+            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.receivedDate} onChange={set('receivedDate')} />
           </Field>
           <Field label="Source">
             <input className={inputCls} value={form.source} onChange={set('source')} placeholder="WhatsApp, Referral, Walk-in..." />
