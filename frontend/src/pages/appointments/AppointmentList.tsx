@@ -167,6 +167,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
@@ -187,7 +188,8 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       <p className="text-xs font-bold text-indigo-600">{c.client?.clientRef}</p>
                       <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}{cityLabel(c) ? ` (${cityLabel(c)})` : ''}</td>
+                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
+                    <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
                         {c.priority}
