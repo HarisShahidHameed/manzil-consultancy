@@ -75,6 +75,8 @@ const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docAppointment: 'docAppointmentCost', docTicket: 'docTicketCost', docInsurance: 'docInsuranceCost',
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
 };
+// E-Visa, SOP and Visa Form only ever show a status — no Paid By / Cost / Client
+// Given columns apply to them.
 const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel']);
 // Only the 4 agency-paid docs above track a client-contribution amount.
 const DOC_CLIENT_PAID_KEY: Partial<Record<DocKey, keyof VisaCase>> = {
@@ -889,24 +891,33 @@ const CaseDetail: React.FC = () => {
                             ))}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Agency</span>
+                          <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {(!hasPaidBy || paidBy === 'agency') ? (
-                          <input
-                            type="number" min="0" step="0.01"
-                            className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            placeholder="0.00"
-                            value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
-                            onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
-                          />
+                        {hasPaidBy ? (
+                          paidBy === 'client' ? (
+                            <input
+                              type="number"
+                              className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs bg-gray-100 text-gray-400 cursor-not-allowed"
+                              value="0"
+                              disabled
+                            />
+                          ) : (
+                            <input
+                              type="number" min="0" step="0.01"
+                              className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder="0.00"
+                              value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
+                              onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
+                            />
+                          )
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {(hasPaidBy && paidBy === 'agency' && clientPaidKey) ? (
+                        {(hasPaidBy && clientPaidKey) ? (
                           <input
                             type="number" min="0" step="0.01"
                             className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
