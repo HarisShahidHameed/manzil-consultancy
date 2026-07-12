@@ -367,7 +367,7 @@ const ClientForm: React.FC = () => {
             <Field label="Priority">
               <select className={inputCls} value={form.priority} onChange={set('priority')}>
                 <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
+                <option value="MEDIUM">Normal</option>
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>
               </select>

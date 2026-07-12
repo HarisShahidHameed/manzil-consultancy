@@ -304,7 +304,7 @@ const ClientDetail: React.FC = () => {
               <label className="text-sm font-medium text-gray-700">Priority</label>
               <select className={`${inputCls} mt-1`} value={caseForm.priority} onChange={e => setCaseForm(f => ({ ...f, priority: e.target.value as Priority }))}>
                 <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
+                <option value="MEDIUM">Normal</option>
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>
               </select>

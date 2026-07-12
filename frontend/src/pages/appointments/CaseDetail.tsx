@@ -545,7 +545,7 @@ const CaseDetail: React.FC = () => {
           <div>
             <label className="text-xs text-gray-500">Priority</label>
             <select className={`${inputCls} mt-1`} value={editFields.priority ?? vc.priority} onChange={setEF('priority')}>
-              <option value="LOW">Low</option><option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option><option value="MEDIUM">Normal</option>
               <option value="HIGH">High</option><option value="URGENT">Urgent</option>
             </select>
           </div>
