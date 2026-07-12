@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
-import { DESTINATION_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
@@ -51,7 +51,7 @@ const ClientDetail: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [caseForm, setCaseForm] = useState({ destinations: [] as string[], city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
+  const [caseForm, setCaseForm] = useState({ destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
 
   const { data, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -63,20 +63,22 @@ const ClientDetail: React.FC = () => {
 
   const addCaseMut = useMutation({
     mutationFn: () => addCase(id!, {
-      city: caseForm.city || undefined,
       visaType: caseForm.visaType || undefined,
       ukVisaExpiry: caseForm.ukVisaExpiry || undefined,
       priority: caseForm.priority,
-      // A single pick is the decided destination directly; more than one is a
+      // A single pick is the decided destination/city directly; more than one is a
       // shortlist File Processing finalizes down to one later.
       ...(caseForm.destinations.length > 1
         ? { destinationOptions: caseForm.destinations }
         : { destination: caseForm.destinations[0] }),
+      ...(caseForm.cities.length > 1
+        ? { cityOptions: caseForm.cities }
+        : { city: caseForm.cities[0] }),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['client', id] });
       setAddCaseOpen(false);
-      setCaseForm({ destinations: [], city: '', visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' });
+      setCaseForm({ destinations: [], cities: [], visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' });
       showSuccess('Case added');
     },
     onError: (e: AxiosError<{ message: string }>) =>
@@ -270,17 +272,27 @@ const ClientDetail: React.FC = () => {
               </p>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">City</label>
-              <input className={`${inputCls} mt-1`} value={caseForm.city} onChange={e => setCaseForm(f => ({ ...f, city: e.target.value }))} placeholder="Islamabad" />
+          <div>
+            <label className="text-sm font-medium text-gray-700">City</label>
+            <div className="mt-1">
+              <MultiCombobox
+                values={caseForm.cities}
+                onChange={v => setCaseForm(f => ({ ...f, cities: v }))}
+                options={APPOINTMENT_CITY_OPTIONS}
+                placeholder="Select city(-ies)"
+              />
             </div>
+            {caseForm.cities.length > 1 && (
+              <p className="text-xs text-amber-600 mt-1">
+                Multiple cities shortlisted — a single one is finalized later in File Processing.
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-gray-700">Visa Type</label>
               <input className={`${inputCls} mt-1`} value={caseForm.visaType} onChange={e => setCaseForm(f => ({ ...f, visaType: e.target.value }))} placeholder="Tourist" />
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-gray-700">Priority</label>
               <select className={`${inputCls} mt-1`} value={caseForm.priority} onChange={e => setCaseForm(f => ({ ...f, priority: e.target.value as Priority }))}>
@@ -290,10 +302,10 @@ const ClientDetail: React.FC = () => {
                 <option value="URGENT">Urgent</option>
               </select>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">UK Visa Expiry</label>
-              <input type="date" className={`${inputCls} mt-1`} value={caseForm.ukVisaExpiry} onChange={e => setCaseForm(f => ({ ...f, ukVisaExpiry: e.target.value }))} />
-            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">UK Visa Expiry</label>
+            <input type="date" className={`${inputCls} mt-1`} value={caseForm.ukVisaExpiry} onChange={e => setCaseForm(f => ({ ...f, ukVisaExpiry: e.target.value }))} />
           </div>
         </div>
       </Modal>

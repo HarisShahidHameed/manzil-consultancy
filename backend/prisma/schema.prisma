@@ -235,6 +235,8 @@ model VisaCase {
   // Empty for the common single-destination case (destination is set directly).
   destinationOptions      String[]       @default([])
   city                    String?
+  // Same shortlist-then-finalize pattern as destinationOptions, for the appointment city.
+  cityOptions             String[]       @default([])
   visaType                String?
   ukVisaExpiry            DateTime?
   stage                   CaseStage      @default(APPOINTMENT)

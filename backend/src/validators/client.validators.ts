@@ -10,6 +10,13 @@ const destinationFields = {
 const requireDestination = <T extends { destination?: string; destinationOptions?: string[] }>(data: T) =>
   !!data.destination || (data.destinationOptions?.length ?? 0) > 0;
 
+// City is optional either way, so no requireCity refine is needed — cityOptions just
+// rides alongside city the same way destinationOptions rides alongside destination.
+const cityFields = {
+  city:        z.string().max(100).trim().optional(),
+  cityOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+};
+
 const createClientObjectSchema = z.object({
   receivedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format'),
   firstName:    z.string().min(1).max(100).trim(),
@@ -38,7 +45,7 @@ const createClientObjectSchema = z.object({
   groupId:    z.string().uuid().optional(),
   // First visa case
   ...destinationFields,
-  city:         z.string().max(100).optional(),
+  ...cityFields,
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
@@ -133,7 +140,7 @@ export const groupMembersSchema = z.object({
 
 export const createCaseSchema = z.object({
   ...destinationFields,
-  city:         z.string().max(100).optional(),
+  ...cityFields,
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')).transform(v => v || undefined),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).default('MEDIUM'),
@@ -151,7 +158,8 @@ const clearableAssignee = () =>
 export const updateCaseSchema = z.object({
   destination:        z.string().min(1).max(100).optional(),
   destinationOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
-  city:         z.string().max(100).optional(),
+  city:               z.string().max(100).optional(),
+  cityOptions:        z.array(z.string().min(1).max(100).trim()).max(10).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: z.string().optional(),
   stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),

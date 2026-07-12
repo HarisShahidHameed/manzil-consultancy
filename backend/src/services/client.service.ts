@@ -15,7 +15,7 @@ const CLIENT_SELECT = {
   group: { select: { id: true, groupRef: true, name: true, relation: true } },
   visaCases: {
     select: {
-      id: true, destination: true, destinationOptions: true, city: true, visaType: true, stage: true, priority: true,
+      id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, stage: true, priority: true,
       appointmentDate: true, advance: true, charges: true, discount: true,
       createdAt: true, updatedAt: true,
     },
@@ -36,7 +36,7 @@ const CLIENT_DETAIL_SELECT = {
   group: { select: { id: true, groupRef: true, name: true, relation: true } },
   visaCases: {
     select: {
-      id: true, destination: true, destinationOptions: true, city: true, visaType: true, ukVisaExpiry: true,
+      id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true,
       stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
@@ -96,6 +96,15 @@ const resolveDestination = (data: { destination?: string; destinationOptions?: s
   return { destination: data.destination, destinationOptions: options };
 };
 
+// Same shortlist-then-finalize collapse as resolveDestination, for the appointment city.
+const resolveCity = (data: { city?: string; cityOptions?: string[] }) => {
+  const options = data.cityOptions?.map(c => c.trim()).filter(Boolean) ?? [];
+  if (options.length <= 1) {
+    return { city: data.city ?? options[0], cityOptions: [] as string[] };
+  }
+  return { city: data.city, cityOptions: options };
+};
+
 export const createClient = async (data: {
   clientRef?: string;
   receivedDate: string; firstName: string; lastName?: string;
@@ -108,16 +117,19 @@ export const createClient = async (data: {
   eVisa?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
-  destination?: string; destinationOptions?: string[]; city?: string; visaType?: string; ukVisaExpiry?: string;
+  destination?: string; destinationOptions?: string[];
+  city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
   const clientRef = data.clientRef?.trim() || await generateClientRef();
   const { destination, destinationOptions } = resolveDestination(data);
+  const { city, cityOptions } = resolveCity(data);
   const {
-    city, visaType, ukVisaExpiry, priority,
+    visaType, ukVisaExpiry, priority,
     advance, charges, discount, createdById, clientRef: _clientRef,
-    destination: _destination, destinationOptions: _destinationOptions, ...rest
+    destination: _destination, destinationOptions: _destinationOptions,
+    city: _city, cityOptions: _cityOptions, ...rest
   } = data;
 
   return prisma.client.create({
@@ -135,7 +147,7 @@ export const createClient = async (data: {
         create: {
           appointmentStatus: 'WAITING',
           destination, destinationOptions,
-          city,
+          city, cityOptions,
           visaType,
           ukVisaExpiry: ukVisaExpiry ? new Date(ukVisaExpiry) : undefined,
           priority: priority ?? 'MEDIUM',

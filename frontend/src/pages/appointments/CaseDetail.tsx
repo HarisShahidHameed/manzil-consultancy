@@ -57,6 +57,10 @@ const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloa
 const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
   vc.destination ?? (vc.destinationOptions?.length ? `${vc.destinationOptions.join(', ')} (undecided)` : '—');
 
+// Same shortlist-then-finalize pattern as destinationLabel, for the appointment city.
+const cityLabel = (vc: { city?: string | null; cityOptions?: string[] }) =>
+  vc.city ?? (vc.cityOptions?.length ? `${vc.cityOptions.join(', ')} (undecided)` : undefined);
+
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm';
@@ -121,6 +125,7 @@ const CaseDetail: React.FC = () => {
     if (vc) {
       setEditFields({
         destination: vc.destination ?? '',
+        city: vc.city ?? '',
         priority: vc.priority,
         appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
         fraNo: vc.fraNo ?? '',
@@ -164,6 +169,7 @@ const CaseDetail: React.FC = () => {
   const saveAppointmentMut = useMutation({
     mutationFn: () => updateCase(id!, {
       destination:      (editFields.destination as string) || undefined,
+      city:             (editFields.city as string) || undefined,
       charges:  toNum(editFields.charges),
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
@@ -562,6 +568,26 @@ const CaseDetail: React.FC = () => {
             )}
           </div>
           <div>
+            <label className="text-xs text-gray-500">City</label>
+            {vc.cityOptions?.length ? (
+              <>
+                <select
+                  className={`${inputCls} mt-1`}
+                  value={editFields.city as string ?? vc.city ?? ''}
+                  onChange={setEF('city')}
+                >
+                  <option value="" disabled>Not yet decided</option>
+                  {vc.cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Shortlisted: {vc.cityOptions.join(', ')} — edit the shortlist via Edit Client Info.
+                </p>
+              </>
+            ) : (
+              <input className={`${inputCls} mt-1`} value={editFields.city as string ?? ''} onChange={setEF('city')} placeholder="e.g. London" />
+            )}
+          </div>
+          <div>
             <label className="text-xs text-gray-500">Appointment Date</label>
             <input type="date" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
           </div>
@@ -671,7 +697,7 @@ const CaseDetail: React.FC = () => {
                 ['Birth City', vc.client?.birthCity ?? '—'],
                 ['Marital Status', vc.client?.maritalStatus ?? '—'],
                 ['Address', vc.client?.residentialAddress ?? '—'],
-                ['Destination', `${destinationLabel(vc)}${vc.city ? ` (${vc.city})` : ''}`],
+                ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
                 ['Visa Type', vc.visaType ?? '—'],
                 ['Appointment Date', fmtDate(vc.appointmentDate)],
                 ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
@@ -725,6 +751,28 @@ const CaseDetail: React.FC = () => {
                 >
                   <option value="" disabled>Finalize destination…</option>
                   {vc.destinationOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+
+          {vc.cityOptions && vc.cityOptions.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-sm font-medium text-amber-800">
+                  {vc.city ? `Finalized city: ${vc.city}` : 'City not yet finalized'}
+                </p>
+                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {vc.cityOptions.join(', ')}</p>
+              </div>
+              {!vc.city && (
+                <select
+                  className={`${inputCls} max-w-[220px]`}
+                  disabled={patchMut.isPending}
+                  value=""
+                  onChange={e => e.target.value && patchMut.mutate({ patch: { city: e.target.value }, msg: 'City finalized' })}
+                >
+                  <option value="" disabled>Finalize city…</option>
+                  {vc.cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               )}
             </div>

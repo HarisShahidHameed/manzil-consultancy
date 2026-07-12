@@ -8,7 +8,6 @@ import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
-import { Combobox } from '../../components/ui/Combobox';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
@@ -43,7 +42,7 @@ const emptyForm = {
   previousSchengenVisa: '', registeredEmail: '',
   eVisa: false,
   visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
-  destinations: [] as string[], city: '', visaType: '', ukVisaExpiry: '',
+  destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
 };
@@ -94,7 +93,9 @@ const ClientForm: React.FC = () => {
       destinations: targetCase?.destinationOptions?.length
         ? targetCase.destinationOptions
         : (targetCase?.destination ? [targetCase.destination] : []),
-      city: targetCase?.city ?? '',
+      cities: targetCase?.cityOptions?.length
+        ? targetCase.cityOptions
+        : (targetCase?.city ? [targetCase.city] : []),
       visaType: targetCase?.visaType ?? '',
       ukVisaExpiry: targetCase?.ukVisaExpiry?.split('T')[0] ?? '',
       priority: targetCase?.priority ?? 'MEDIUM',
@@ -126,21 +127,24 @@ const ClientForm: React.FC = () => {
         residentialAddress:   form.residentialAddress  || undefined,
         groupId:              form.groupId             || undefined,
       };
-      delete clientPayload.destinations; delete clientPayload.city; delete clientPayload.visaType;
+      delete clientPayload.destinations; delete clientPayload.cities; delete clientPayload.visaType;
       delete clientPayload.ukVisaExpiry; delete clientPayload.priority; delete clientPayload.advance;
       delete clientPayload.charges; delete clientPayload.discount;
 
-      // A single pick sets the decided destination directly; more than one leaves it
+      // A single pick sets the decided destination/city directly; more than one leaves it
       // as a shortlist for File Processing to finalize down to one later.
       const destinationFields = form.destinations.length > 1
         ? { destination: undefined, destinationOptions: form.destinations }
         : { destination: form.destinations[0], destinationOptions: undefined };
+      const cityFields = form.cities.length > 1
+        ? { city: undefined, cityOptions: form.cities }
+        : { city: form.cities[0], cityOptions: undefined };
 
       if (!isEdit) {
         return createClient({
           ...clientPayload,
           ...destinationFields,
-          city:         form.city         || undefined,
+          ...cityFields,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
           priority:     form.priority,
@@ -154,7 +158,7 @@ const ClientForm: React.FC = () => {
       if (targetCase) {
         await updateCase(targetCase.id, {
           ...destinationFields,
-          city:         form.city         || undefined,
+          ...cityFields,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
           priority:     form.priority,
@@ -321,12 +325,17 @@ const ClientForm: React.FC = () => {
               )}
             </Field>
             <Field label="Appointment City">
-              <Combobox
-                value={form.city}
-                onChange={v => setForm(f => ({ ...f, city: v }))}
+              <MultiCombobox
+                values={form.cities}
+                onChange={v => setForm(f => ({ ...f, cities: v }))}
                 options={APPOINTMENT_CITY_OPTIONS}
-                placeholder="Select city"
+                placeholder="Select city(-ies)"
               />
+              {form.cities.length > 1 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  Multiple cities shortlisted — a single one is finalized later in File Processing.
+                </p>
+              )}
             </Field>
           </div>
           <div className="grid grid-cols-3 gap-4">

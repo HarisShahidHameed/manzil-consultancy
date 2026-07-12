@@ -159,6 +159,8 @@ export interface VisaCase {
   // only until File Processing finalizes down to a single `destination`.
   destinationOptions?: string[];
   city?: string;
+  // Same shortlist-then-finalize pattern as destinationOptions, for the appointment city.
+  cityOptions?: string[];
   visaType?: string;
   ukVisaExpiry?: string;
   stage: CaseStage;

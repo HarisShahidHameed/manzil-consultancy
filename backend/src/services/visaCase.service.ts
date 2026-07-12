@@ -14,8 +14,17 @@ const resolveDestination = (data: { destination?: string; destinationOptions?: s
   return { destination: data.destination, destinationOptions: options };
 };
 
+// Same shortlist-then-finalize collapse as resolveDestination, for the appointment city.
+const resolveCity = (data: { city?: string; cityOptions?: string[] }) => {
+  const options = data.cityOptions?.map(c => c.trim()).filter(Boolean) ?? [];
+  if (options.length <= 1) {
+    return { city: data.city ?? options[0], cityOptions: [] as string[] };
+  }
+  return { city: data.city, cityOptions: options };
+};
+
 const CASE_SELECT = {
-  id: true, clientId: true, destination: true, destinationOptions: true, city: true, visaType: true, ukVisaExpiry: true,
+  id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
   advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
@@ -80,6 +89,7 @@ export const assertTransitionAllowed = (
   caseRecord: {
     advancePaid: boolean; onHold: boolean; invoices: { status: string }[];
     destination: string | null; destinationOptions?: string[];
+    city?: string | null; cityOptions?: string[];
     appointmentDate: Date | null;
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
@@ -114,11 +124,14 @@ export const assertTransitionAllowed = (
     if (!caseRecord.appointmentDate) throw new Error('APPOINTMENT_NOT_BOOKED');
   }
 
-  // Gate 2: a shortlisted-but-undecided destination must be finalized to a single
-  // country before file processing can move on to invoicing.
+  // Gate 2: a shortlisted-but-undecided destination or city must be finalized to a
+  // single value before file processing can move on to invoicing.
   if (current === 'FILE_PROCESSING' && next === 'INVOICED') {
     if ((caseRecord.destinationOptions?.length ?? 0) > 0 && !caseRecord.destination) {
       throw new Error('DESTINATION_NOT_FINALIZED');
+    }
+    if ((caseRecord.cityOptions?.length ?? 0) > 0 && !caseRecord.city) {
+      throw new Error('CITY_NOT_FINALIZED');
     }
   }
 
@@ -172,20 +185,22 @@ export const getCaseById = async (id: string) => {
 export const createCase = async (
   clientId: string,
   data: {
-    destination?: string; destinationOptions?: string[]; city?: string; visaType?: string; ukVisaExpiry?: string;
+    destination?: string; destinationOptions?: string[];
+    city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
   const advancePaid = (data.advance ?? 0) > 0;
   const { destination, destinationOptions } = resolveDestination(data);
+  const { city, cityOptions } = resolveCity(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
   return prisma.visaCase.create({
     data: {
       clientId,
       appointmentStatus: 'WAITING',
       destination, destinationOptions,
-      city:        data.city,
+      city, cityOptions,
       visaType:    data.visaType,
       ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
       priority: data.priority ?? 'MEDIUM',
@@ -200,12 +215,13 @@ export const createCase = async (
 };
 
 export const updateCase = async (id: string, data: Record<string, any>) => {
-  // If a stage change or destination finalization is requested, enforce workflow rules first.
-  if (data.stage || data.destination !== undefined) {
+  // If a stage change or destination/city finalization is requested, enforce workflow rules first.
+  if (data.stage || data.destination !== undefined || data.city !== undefined) {
     const existing = await prisma.visaCase.findUnique({
       where: { id },
       select: {
-        stage: true, advancePaid: true, onHold: true, destination: true, destinationOptions: true,
+        stage: true, advancePaid: true, onHold: true,
+        destination: true, destinationOptions: true, city: true, cityOptions: true,
         appointmentDate: true,
         invoices: { select: { status: true } },
         client: {
@@ -219,10 +235,14 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (!existing) {
       const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
     }
-    // Finalizing the destination must land on one of the shortlisted candidates.
+    // Finalizing the destination/city must land on one of the shortlisted candidates.
     if (data.destination !== undefined && existing.destinationOptions.length > 0
         && !existing.destinationOptions.includes(data.destination)) {
       throw new Error('DESTINATION_NOT_SHORTLISTED');
+    }
+    if (data.city !== undefined && existing.cityOptions.length > 0
+        && !existing.cityOptions.includes(data.city)) {
+      throw new Error('CITY_NOT_SHORTLISTED');
     }
     if (data.stage) {
       assertTransitionAllowed(existing.stage as CaseStageName, data.stage as CaseStageName, existing);

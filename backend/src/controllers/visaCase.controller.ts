@@ -43,6 +43,8 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
   DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },
   DESTINATION_NOT_SHORTLISTED: { status: 422, message: 'The finalized destination must be one of the shortlisted options.' },
+  CITY_NOT_FINALIZED: { status: 422, message: 'Finalize a single city from the shortlist before moving this case to Invoiced.' },
+  CITY_NOT_SHORTLISTED: { status: 422, message: 'The finalized city must be one of the shortlisted options.' },
 };
 
 export const updateCase = async (req: Request, res: Response): Promise<void> => {
