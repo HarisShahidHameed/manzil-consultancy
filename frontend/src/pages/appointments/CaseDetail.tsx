@@ -309,14 +309,18 @@ const CaseDetail: React.FC = () => {
   const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
-  // For each agency-paid document, the client still owes whatever the agency
-  // covered minus what the client has already contributed toward that cost.
+  // Across the agency-paid documents, cost adds to what the client owes and
+  // whatever they've already given toward it subtracts back off — summed net
+  // rather than clamped per-document, so a "given" amount always registers even
+  // when that document's own cost is 0 (e.g. paid entirely by the client).
+  // Reads from editFields first so the balance updates live as the cost / given
+  // inputs are edited, before the form is saved.
   const agencyDocOutstanding = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
     const costKey = DOC_COST_KEY[key];
     const clientPaidKey = DOC_CLIENT_PAID_KEY[key]!;
-    const cost = num(vc[costKey] as number | string | null);
-    const clientPaid = num(vc[clientPaidKey] as number | string | null);
-    return sum + Math.max(0, cost - clientPaid);
+    const cost = num((editFields[costKey] as number | string | undefined) ?? (vc[costKey] as number | string | null));
+    const clientPaid = num((editFields[clientPaidKey] as number | string | undefined) ?? (vc[clientPaidKey] as number | string | null));
+    return sum + cost - clientPaid;
   }, 0);
   const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived) + agencyDocOutstanding;
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
