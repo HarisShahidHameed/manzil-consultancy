@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS } from '../../constants/options';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
@@ -295,7 +295,10 @@ const ClientDetail: React.FC = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-gray-700">Visa Type</label>
-              <input className={`${inputCls} mt-1`} value={caseForm.visaType} onChange={e => setCaseForm(f => ({ ...f, visaType: e.target.value }))} placeholder="Tourist" />
+              <select className={`${inputCls} mt-1`} value={caseForm.visaType} onChange={e => setCaseForm(f => ({ ...f, visaType: e.target.value }))}>
+                <option value="">Select visa type</option>
+                {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Priority</label>

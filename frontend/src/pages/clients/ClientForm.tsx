@@ -9,7 +9,7 @@ import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS } from '../../constants/options';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -365,7 +365,10 @@ const ClientForm: React.FC = () => {
           </div>
           <div className="grid grid-cols-3 gap-4">
             <Field label="Visa Type">
-              <input className={inputCls} value={form.visaType} onChange={set('visaType')} placeholder="Tourist / Work / Study" />
+              <select className={inputCls} value={form.visaType} onChange={set('visaType')}>
+                <option value="">Select visa type</option>
+                {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
             </Field>
             <Field label="UK Visa Expiry">
               <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />

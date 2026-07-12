@@ -6,3 +6,5 @@ export const DESTINATION_OPTIONS = [
 export const APPOINTMENT_CITY_OPTIONS = [
   'London', 'Manchester', 'Birmingham', 'Edinburgh',
 ];
+
+export const VISA_TYPE_OPTIONS = ['Tourist', 'Work', 'Study'];
