@@ -43,7 +43,7 @@ const emptyForm = {
   previousSchengenVisa: '', registeredEmail: '',
   eVisa: false,
   visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
-  destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '',
+  destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', eVisaType: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
 };
@@ -103,6 +103,7 @@ const ClientForm: React.FC = () => {
         : (targetCase?.city ? [targetCase.city] : []),
       visaType: targetCase?.visaType ?? '',
       ukVisaExpiry: targetCase?.ukVisaExpiry?.split('T')[0] ?? '',
+      eVisaType: targetCase?.eVisaType ?? '',
       priority: targetCase?.priority ?? 'MEDIUM',
       advance:  targetCase?.advance  != null ? String(targetCase.advance)  : '',
       charges:  targetCase?.charges  != null ? String(targetCase.charges)  : '',
@@ -137,7 +138,7 @@ const ClientForm: React.FC = () => {
         groupId:              form.groupId             || undefined,
       };
       delete clientPayload.destinations; delete clientPayload.cities; delete clientPayload.visaType;
-      delete clientPayload.ukVisaExpiry; delete clientPayload.priority; delete clientPayload.advance;
+      delete clientPayload.ukVisaExpiry; delete clientPayload.eVisaType; delete clientPayload.priority; delete clientPayload.advance;
       delete clientPayload.charges; delete clientPayload.discount;
 
       // A single pick sets the decided destination/city directly; more than one leaves it
@@ -156,6 +157,7 @@ const ClientForm: React.FC = () => {
           ...cityFields,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
+          eVisaType:    form.eVisaType    || undefined,
           priority:     form.priority,
           advance:  form.advance  ? parseFloat(form.advance)  : undefined,
           charges:  form.charges  ? parseFloat(form.charges)  : undefined,
@@ -170,6 +172,7 @@ const ClientForm: React.FC = () => {
           ...cityFields,
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
+          eVisaType:    form.eVisaType    || undefined,
           priority:     form.priority,
           advance:  form.advance  ? parseFloat(form.advance)  : 0,
           charges:  form.charges  ? parseFloat(form.charges)  : undefined,
@@ -200,9 +203,6 @@ const ClientForm: React.FC = () => {
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
-
-  const setCheck = (k: 'eVisa') => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(f => ({ ...f, [k]: e.target.checked }));
 
   if (isEdit && clientLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -319,12 +319,6 @@ const ClientForm: React.FC = () => {
             <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportExpiry} onChange={set('passportExpiry')} />
           </Field>
         </div>
-        <div className="flex gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.eVisa} onChange={setCheck('eVisa')} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
-            <span className="text-sm font-medium text-gray-700">E-Visa</span>
-          </label>
-        </div>
         <Field label="Previous Schengen Visa Details">
           <textarea className={inputCls} rows={2} value={form.previousSchengenVisa} onChange={set('previousSchengenVisa')} placeholder="Prior Schengen visas, dates, type…" />
         </Field>
@@ -363,15 +357,12 @@ const ClientForm: React.FC = () => {
               )}
             </Field>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <Field label="Visa Type">
               <select className={inputCls} value={form.visaType} onChange={set('visaType')}>
                 <option value="">Select visa type</option>
                 {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
-            </Field>
-            <Field label="UK Visa Expiry">
-              <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
             </Field>
             <Field label="Priority">
               <select className={inputCls} value={form.priority} onChange={set('priority')}>
@@ -379,6 +370,22 @@ const ClientForm: React.FC = () => {
                 <option value="MEDIUM">Medium</option>
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>
+              </select>
+            </Field>
+          </div>
+        </Section>
+      )}
+
+      {(!isEdit || targetCase) && (
+        <Section title="E-Visa">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="UK Visa Expiry">
+              <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
+            </Field>
+            <Field label="Visa Type">
+              <select className={inputCls} value={form.eVisaType} onChange={set('eVisaType')}>
+                <option value="">Select visa type</option>
+                {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </Field>
           </div>

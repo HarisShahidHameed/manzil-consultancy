@@ -167,6 +167,7 @@ export interface VisaCase {
   cityOptions?: string[];
   visaType?: string;
   ukVisaExpiry?: string;
+  eVisaType?: string;
   stage: CaseStage;
   priority: Priority;
   // Present (non-empty) only while stage is APPOINTMENT — fields still needed

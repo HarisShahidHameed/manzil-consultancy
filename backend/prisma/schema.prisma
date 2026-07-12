@@ -243,6 +243,7 @@ model VisaCase {
   cityOptions             String[]       @default([])
   visaType                String?
   ukVisaExpiry            DateTime?
+  eVisaType               String?
   stage                   CaseStage      @default(APPOINTMENT)
   priority                Priority       @default(MEDIUM)
   advance                 Decimal?       @db.Decimal(10, 2)

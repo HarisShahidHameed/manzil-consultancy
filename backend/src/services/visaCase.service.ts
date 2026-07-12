@@ -24,7 +24,7 @@ const resolveCity = (data: { city?: string; cityOptions?: string[] }) => {
 };
 
 const CASE_SELECT = {
-  id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true,
+  id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
   advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
@@ -187,7 +187,7 @@ export const createCase = async (
   clientId: string,
   data: {
     destination?: string; destinationOptions?: string[];
-    city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string;
+    city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     advance?: number; charges?: number; discount?: number;
   }
@@ -204,6 +204,7 @@ export const createCase = async (
       city, cityOptions,
       visaType:    data.visaType,
       ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
+      eVisaType:   data.eVisaType,
       priority: data.priority ?? 'MEDIUM',
       advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
       charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,

@@ -38,7 +38,7 @@ const CLIENT_DETAIL_SELECT = {
   group: { select: { id: true, groupRef: true, name: true, relation: true } },
   visaCases: {
     select: {
-      id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true,
+      id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
       stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
@@ -121,7 +121,7 @@ export const createClient = async (data: {
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
   destination?: string; destinationOptions?: string[];
-  city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string;
+  city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
@@ -129,7 +129,7 @@ export const createClient = async (data: {
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   const {
-    visaType, ukVisaExpiry, priority,
+    visaType, ukVisaExpiry, eVisaType, priority,
     advance, charges, discount, createdById, clientRef: _clientRef,
     destination: _destination, destinationOptions: _destinationOptions,
     city: _city, cityOptions: _cityOptions, ...rest
@@ -153,6 +153,7 @@ export const createClient = async (data: {
           city, cityOptions,
           visaType,
           ukVisaExpiry: ukVisaExpiry ? new Date(ukVisaExpiry) : undefined,
+          eVisaType,
           priority: priority ?? 'MEDIUM',
           advance:  advance  !== undefined ? new Prisma.Decimal(advance)  : undefined,
           charges:  charges  !== undefined ? new Prisma.Decimal(charges)  : undefined,
