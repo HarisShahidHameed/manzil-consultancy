@@ -94,21 +94,27 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          {showStatusTabs && (
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
-              {tabs.map(t => (
-                <button
-                  key={t.key}
-                  onClick={() => { setTab(t.key); setPage(1); }}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
+            <button
+              onClick={() => { setCity(''); setPage(1); }}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                city === '' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              All
+            </button>
+            {APPOINTMENT_CITY_OPTIONS.map(c => (
+              <button
+                key={c}
+                onClick={() => { setCity(c); setPage(1); }}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  city === c ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <Input
               placeholder="Search by client, destination..."
@@ -125,14 +131,15 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               <option value="">Any destination</option>
               {DESTINATION_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
-            <select
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              value={city}
-              onChange={e => { setCity(e.target.value); setPage(1); }}
-            >
-              <option value="">Any city</option>
-              {APPOINTMENT_CITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {showStatusTabs && (
+              <select
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={tab}
+                onChange={e => { setTab(e.target.value as TabKey); setPage(1); }}
+              >
+                {tabs.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            )}
             {(search || destination || city || tab !== 'ALL') && (
               <button
                 onClick={() => { setSearch(''); setDestination(''); setCity(''); setTab('ALL'); setPage(1); }}
