@@ -127,7 +127,11 @@ export interface Client {
   phone: string;
   email?: string;
   whatsapp?: string;
-  residentialAddress?: string;
+  addressStreet?: string;
+  addressCity?: string;
+  addressShire?: string;
+  addressPostalCode?: string;
+  addressCountry?: string;
   passportNumber: string | null;
   passportIssue: string | null;
   passportExpiry: string | null;
@@ -210,7 +214,8 @@ export interface VisaCase {
     id: string; clientRef: string; firstName: string; lastName: string; gender?: Gender;
     phone: string; email?: string; whatsapp?: string; nationality: string; passportNumber: string;
     dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null; birthCity?: string;
-    residentialAddress?: string; maritalStatus?: MaritalStatus;
+    addressStreet?: string; addressCity?: string; addressShire?: string; addressPostalCode?: string; addressCountry?: string;
+    maritalStatus?: MaritalStatus;
     previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string; folderUrl?: string;
   };
   bookedBy?: { id: string; firstName: string; lastName: string };

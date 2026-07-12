@@ -198,7 +198,11 @@ model Client {
   phone                String
   email                String?
   whatsapp             String?
-  residentialAddress   String?
+  addressStreet        String?
+  addressCity          String?
+  addressShire         String?
+  addressPostalCode    String?
+  addressCountry       String?
   passportNumber       String?
   passportIssue        DateTime?
   passportExpiry       DateTime?

@@ -165,7 +165,11 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="WhatsApp" value={client.whatsapp} />
             <InfoRow label="Email" value={client.email} />
             <InfoRow label="Registered Email" value={client.registeredEmail} />
-            <InfoRow label="Residential Address" value={client.residentialAddress} />
+            <InfoRow label="Street Address" value={client.addressStreet} />
+            <InfoRow label="City" value={client.addressCity} />
+            <InfoRow label="Shire" value={client.addressShire} />
+            <InfoRow label="Postal Code" value={client.addressPostalCode} />
+            <InfoRow label="Country" value={client.addressCountry} />
             <InfoRow label="Received Date" value={fmtDate(client.receivedDate)} />
           </div>
         </div>

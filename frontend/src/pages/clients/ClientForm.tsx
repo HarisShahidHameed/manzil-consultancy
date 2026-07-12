@@ -36,7 +36,8 @@ const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm t
 const emptyForm = {
   receivedDate: new Date().toISOString().split('T')[0],
   firstName: '', lastName: '', gender: 'MALE' as 'MALE' | 'FEMALE' | 'OTHER',
-  dob: '', phone: '', email: '', whatsapp: '', residentialAddress: '',
+  dob: '', phone: '', email: '', whatsapp: '',
+  addressStreet: '', addressCity: '', addressShire: '', addressPostalCode: '', addressCountry: '',
   passportNumber: '', passportIssue: '', passportExpiry: '',
   birthCity: '', nationality: '', maritalStatus: '' as '' | 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED',
   previousSchengenVisa: '', registeredEmail: '',
@@ -78,7 +79,11 @@ const ClientForm: React.FC = () => {
       gender: client.gender ?? 'MALE',
       dob: client.dob?.split('T')[0] ?? '', phone: client.phone ?? '',
       email: client.email ?? '', whatsapp: client.whatsapp ?? '',
-      residentialAddress: client.residentialAddress ?? '',
+      addressStreet: client.addressStreet ?? '',
+      addressCity: client.addressCity ?? '',
+      addressShire: client.addressShire ?? '',
+      addressPostalCode: client.addressPostalCode ?? '',
+      addressCountry: client.addressCountry ?? '',
       passportNumber: client.passportNumber ?? '',
       passportIssue: client.passportIssue?.split('T')[0] ?? '',
       passportExpiry: client.passportExpiry?.split('T')[0] ?? '',
@@ -124,7 +129,11 @@ const ClientForm: React.FC = () => {
         hrComments:     form.hrComments     || undefined,
         visaAndTravelHistory: form.visaAndTravelHistory || undefined,
         previousSchengenVisa: form.previousSchengenVisa || undefined,
-        residentialAddress:   form.residentialAddress  || undefined,
+        addressStreet:        form.addressStreet      || undefined,
+        addressCity:          form.addressCity        || undefined,
+        addressShire:         form.addressShire        || undefined,
+        addressPostalCode:    form.addressPostalCode  || undefined,
+        addressCountry:       form.addressCountry     || undefined,
         groupId:              form.groupId             || undefined,
       };
       delete clientPayload.destinations; delete clientPayload.cities; delete clientPayload.visaType;
@@ -277,9 +286,25 @@ const ClientForm: React.FC = () => {
             <input type="email" className={inputCls} value={form.registeredEmail} onChange={set('registeredEmail')} />
           </Field>
         </div>
-        <Field label="Residential Address">
-          <textarea className={inputCls} rows={2} value={form.residentialAddress} onChange={set('residentialAddress')} />
+        <Field label="Street Address">
+          <input className={inputCls} value={form.addressStreet} onChange={set('addressStreet')} placeholder="123 Main Street" />
         </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="City">
+            <input className={inputCls} value={form.addressCity} onChange={set('addressCity')} placeholder="Lahore" />
+          </Field>
+          <Field label="Shire">
+            <input className={inputCls} value={form.addressShire} onChange={set('addressShire')} placeholder="Punjab" />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Postal Code">
+            <input className={inputCls} value={form.addressPostalCode} onChange={set('addressPostalCode')} placeholder="54000" />
+          </Field>
+          <Field label="Country">
+            <input className={inputCls} value={form.addressCountry} onChange={set('addressCountry')} placeholder="Pakistan" />
+          </Field>
+        </div>
       </Section>
 
       <Section title="Passport Details">

@@ -49,6 +49,8 @@ const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'
 
 const fmtMoney = (v?: number | string | null) => v != null ? `£${parseFloat(String(v)).toFixed(2)}` : '—';
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
+const formatAddress = (c?: { addressStreet?: string | null; addressCity?: string | null; addressShire?: string | null; addressPostalCode?: string | null; addressCountry?: string | null }) =>
+  [c?.addressStreet, c?.addressCity, c?.addressShire, c?.addressPostalCode, c?.addressCountry].filter(Boolean).join(', ') || '—';
 const num = (v?: number | string | null) => (v != null && v !== '' ? parseFloat(String(v)) : 0);
 const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloat(String(v)) : undefined);
 
@@ -696,7 +698,7 @@ const CaseDetail: React.FC = () => {
                 ['Gender', vc.client?.gender ?? '—'],
                 ['Birth City', vc.client?.birthCity ?? '—'],
                 ['Marital Status', vc.client?.maritalStatus ?? '—'],
-                ['Address', vc.client?.residentialAddress ?? '—'],
+                ['Address', formatAddress(vc.client)],
                 ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
                 ['Visa Type', vc.visaType ?? '—'],
                 ['Appointment Date', fmtDate(vc.appointmentDate)],

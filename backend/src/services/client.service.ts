@@ -5,7 +5,8 @@ import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequir
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
   firstName: true, lastName: true, gender: true, dob: true,
-  phone: true, email: true, whatsapp: true, residentialAddress: true,
+  phone: true, email: true, whatsapp: true,
+  addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
@@ -26,7 +27,8 @@ const CLIENT_SELECT = {
 const CLIENT_DETAIL_SELECT = {
   id: true, clientRef: true, receivedDate: true,
   firstName: true, lastName: true, gender: true, dob: true,
-  phone: true, email: true, whatsapp: true, residentialAddress: true,
+  phone: true, email: true, whatsapp: true,
+  addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
@@ -109,7 +111,8 @@ export const createClient = async (data: {
   clientRef?: string;
   receivedDate: string; firstName: string; lastName?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER'; dob?: string; phone: string;
-  email?: string; whatsapp?: string; residentialAddress?: string;
+  email?: string; whatsapp?: string;
+  addressStreet?: string; addressCity?: string; addressShire?: string; addressPostalCode?: string; addressCountry?: string;
   passportNumber?: string; passportIssue?: string; passportExpiry?: string;
   birthCity?: string; nationality?: string;
   maritalStatus?: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa?: string;
@@ -296,7 +299,8 @@ export const updateClient = async (
   data: Partial<{
     receivedDate: string; firstName: string; lastName: string;
     gender: 'MALE' | 'FEMALE' | 'OTHER'; dob: string; phone: string;
-    email: string; whatsapp: string; residentialAddress: string;
+    email: string; whatsapp: string;
+    addressStreet: string; addressCity: string; addressShire: string; addressPostalCode: string; addressCountry: string;
     passportNumber: string; passportIssue: string; passportExpiry: string;
     birthCity: string; nationality: string;
     maritalStatus: 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED'; previousSchengenVisa: string;

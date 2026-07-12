@@ -9,6 +9,8 @@ const LIGHT = '#9CA3AF';
 const money = (v: unknown) => `£${(v != null ? parseFloat(String(v)) : 0).toFixed(2)}`;
 const fdate = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('en-GB') : '—');
 const cap = (s?: string | null) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '—');
+const formatAddress = (c: { addressStreet?: string | null; addressCity?: string | null; addressShire?: string | null; addressPostalCode?: string | null; addressCountry?: string | null }) =>
+  [c.addressStreet, c.addressCity, c.addressShire, c.addressPostalCode, c.addressCountry].filter(Boolean).join(', ');
 
 type Doc = PDFKit.PDFDocument;
 
@@ -85,7 +87,7 @@ export const streamClientPdf = (res: Response, c: any): void => {
     ['WhatsApp', c.whatsapp],
     ['Email', c.email],
     ['Registered Email', c.registeredEmail],
-    ['Residential Address', c.residentialAddress],
+    ['Residential Address', formatAddress(c)],
     ['Received Date', fdate(c.receivedDate)],
   ]);
 

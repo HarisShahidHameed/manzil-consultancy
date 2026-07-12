@@ -61,7 +61,7 @@ interface MappedRow {
   destination: string;
   folderUrl?: string;
   email?: string;
-  residentialAddress?: string;
+  addressStreet?: string;
   whatsapp?: string;
   birthCity?: string;
   city?: string;
@@ -129,7 +129,7 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
     destination,
     folderUrl:            str(row[4]),
     email:                str(row[8]),
-    residentialAddress:   str(row[9]),
+    addressStreet:        str(row[9]),
     whatsapp:             str(row[13]),
     birthCity:            str(row[15]),
     city:                 str(row[18]),
