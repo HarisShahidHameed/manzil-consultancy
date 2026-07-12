@@ -74,7 +74,7 @@ export const AnalyticsSection: React.FC = () => {
             value={draft.destination ?? ''}
             onChange={e => setDraft(d => ({ ...d, destination: e.target.value || undefined }))}
           >
-            <option value="">All destinations</option>
+            <option value="">Any destination</option>
             {destinationOptions.map(dest => <option key={dest} value={dest}>{dest}</option>)}
           </select>
         </div>

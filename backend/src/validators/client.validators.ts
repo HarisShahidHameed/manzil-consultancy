@@ -11,7 +11,9 @@ const DATE_FORMAT_MSG = 'Use YYYY-MM-DD format (year between 1900-2099)';
 // Processing finalizes down to one. Exactly one of the two must be given.
 const destinationFields = {
   destination:        z.string().min(1).max(100).trim().optional(),
-  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+  // 50 rather than the option list's current size — "Any" shortlists every current
+  // destination option at once, and that list can grow.
+  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
 };
 const requireDestination = <T extends { destination?: string; destinationOptions?: string[] }>(data: T) =>
   !!data.destination || (data.destinationOptions?.length ?? 0) > 0;
@@ -20,7 +22,7 @@ const requireDestination = <T extends { destination?: string; destinationOptions
 // rides alongside city the same way destinationOptions rides alongside destination.
 const cityFields = {
   city:        z.string().max(100).trim().optional(),
-  cityOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+  cityOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
 };
 
 const createClientObjectSchema = z.object({
@@ -171,9 +173,9 @@ const clearableAssignee = () =>
 
 export const updateCaseSchema = z.object({
   destination:        z.string().min(1).max(100).optional(),
-  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+  destinationOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
   city:               z.string().max(100).optional(),
-  cityOptions:        z.array(z.string().min(1).max(100).trim()).max(10).optional(),
+  cityOptions:        z.array(z.string().min(1).max(100).trim()).max(50).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: optionalDate(),
   stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),

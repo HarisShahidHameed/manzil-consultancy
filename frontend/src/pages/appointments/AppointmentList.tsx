@@ -122,7 +122,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               value={destination}
               onChange={e => { setDestination(e.target.value); setPage(1); }}
             >
-              <option value="">All destinations</option>
+              <option value="">Any destination</option>
               {DESTINATION_OPTIONS.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
             <select
@@ -130,7 +130,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               value={city}
               onChange={e => { setCity(e.target.value); setPage(1); }}
             >
-              <option value="">All cities</option>
+              <option value="">Any city</option>
               {APPOINTMENT_CITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             {(search || destination || city || tab !== 'ALL') && (

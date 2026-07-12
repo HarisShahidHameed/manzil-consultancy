@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Search, X } from 'lucide-react';
+import { ChevronDown, Plus, Search, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface MultiComboboxProps {
@@ -13,6 +13,8 @@ interface MultiComboboxProps {
 
 // Same searchable-dropdown pattern as Combobox, but lets more than one option stay
 // checked at once — used for shortlisting candidate destination countries.
+// The options list is a shortlist of common picks, not an exhaustive whitelist — typing
+// a name that isn't on it offers an "Add" row so any country/city can still be entered.
 export const MultiCombobox: React.FC<MultiComboboxProps> = ({ values, onChange, options, placeholder, className, disabled }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -26,9 +28,24 @@ export const MultiCombobox: React.FC<MultiComboboxProps> = ({ values, onChange, 
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  const trimmedQuery = query.trim();
   const filtered = options.filter(o => o.toLowerCase().includes(query.toLowerCase()));
+  const isNewValue = trimmedQuery.length > 0 &&
+    !options.some(o => o.toLowerCase() === trimmedQuery.toLowerCase()) &&
+    !values.some(v => v.toLowerCase() === trimmedQuery.toLowerCase());
   const toggle = (o: string) =>
     onChange(values.includes(o) ? values.filter(v => v !== o) : [...values, o]);
+  const addCustom = () => {
+    if (!trimmedQuery) return;
+    onChange([...values, trimmedQuery]);
+    setQuery('');
+  };
+  // "Any" is shorthand for "every current option is an acceptable shortlist candidate" —
+  // functionally identical to checking every option by hand, just collapsed to one chip
+  // instead of cluttering the display with every country/city name.
+  const allSelected = options.length > 0 && options.every(o => values.includes(o));
+  const toggleAny = () =>
+    onChange(allSelected ? values.filter(v => !options.includes(v)) : [...new Set([...values, ...options])]);
 
   return (
     <div ref={ref} className="relative">
@@ -45,6 +62,13 @@ export const MultiCombobox: React.FC<MultiComboboxProps> = ({ values, onChange, 
       >
         {values.length === 0 ? (
           <span className="text-gray-400">{placeholder || 'Select...'}</span>
+        ) : allSelected ? (
+          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium px-2 py-0.5 rounded-full w-fit">
+            Any
+            {!disabled && (
+              <X className="w-3 h-3 cursor-pointer" onClick={e => { e.stopPropagation(); toggleAny(); }} />
+            )}
+          </span>
         ) : (
           <span className="flex flex-wrap gap-1">
             {values.map(v => (
@@ -76,24 +100,47 @@ export const MultiCombobox: React.FC<MultiComboboxProps> = ({ values, onChange, 
             />
           </div>
           <ul className="max-h-56 overflow-y-auto py-1">
-            {filtered.length === 0 ? (
+            {!query && options.length > 0 && (
+              <li className="border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={toggleAny}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2 text-gray-700 font-medium"
+                >
+                  <input type="checkbox" readOnly checked={allSelected} className="rounded border-gray-300 text-indigo-600 focus:ring-0 pointer-events-none" />
+                  Any
+                </button>
+              </li>
+            )}
+            {filtered.length === 0 && !isNewValue && (
               <li className="px-3 py-2 text-xs text-gray-400">No matches</li>
-            ) : (
-              filtered.map(o => (
-                <li key={o}>
-                  <button
-                    type="button"
-                    onClick={() => toggle(o)}
-                    className={clsx(
-                      'w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2',
-                      values.includes(o) ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'
-                    )}
-                  >
-                    <input type="checkbox" readOnly checked={values.includes(o)} className="rounded border-gray-300 text-indigo-600 focus:ring-0 pointer-events-none" />
-                    {o}
-                  </button>
-                </li>
-              ))
+            )}
+            {filtered.map(o => (
+              <li key={o}>
+                <button
+                  type="button"
+                  onClick={() => toggle(o)}
+                  className={clsx(
+                    'w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2',
+                    values.includes(o) ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-gray-700'
+                  )}
+                >
+                  <input type="checkbox" readOnly checked={values.includes(o)} className="rounded border-gray-300 text-indigo-600 focus:ring-0 pointer-events-none" />
+                  {o}
+                </button>
+              </li>
+            ))}
+            {isNewValue && (
+              <li>
+                <button
+                  type="button"
+                  onClick={addCustom}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex items-center gap-2 text-indigo-700 font-medium"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Add "{trimmedQuery}"
+                </button>
+              </li>
             )}
           </ul>
         </div>
