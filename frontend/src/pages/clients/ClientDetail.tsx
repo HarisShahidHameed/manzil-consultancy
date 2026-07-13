@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AxiosError } from 'axios';
-import { ArrowLeft, Edit, Plus, Eye, Download, Lock } from 'lucide-react';
-import { getClient, addCase } from '../../api/clients';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Edit, Eye, Download, Lock } from 'lucide-react';
+import { getClient } from '../../api/clients';
 import { downloadClientPdf } from '../../api/pdf';
 import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
-import { Modal } from '../../components/ui/Modal';
-import { MultiCombobox } from '../../components/ui/MultiCombobox';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS } from '../../constants/options';
 import { Can } from '../../routes/RoleGuard';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
@@ -41,17 +37,12 @@ const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({
   </div>
 );
 
-const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
-
 const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [addCaseOpen, setAddCaseOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [caseForm, setCaseForm] = useState({ destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' as Priority });
 
   const { data, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -60,32 +51,6 @@ const ClientDetail: React.FC = () => {
   });
 
   const client = data?.data;
-
-  const addCaseMut = useMutation({
-    mutationFn: () => addCase(id!, {
-      visaType: caseForm.visaType || undefined,
-      ukVisaExpiry: caseForm.ukVisaExpiry || undefined,
-      priority: caseForm.priority,
-      // A single pick is the decided destination/city directly; more than one is a
-      // shortlist File Processing finalizes down to one later.
-      ...(caseForm.destinations.length > 1
-        ? { destinationOptions: caseForm.destinations }
-        : { destination: caseForm.destinations[0] }),
-      ...(caseForm.cities.length > 1
-        ? { cityOptions: caseForm.cities }
-        : { city: caseForm.cities[0] }),
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['client', id] });
-      setAddCaseOpen(false);
-      setCaseForm({ destinations: [], cities: [], visaType: '', ukVisaExpiry: '', priority: 'MEDIUM' });
-      showSuccess('Case added');
-    },
-    onError: (e: AxiosError<{ message: string }>) =>
-      setError(e.response?.data?.message ?? 'Failed to add case'),
-  });
-
-  const showSuccess = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -209,11 +174,6 @@ const ClientDetail: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
             Visa Cases ({client.visaCases.length})
           </h3>
-          <Can permissions={['clients:write']}>
-            <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setAddCaseOpen(true)}>
-              Add Case
-            </Button>
-          </Can>
         </div>
         {client.visaCases.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">No visa cases yet</p>
@@ -244,78 +204,6 @@ const ClientDetail: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Add Case Modal */}
-      <Modal
-        open={addCaseOpen}
-        onClose={() => setAddCaseOpen(false)}
-        title="Add Visa Case"
-        subtitle={`New case for ${client.firstName} ${client.lastName}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setAddCaseOpen(false)}>Cancel</Button>
-            <Button loading={addCaseMut.isPending} onClick={() => addCaseMut.mutate()}>Add Case</Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700">Destination <span className="text-red-500">*</span></label>
-            <div className="mt-1">
-              <MultiCombobox
-                values={caseForm.destinations}
-                onChange={v => setCaseForm(f => ({ ...f, destinations: v }))}
-                options={DESTINATION_OPTIONS}
-                placeholder="Select destination(s)"
-              />
-            </div>
-            {caseForm.destinations.length > 1 && (
-              <p className="text-xs text-amber-600 mt-1">
-                Multiple destinations shortlisted — a single one is finalized later in File Processing.
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">City</label>
-            <div className="mt-1">
-              <MultiCombobox
-                values={caseForm.cities}
-                onChange={v => setCaseForm(f => ({ ...f, cities: v }))}
-                options={APPOINTMENT_CITY_OPTIONS}
-                placeholder="Select city(-ies)"
-              />
-            </div>
-            {caseForm.cities.length > 1 && (
-              <p className="text-xs text-amber-600 mt-1">
-                Multiple cities shortlisted — a single one is finalized later in File Processing.
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Visa Type</label>
-              <select className={`${inputCls} mt-1`} value={caseForm.visaType} onChange={e => setCaseForm(f => ({ ...f, visaType: e.target.value }))}>
-                <option value="">Select visa type</option>
-                {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Priority</label>
-              <select className={`${inputCls} mt-1`} value={caseForm.priority} onChange={e => setCaseForm(f => ({ ...f, priority: e.target.value as Priority }))}>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Normal</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">UK Visa Expiry</label>
-            <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={caseForm.ukVisaExpiry} onChange={e => setCaseForm(f => ({ ...f, ukVisaExpiry: e.target.value }))} />
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };

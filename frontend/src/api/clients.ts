@@ -1,5 +1,5 @@
 import api from './axios';
-import type { ApiResponse, Client, VisaCase } from '../types';
+import type { ApiResponse, Client } from '../types';
 
 export const getClients = (params?: Record<string, string>) =>
   api.get<ApiResponse<Client[]>>('/clients', { params }).then(r => r.data);
@@ -15,9 +15,6 @@ export const updateClient = (id: string, data: unknown) =>
 
 export const deleteClient = (id: string) =>
   api.delete<ApiResponse<void>>(`/clients/${id}`).then(r => r.data);
-
-export const addCase = (clientId: string, data: unknown) =>
-  api.post<ApiResponse<VisaCase>>(`/clients/${clientId}/cases`, data).then(r => r.data);
 
 export interface ImportResult {
   imported: number;
