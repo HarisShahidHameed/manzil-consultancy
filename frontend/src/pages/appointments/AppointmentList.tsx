@@ -8,14 +8,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
-const STAGE_COLORS: Record<CaseStage, string> = {
-  APPOINTMENT:     'bg-blue-100 text-blue-700',
-  FILE_PROCESSING: 'bg-yellow-100 text-yellow-700',
-  INVOICED:        'bg-purple-100 text-purple-700',
-  COMPLETED:       'bg-green-100 text-green-700',
-  CANCELLED:       'bg-red-100 text-red-700',
-};
-
 const PRI_COLORS: Record<Priority, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
@@ -180,7 +172,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
@@ -208,9 +199,13 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[c.stage]}`}>
-                          {c.stage.replace('_', ' ')}
-                        </span>
+                        {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
+                            {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                         {(c.missingRequiredFields?.length ?? 0) > 0 && (
                           <span
                             title="Missing required client info"
@@ -220,15 +215,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                           </span>
                         )}
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
-                          {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
                     </td>
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (
