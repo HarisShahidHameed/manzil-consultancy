@@ -65,6 +65,39 @@ const cityLabel = (vc: { city?: string | null; cityOptions?: string[] }) =>
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
+// Client-level fields shared by the Appointment and File Processing summaries.
+const clientSummaryItems = (vc: VisaCase): [string, string][] => [
+  ['Client', `${vc.client?.firstName ?? ''} ${vc.client?.lastName ?? ''}`.trim() || '—'],
+  ['Passport No.', vc.client?.passportNumber ?? '—'],
+  ['Date of Birth', fmtDate(vc.client?.dob)],
+  ['Nationality', vc.client?.nationality ?? '—'],
+  ['Passport Issue', fmtDate(vc.client?.passportIssue)],
+  ['Passport Expiry', fmtDate(vc.client?.passportExpiry)],
+  ['Phone', vc.client?.phone ?? '—'],
+  ['WhatsApp', vc.client?.whatsapp ?? '—'],
+  ['Email', vc.client?.email ?? '—'],
+  ['Registered Email', vc.client?.registeredEmail ?? '—'],
+  ['Gender', vc.client?.gender ?? '—'],
+  ['Birth City', vc.client?.birthCity ?? '—'],
+  ['Marital Status', vc.client?.maritalStatus ?? '—'],
+  ['Address', formatAddress(vc.client)],
+];
+
+// Full case summary (client info + appointment/case-level fields) shown read-only
+// on both the Appointment and File Processing phases.
+const caseSummaryItems = (vc: VisaCase): [string, string][] => [
+  ...clientSummaryItems(vc),
+  ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
+  ['Visa Type', vc.visaType ?? '—'],
+  ['Appointment Date', fmtDate(vc.appointmentDate)],
+  ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
+  ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
+  ['TLS Account', vc.tlsAccount ?? '—'],
+  ['FRA No.', vc.fraNo ?? '—'],
+  ['Charges', fmtMoney(vc.charges)],
+  ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
+];
+
 type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm';
 const DOC_LABELS: Record<DocKey, string> = {
   docAppointment: 'Appointment Docs', docTicket: 'Ticket',
@@ -484,6 +517,33 @@ const CaseDetail: React.FC = () => {
             </Can>
           )}
         </div>
+        {/* Client info captured at onboarding, read-only here — corrected via Edit Client Info */}
+        <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
+          <h4 className="text-xs font-semibold text-gray-500 mb-3">Client & Appointment Summary</h4>
+          <dl className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 text-sm">
+            {caseSummaryItems(vc).map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-xs text-gray-400">{label}</dt>
+                <dd className="text-gray-800 font-medium">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          {vc.client?.previousSchengenVisa && (
+            <p className="mt-3 text-xs text-gray-500"><span className="text-gray-400">Previous Schengen visa:</span> {vc.client.previousSchengenVisa}</p>
+          )}
+          {vc.client?.visaAndTravelHistory && (
+            <p className="mt-1 text-xs text-gray-500"><span className="text-gray-400">Visa & travel history:</span> {vc.client.visaAndTravelHistory}</p>
+          )}
+          {vc.client?.folderUrl && (
+            <p className="mt-1 text-xs text-gray-500">
+              <span className="text-gray-400">Folder:</span>{' '}
+              <a href={vc.client.folderUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
+                {vc.client.folderUrl}
+              </a>
+            </p>
+          )}
+        </div>
+
         <fieldset disabled={locked} className="space-y-4">
 
         {missingRequiredFields.length > 0 && (
@@ -690,31 +750,7 @@ const CaseDetail: React.FC = () => {
           <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
             <h4 className="text-xs font-semibold text-gray-500 mb-3">Client & Appointment Summary</h4>
             <dl className="grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-3 text-sm">
-              {([
-                ['Client', `${vc.client?.firstName ?? ''} ${vc.client?.lastName ?? ''}`.trim() || '—'],
-                ['Passport No.', vc.client?.passportNumber ?? '—'],
-                ['Date of Birth', fmtDate(vc.client?.dob)],
-                ['Nationality', vc.client?.nationality ?? '—'],
-                ['Passport Issue', fmtDate(vc.client?.passportIssue)],
-                ['Passport Expiry', fmtDate(vc.client?.passportExpiry)],
-                ['Phone', vc.client?.phone ?? '—'],
-                ['WhatsApp', vc.client?.whatsapp ?? '—'],
-                ['Email', vc.client?.email ?? '—'],
-                ['Registered Email', vc.client?.registeredEmail ?? '—'],
-                ['Gender', vc.client?.gender ?? '—'],
-                ['Birth City', vc.client?.birthCity ?? '—'],
-                ['Marital Status', vc.client?.maritalStatus ?? '—'],
-                ['Address', formatAddress(vc.client)],
-                ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
-                ['Visa Type', vc.visaType ?? '—'],
-                ['Appointment Date', fmtDate(vc.appointmentDate)],
-                ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
-                ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
-                ['TLS Account', vc.tlsAccount ?? '—'],
-                ['FRA No.', vc.fraNo ?? '—'],
-                ['Charges', fmtMoney(vc.charges)],
-                ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
-              ] as [string, string][]).map(([label, value]) => (
+              {caseSummaryItems(vc).map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-xs text-gray-400">{label}</dt>
                   <dd className="text-gray-800 font-medium">{value}</dd>
