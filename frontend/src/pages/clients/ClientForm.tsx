@@ -9,7 +9,7 @@ import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS } from '../../constants/options';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -410,7 +410,7 @@ const ClientForm: React.FC = () => {
             <Field label="Visa Type">
               <select className={inputCls} value={form.eVisaType} onChange={set('eVisaType')}>
                 <option value="">Select visa type</option>
-                {VISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
+                {EVISA_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </Field>
           </div>
