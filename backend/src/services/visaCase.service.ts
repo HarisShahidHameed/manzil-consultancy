@@ -153,16 +153,17 @@ const decorateCase = <T extends { stage: string; destination: string | null; des
 
 export const listCases = async (
   page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
-  destination?: string, city?: string,
+  destination?: string, city?: string, advancePaid?: boolean,
 ) => {
   const skip = (page - 1) * limit;
   // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
-  // destination, city and free-text search can all narrow the result set at once.
+  // destination, city, advance-paid and free-text search can all narrow the result set at once.
   const where: Prisma.VisaCaseWhereInput = {};
   if (stage) where.stage = stage as any;
   if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
   if (destination) where.destination = { contains: destination, mode: 'insensitive' };
   if (city) where.city = { contains: city, mode: 'insensitive' };
+  if (advancePaid !== undefined) where.advancePaid = advancePaid;
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },

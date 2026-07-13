@@ -57,17 +57,19 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const [search, setSearch] = useState('');
   const [destination, setDestination] = useState('');
   const [city, setCity] = useState('');
+  const [advancePaid, setAdvancePaid] = useState<'' | 'true' | 'false'>('');
   const [page, setPage] = useState(1);
 
-  // All filters are ANDed together server-side, so status + destination + city + search narrow the list in sync.
+  // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
   const params: Record<string, string> = { page: String(page), limit: '20', stage };
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
   if (city) params.city = city;
+  if (advancePaid) params.advancePaid = advancePaid;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, tab, search, destination, city, page],
+    queryKey: ['cases', stage, tab, search, destination, city, advancePaid, page],
     queryFn:  () => getCases(params),
   });
 
@@ -140,9 +142,18 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                 {tabs.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             )}
-            {(search || destination || city || tab !== 'ALL') && (
+            <select
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={advancePaid}
+              onChange={e => { setAdvancePaid(e.target.value as '' | 'true' | 'false'); setPage(1); }}
+            >
+              <option value="">Any</option>
+              <option value="true">Paid</option>
+              <option value="false">Unpaid</option>
+            </select>
+            {(search || destination || city || advancePaid || tab !== 'ALL') && (
               <button
-                onClick={() => { setSearch(''); setDestination(''); setCity(''); setTab('ALL'); setPage(1); }}
+                onClick={() => { setSearch(''); setDestination(''); setCity(''); setAdvancePaid(''); setTab('ALL'); setPage(1); }}
                 className="text-xs text-indigo-600 hover:underline"
               >
                 Clear filters
