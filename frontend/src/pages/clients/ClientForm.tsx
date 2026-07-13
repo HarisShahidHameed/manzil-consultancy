@@ -32,6 +32,15 @@ const Field: React.FC<{
 );
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors';
+const warnInputCls = 'w-full rounded-lg border border-amber-400 bg-amber-50 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-colors';
+
+// True once the expiry date is within 6 months from today (including already past).
+const isExpiringSoon = (dateStr: string) => {
+  if (!dateStr) return false;
+  const sixMonthsOut = new Date();
+  sixMonthsOut.setMonth(sixMonthsOut.getMonth() + 6);
+  return new Date(dateStr) <= sixMonthsOut;
+};
 
 const emptyForm = {
   receivedDate: new Date().toISOString().split('T')[0],
@@ -316,7 +325,15 @@ const ClientForm: React.FC = () => {
             <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportIssue} onChange={set('passportIssue')} />
           </Field>
           <Field label="Expiry Date" required error={fieldErrors.passportExpiry}>
-            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportExpiry} onChange={set('passportExpiry')} />
+            <input
+              type="date" min="1900-01-01" max="2099-12-31"
+              className={isExpiringSoon(form.passportExpiry) ? warnInputCls : inputCls}
+              value={form.passportExpiry}
+              onChange={set('passportExpiry')}
+            />
+            {isExpiringSoon(form.passportExpiry) && (
+              <p className="text-xs text-amber-600 mt-1">Expires within 6 months</p>
+            )}
           </Field>
         </div>
         <Field label="Previous Schengen Visa Details">
@@ -380,7 +397,15 @@ const ClientForm: React.FC = () => {
         <Section title="E-Visa">
           <div className="grid grid-cols-2 gap-4">
             <Field label="UK Visa Expiry">
-              <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.ukVisaExpiry} onChange={set('ukVisaExpiry')} />
+              <input
+                type="date" min="1900-01-01" max="2099-12-31"
+                className={isExpiringSoon(form.ukVisaExpiry) ? warnInputCls : inputCls}
+                value={form.ukVisaExpiry}
+                onChange={set('ukVisaExpiry')}
+              />
+              {isExpiringSoon(form.ukVisaExpiry) && (
+                <p className="text-xs text-amber-600 mt-1">Expires within 6 months</p>
+              )}
             </Field>
             <Field label="Visa Type">
               <select className={inputCls} value={form.eVisaType} onChange={set('eVisaType')}>
