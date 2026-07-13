@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
 const INV_COLORS: Record<InvoiceStatus, string> = {
@@ -34,6 +35,7 @@ const InvoiceList: React.FC = () => {
   const [tab, setTab] = useState<TabStatus>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -42,14 +44,16 @@ const InvoiceList: React.FC = () => {
   const [newForm, setNewForm] = useState({ caseId: '', charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [editForm, setEditForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '', status: 'DRAFT' as InvoiceStatus });
 
-  const params: Record<string, string> = { page: String(page), limit: '20' };
+  const params: Record<string, string> = { page: String(page), limit: String(limit) };
   if (tab !== 'ALL') params.status = tab;
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', tab, search, page],
+    queryKey: ['invoices', tab, search, page, limit],
     queryFn:  () => getInvoices(params),
   });
+
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   const { data: casesData } = useQuery({
     queryKey: ['cases-all'],
@@ -264,15 +268,7 @@ const InvoiceList: React.FC = () => {
           </div>
         )}
 
-        {meta && (meta.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">Page {meta.page} of {meta.totalPages}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={meta.page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={meta.page === meta.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
       </div>
 
       {/* Create Invoice Modal */}

@@ -6,6 +6,7 @@ import { getCases } from '../../api/cases';
 import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Pagination } from '../../components/ui/Pagination';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 
 const PRI_COLORS: Record<Priority, string> = {
@@ -51,9 +52,10 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const [city, setCity] = useState('');
   const [advancePaid, setAdvancePaid] = useState<'' | 'true' | 'false'>('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
 
   // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
-  const params: Record<string, string> = { page: String(page), limit: '20', stage };
+  const params: Record<string, string> = { page: String(page), limit: String(limit), stage };
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
@@ -61,9 +63,11 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (advancePaid) params.advancePaid = advancePaid;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, tab, search, destination, city, advancePaid, page],
+    queryKey: ['cases', stage, tab, search, destination, city, advancePaid, page, limit],
     queryFn:  () => getCases(params),
   });
+
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
@@ -246,15 +250,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
           </div>
         )}
 
-        {meta && (meta.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">Page {meta.page} of {meta.totalPages}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={meta.page === 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={meta.page === meta.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
       </div>
     </div>
   );

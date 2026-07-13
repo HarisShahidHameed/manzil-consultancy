@@ -3,21 +3,23 @@ import { useQuery } from '@tanstack/react-query';
 import { FileText, CheckCircle, XCircle } from 'lucide-react';
 import api from '../../api/axios';
 import type { AuditLog, ApiResponse } from '../../types';
-import { Button } from '../../components/ui/Button';
+import { Pagination } from '../../components/ui/Pagination';
 
 const AuditLogs: React.FC = () => {
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page],
+    queryKey: ['audit-logs', page, limit],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<AuditLog[]>>(`/roles/audit-logs?page=${page}&limit=50`);
+      const res = await api.get<ApiResponse<AuditLog[]>>(`/roles/audit-logs?page=${page}&limit=${limit}`);
       return res.data;
     },
   });
 
   const logs = data?.data ?? [];
   const meta = data?.meta;
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   return (
     <div className="space-y-6">
@@ -92,19 +94,7 @@ const AuditLogs: React.FC = () => {
           </div>
         )}
 
-        {meta && meta.totalPages! > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">Page {meta.page} of {meta.totalPages} ({meta.total} events)</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={meta.page === 1} onClick={() => setPage(p => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={meta.page === meta.totalPages} onClick={() => setPage(p => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} limitOptions={[25, 50, 100]} />
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { Prisma } from '@prisma/client';
 
 export const listRoles = async () => {
   return prisma.role.findMany({
@@ -8,6 +9,23 @@ export const listRoles = async () => {
     },
     orderBy: { name: 'asc' },
   });
+};
+
+export const listRolesPaginated = async (page: number, limit: number) => {
+  const skip = (page - 1) * limit;
+  const [roles, total] = await Promise.all([
+    prisma.role.findMany({
+      skip,
+      take: limit,
+      include: {
+        rolePermissions: { include: { permission: true } },
+        _count: { select: { userRoles: true } },
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.role.count(),
+  ]);
+  return { roles, total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
 export const getRoleById = async (id: string) => {
@@ -62,6 +80,37 @@ export const listPermissions = async () => {
     orderBy: [{ resource: 'asc' }, { action: 'asc' }],
     include: { _count: { select: { rolePermissions: true } } },
   });
+};
+
+export const listPermissionsPaginated = async (
+  page: number,
+  limit: number,
+  search?: string,
+  resource?: string
+) => {
+  const skip = (page - 1) * limit;
+  const where: Prisma.PermissionWhereInput = {};
+  if (resource) where.resource = resource;
+  if (search) {
+    where.OR = [
+      { name:        { contains: search, mode: 'insensitive' } },
+      { resource:    { contains: search, mode: 'insensitive' } },
+      { action:      { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+
+  const [permissions, total] = await Promise.all([
+    prisma.permission.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: [{ resource: 'asc' }, { action: 'asc' }],
+      include: { _count: { select: { rolePermissions: true } } },
+    }),
+    prisma.permission.count({ where }),
+  ]);
+  return { permissions, total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
 export const createPermission = async (data: { resource: string; action: string; description?: string }) => {

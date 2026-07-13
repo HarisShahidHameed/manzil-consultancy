@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
 // ── extended type that includes role count ────────────────────
@@ -44,6 +45,8 @@ const actionClass = (action: string) =>
 const Permissions: React.FC = () => {
   const [search, setSearch] = useState('');
   const [resourceFilter, setResourceFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PermissionWithCount | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PermissionWithCount | null>(null);
@@ -51,10 +54,12 @@ const Permissions: React.FC = () => {
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   const qc = useQueryClient();
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   // ── queries ──────────────────────────────────────────────────
-  const { data: permissions = [], isLoading } = useQuery<PermissionWithCount[]>({
-    queryKey: ['permissions'],
+  // Full unpaginated list — used only to compute per-resource stat cards / resource options
+  const { data: allPermissions = [] } = useQuery<PermissionWithCount[]>({
+    queryKey: ['permissions', 'all'],
     queryFn: async () => {
       const res = await api.get<ApiResponse<PermissionWithCount[]>>('/roles/permissions');
       return res.data.data ?? [];
@@ -62,22 +67,23 @@ const Permissions: React.FC = () => {
   });
 
   const resources = useMemo(() => {
-    const set = new Set(permissions.map(p => p.resource));
+    const set = new Set(allPermissions.map(p => p.resource));
     return Array.from(set).sort();
-  }, [permissions]);
+  }, [allPermissions]);
 
-  const filtered = useMemo(() => {
-    return permissions.filter(p => {
-      const matchSearch =
-        !search ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.resource.toLowerCase().includes(search.toLowerCase()) ||
-        p.action.toLowerCase().includes(search.toLowerCase()) ||
-        (p.description ?? '').toLowerCase().includes(search.toLowerCase());
-      const matchResource = resourceFilter === 'all' || p.resource === resourceFilter;
-      return matchSearch && matchResource;
-    });
-  }, [permissions, search, resourceFilter]);
+  // Paginated, server-filtered table data
+  const { data: permsRes, isLoading } = useQuery({
+    queryKey: ['permissions', page, limit, search, resourceFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (search) params.set('search', search);
+      if (resourceFilter !== 'all') params.set('resource', resourceFilter);
+      const res = await api.get<ApiResponse<PermissionWithCount[]>>(`/roles/permissions?${params}`);
+      return res.data;
+    },
+  });
+  const filtered = permsRes?.data ?? [];
+  const meta = permsRes?.meta;
 
   // ── mutations ─────────────────────────────────────────────────
   const notify = (msg: string) => {
@@ -134,7 +140,7 @@ const Permissions: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Permissions</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {permissions.length} permissions across {resources.length} resources
+            {meta?.total ?? allPermissions.length} permissions across {resources.length} resources
           </p>
         </div>
         <Can permissions={['permissions:write']}>
@@ -154,11 +160,11 @@ const Permissions: React.FC = () => {
       {/* Stats cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {resources.map(r => {
-          const count = permissions.filter(p => p.resource === r).length;
+          const count = allPermissions.filter(p => p.resource === r).length;
           return (
             <button
               key={r}
-              onClick={() => setResourceFilter(prev => prev === r ? 'all' : r)}
+              onClick={() => { setResourceFilter(prev => prev === r ? 'all' : r); setPage(1); }}
               className={`rounded-xl border p-4 text-left transition-all ${
                 resourceFilter === r
                   ? 'border-indigo-400 bg-indigo-50 ring-2 ring-indigo-200'
@@ -178,14 +184,14 @@ const Permissions: React.FC = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search permissions…"
             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
         </div>
         <select
           value={resourceFilter}
-          onChange={e => setResourceFilter(e.target.value)}
+          onChange={e => { setResourceFilter(e.target.value); setPage(1); }}
           className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
         >
           <option value="all">All resources</option>
@@ -275,6 +281,7 @@ const Permissions: React.FC = () => {
             </tbody>
           </table>
         )}
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
       </div>
 
       {/* ── Create Modal ── */}

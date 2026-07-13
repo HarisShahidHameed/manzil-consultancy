@@ -11,6 +11,7 @@ import type { ClientGroup, Client, ApiResponse } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
@@ -19,6 +20,8 @@ const Groups: React.FC = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -29,11 +32,14 @@ const Groups: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['groups'],
-    queryFn:  () => getGroups(),
+    queryKey: ['groups', page, limit],
+    queryFn:  () => getGroups({ page: String(page), limit: String(limit) }),
   });
   const groups: ClientGroup[] = data?.data ?? [];
+  const meta = data?.meta;
 
   const selected = useMemo(() => groups.find(g => g.id === selectedId) ?? null, [groups, selectedId]);
   useEffect(() => { if (!selectedId && groups.length) setSelectedId(groups[0].id); }, [groups, selectedId]);
@@ -98,7 +104,7 @@ const Groups: React.FC = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Client Groups</h1>
-          <p className="text-gray-500 text-sm mt-1">{groups.length} groups · link families & friends applying together</p>
+          <p className="text-gray-500 text-sm mt-1">{meta?.total ?? groups.length} groups · link families & friends applying together</p>
         </div>
         <Can permissions={['clients:write']}>
           <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => { setForm({ name: '', relation: '', notes: '' }); setCreateOpen(true); }}>
@@ -115,7 +121,7 @@ const Groups: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">Groups</h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{groups.length}</span>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{meta?.total ?? groups.length}</span>
           </div>
           {isLoading ? (
             <div className="flex justify-center py-10"><div className="w-6 h-6 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>
@@ -148,6 +154,7 @@ const Groups: React.FC = () => {
               ))}
             </div>
           )}
+          <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
         </div>
 
         {/* Group detail */}

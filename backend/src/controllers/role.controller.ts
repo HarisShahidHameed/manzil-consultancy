@@ -4,7 +4,15 @@ import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
 import { paginationSchema } from '../validators/user.validators';
 
-export const listRoles = async (_req: Request, res: Response): Promise<void> => {
+export const listRoles = async (req: Request, res: Response): Promise<void> => {
+  if (req.query.page || req.query.limit) {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const result = await roleService.listRolesPaginated(page, limit);
+    sendSuccess(res, 'Roles retrieved', result.roles, 200, {
+      total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages,
+    });
+    return;
+  }
   const roles = await roleService.listRoles();
   sendSuccess(res, 'Roles retrieved', roles);
 };
@@ -62,7 +70,16 @@ export const setRolePermissions = async (req: Request, res: Response): Promise<v
   sendSuccess(res, 'Permissions updated', role);
 };
 
-export const listPermissions = async (_req: Request, res: Response): Promise<void> => {
+export const listPermissions = async (req: Request, res: Response): Promise<void> => {
+  if (req.query.page || req.query.limit) {
+    const { page, limit, search } = paginationSchema.parse(req.query);
+    const resource = typeof req.query.resource === 'string' ? req.query.resource : undefined;
+    const result = await roleService.listPermissionsPaginated(page, limit, search, resource);
+    sendSuccess(res, 'Permissions retrieved', result.permissions, 200, {
+      total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages,
+    });
+    return;
+  }
   const permissions = await roleService.listPermissions();
   sendSuccess(res, 'Permissions retrieved', permissions);
 };

@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
 // ── schemas ────────────────────────────────────────────────
@@ -29,6 +30,8 @@ const errMsg = (e: unknown, fallback: string) => {
 // ── component ──────────────────────────────────────────────
 const Roles: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -36,15 +39,18 @@ const Roles: React.FC = () => {
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
 
   const qc = useQueryClient();
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   // ── queries ──────────────────────────────────────────────
-  const { data: roles = [], isLoading: rolesLoading } = useQuery<Role[]>({
-    queryKey: ['roles'],
+  const { data: rolesRes, isLoading: rolesLoading } = useQuery({
+    queryKey: ['roles', page, limit],
     queryFn: async () => {
-      const res = await api.get<ApiResponse<Role[]>>('/roles');
-      return res.data.data ?? [];
+      const res = await api.get<ApiResponse<Role[]>>(`/roles?page=${page}&limit=${limit}`);
+      return res.data;
     },
   });
+  const roles = rolesRes?.data ?? [];
+  const rolesMeta = rolesRes?.meta;
 
   const { data: allPermissions = [] } = useQuery<Permission[]>({
     queryKey: ['permissions'],
@@ -162,7 +168,7 @@ const Roles: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
           <p className="text-gray-500 text-sm mt-1">
-            {roles.length} roles · {allPermissions.length} permissions
+            {rolesMeta?.total ?? roles.length} roles · {allPermissions.length} permissions
           </p>
         </div>
         <Can permissions={['roles:write']}>
@@ -185,7 +191,7 @@ const Roles: React.FC = () => {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex flex-col">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h2 className="font-semibold text-gray-900">Roles</h2>
-            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{roles.length}</span>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{rolesMeta?.total ?? roles.length}</span>
           </div>
 
           {rolesLoading ? (
@@ -234,6 +240,7 @@ const Roles: React.FC = () => {
               ))}
             </div>
           )}
+          <Pagination meta={rolesMeta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
         </div>
 
         {/* ── Right: Permission matrix ── */}

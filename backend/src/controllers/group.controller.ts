@@ -3,9 +3,18 @@ import * as groupService from '../services/group.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
 import { createGroupSchema, updateGroupSchema, groupMembersSchema } from '../validators/client.validators';
+import { paginationSchema } from '../validators/user.validators';
 
 export const listGroups = async (req: Request, res: Response): Promise<void> => {
   const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  if (req.query.page || req.query.limit) {
+    const { page, limit } = paginationSchema.parse(req.query);
+    const result = await groupService.listGroupsPaginated(page, limit, search);
+    sendSuccess(res, 'Groups retrieved', result.groups, 200, {
+      total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages,
+    });
+    return;
+  }
   const groups = await groupService.listGroups(search);
   sendSuccess(res, 'Groups retrieved', groups);
 };

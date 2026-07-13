@@ -36,6 +36,21 @@ export const listGroups = async (search?: string) => {
   return prisma.clientGroup.findMany({ where, select: GROUP_SELECT, orderBy: { createdAt: 'desc' } });
 };
 
+export const listGroupsPaginated = async (page: number, limit: number, search?: string) => {
+  const skip = (page - 1) * limit;
+  const where: Prisma.ClientGroupWhereInput = search
+    ? { OR: [
+        { name:     { contains: search, mode: 'insensitive' } },
+        { groupRef: { contains: search, mode: 'insensitive' } },
+      ] }
+    : {};
+  const [groups, total] = await Promise.all([
+    prisma.clientGroup.findMany({ where, select: GROUP_SELECT, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.clientGroup.count({ where }),
+  ]);
+  return { groups, total, page, limit, totalPages: Math.ceil(total / limit) };
+};
+
 export const getGroupById = async (id: string) =>
   prisma.clientGroup.findUnique({ where: { id }, select: GROUP_SELECT });
 

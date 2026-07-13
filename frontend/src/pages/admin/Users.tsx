@@ -11,6 +11,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
+import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
 // ── schemas ────────────────────────────────────────────────
@@ -38,6 +39,7 @@ const errMsg = (e: unknown, fallback: string) => {
 const Users: React.FC = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -45,11 +47,13 @@ const Users: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const qc = useQueryClient();
 
+  const changeLimit = (l: number) => { setLimit(l); setPage(1); };
+
   // ── queries ──────────────────────────────────────────────
   const { data, isLoading } = useQuery({
-    queryKey: ['users', page, search],
+    queryKey: ['users', page, limit, search],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' });
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) params.set('search', search);
       const res = await api.get<ApiResponse<User[]>>(`/users?${params}`);
       return res.data;
@@ -270,22 +274,7 @@ const Users: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination */}
-        {meta && (meta.totalPages ?? 1) > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
-            <p className="text-sm text-gray-500">
-              Showing page {meta.page} of {meta.totalPages} ({meta.total} total)
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={meta.page === 1} onClick={() => setPage(p => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={meta.page === meta.totalPages} onClick={() => setPage(p => p + 1)}>
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} />
       </div>
 
       {/* ── Create User Modal ── */}
