@@ -8,6 +8,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
+import { isExpiringSoon } from '../../utils/dates';
 
 const PRI_COLORS: Record<Priority, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
@@ -197,7 +198,20 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   >
                     <td className="px-4 py-3">
                       <p className="text-xs font-bold text-indigo-600">{c.client?.clientRef}</p>
-                      <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
+                        {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
+                          <span
+                            title={[
+                              isExpiringSoon(c.client?.passportExpiry) && 'Passport expiring within 6 months',
+                              isExpiringSoon(c.ukVisaExpiry) && 'Visa expiring within 6 months',
+                            ].filter(Boolean).join(' · ')}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Expiring
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>

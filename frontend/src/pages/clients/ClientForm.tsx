@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS } from '../../constants/options';
+import { isExpiringSoon } from '../../utils/dates';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -33,14 +34,6 @@ const Field: React.FC<{
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors';
 const warnInputCls = 'w-full rounded-lg border border-amber-400 bg-amber-50 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-colors';
-
-// True once the expiry date is within 6 months from today (including already past).
-const isExpiringSoon = (dateStr: string) => {
-  if (!dateStr) return false;
-  const sixMonthsOut = new Date();
-  sixMonthsOut.setMonth(sixMonthsOut.getMonth() + 6);
-  return new Date(dateStr) <= sixMonthsOut;
-};
 
 const emptyForm = {
   receivedDate: new Date().toISOString().split('T')[0],

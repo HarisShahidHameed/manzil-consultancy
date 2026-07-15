@@ -5,6 +5,7 @@ import { Search, UserPlus, Trash2, Eye, Filter, Upload, AlertTriangle } from 'lu
 import { AxiosError } from 'axios';
 import { getClients, deleteClient } from '../../api/clients';
 import type { Client, CaseStage } from '../../types';
+import { isExpiringSoon } from '../../utils/dates';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
@@ -159,7 +160,20 @@ const ClientList: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
+                        {(isExpiringSoon(c.passportExpiry) || c.visaCases.some(vc => isExpiringSoon(vc.ukVisaExpiry))) && (
+                          <span
+                            title={[
+                              isExpiringSoon(c.passportExpiry) && 'Passport expiring within 6 months',
+                              c.visaCases.some(vc => isExpiringSoon(vc.ukVisaExpiry)) && 'Visa expiring within 6 months',
+                            ].filter(Boolean).join(' · ')}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Expiring
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
                         {c.group && (
