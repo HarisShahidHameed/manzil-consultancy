@@ -92,7 +92,10 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
   const passportNumber = str(row[10]) ?? '';
   const nationality   = str(row[16]) ?? '';
   const destination   = str(row[17]) ?? '';
-  const receivedDate  = excelDateToISO(row[1]);
+  // The database requires a received date — default to today when the sheet leaves it blank,
+  // same as a manually-added client would get.
+  const receivedDateRaw = excelDateToISO(row[1]);
+  const receivedDate = receivedDateRaw || new Date().toISOString().split('T')[0];
   const dob           = excelDateToISO(row[6]);
   const passportIssue = excelDateToISO(row[11]);
   const passportExpiry = excelDateToISO(row[12]);
@@ -102,9 +105,9 @@ const mapRow = (row: RawRow, rowIndex: number): MappedRow => {
 
   // Hard requirements — a row can't be imported at all without these.
   if (!firstName && !lastName) errors.push('First Name or Last Name missing');
-  if (!receivedDate)  errors.push('Received Date missing');
 
   // Required for file processing, but fine to import as-is — stays flagged "incomplete" until filled in.
+  if (!receivedDateRaw) warnings.push('Received Date (defaulted to today)');
   if (!firstName)       warnings.push('First Name');
   if (!lastName)        warnings.push('Last Name');
   if (!passportNumber)  warnings.push('Passport Number');
