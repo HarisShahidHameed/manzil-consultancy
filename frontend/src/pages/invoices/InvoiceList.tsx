@@ -5,7 +5,7 @@ import { Search, Receipt, Trash2, Edit, Download } from 'lucide-react';
 import { getInvoices, deleteInvoice, updateInvoice, createInvoice } from '../../api/invoices';
 import { downloadInvoicePdf } from '../../api/pdf';
 import { getCases } from '../../api/cases';
-import type { Invoice, InvoiceStatus, VisaCase } from '../../types';
+import type { Invoice, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
@@ -13,26 +13,12 @@ import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 
-const INV_COLORS: Record<InvoiceStatus, string> = {
-  DRAFT: 'bg-gray-100 text-gray-600', SENT: 'bg-blue-100 text-blue-700',
-  PARTIAL: 'bg-yellow-100 text-yellow-700', PAID: 'bg-green-100 text-green-700',
-};
-const STATUSES: InvoiceStatus[] = ['DRAFT', 'SENT', 'PARTIAL', 'PAID'];
-
-type TabStatus = 'ALL' | InvoiceStatus;
-const TABS: { key: TabStatus; label: string }[] = [
-  { key: 'ALL', label: 'All' }, { key: 'DRAFT', label: 'Draft' },
-  { key: 'SENT', label: 'Sent' }, { key: 'PARTIAL', label: 'Partial' },
-  { key: 'PAID', label: 'Paid' },
-];
-
 const fmtDate  = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 const fmtMoney = (v?: number | string | null) => v != null ? `£${parseFloat(String(v)).toFixed(2)}` : '—';
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 const InvoiceList: React.FC = () => {
   const qc = useQueryClient();
-  const [tab, setTab] = useState<TabStatus>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
@@ -42,14 +28,13 @@ const InvoiceList: React.FC = () => {
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [newForm, setNewForm] = useState({ caseId: '', charges: '', discount: '', advance: '', dueDate: '', notes: '' });
-  const [editForm, setEditForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '', status: 'DRAFT' as InvoiceStatus });
+  const [editForm, setEditForm] = useState({ charges: '', discount: '', advance: '', paidAmount: '', dueDate: '', notes: '' });
 
   const params: Record<string, string> = { page: String(page), limit: String(limit) };
-  if (tab !== 'ALL') params.status = tab;
   if (search) params.search = search;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', tab, search, page, limit],
+    queryKey: ['invoices', search, page, limit],
     queryFn:  () => getInvoices(params),
   });
 
@@ -84,12 +69,12 @@ const InvoiceList: React.FC = () => {
 
   const editMut = useMutation({
     mutationFn: () => updateInvoice(editInvoice!.id, {
-      charges:  editForm.charges  ? parseFloat(editForm.charges)  : undefined,
-      discount: editForm.discount ? parseFloat(editForm.discount) : undefined,
-      advance:  editForm.advance  ? parseFloat(editForm.advance)  : undefined,
-      dueDate:  editForm.dueDate  || undefined,
-      notes:    editForm.notes    || undefined,
-      status:   editForm.status   || undefined,
+      charges:    editForm.charges    ? parseFloat(editForm.charges)    : undefined,
+      discount:   editForm.discount   ? parseFloat(editForm.discount)   : undefined,
+      advance:    editForm.advance    ? parseFloat(editForm.advance)    : undefined,
+      paidAmount: editForm.paidAmount ? parseFloat(editForm.paidAmount) : undefined,
+      dueDate:    editForm.dueDate    || undefined,
+      notes:      editForm.notes      || undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['invoices'] });
@@ -97,16 +82,6 @@ const InvoiceList: React.FC = () => {
       showSuccess('Invoice updated');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to update invoice'),
-  });
-
-  // Inline status change (payment is handled manually — we only track status)
-  const statusMut = useMutation({
-    mutationFn: (vars: { id: string; status: InvoiceStatus }) => updateInvoice(vars.id, { status: vars.status }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['invoices'] });
-      showSuccess('Status updated');
-    },
-    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to update status'),
   });
 
   const delMut = useMutation({
@@ -127,12 +102,12 @@ const InvoiceList: React.FC = () => {
   const openEdit = (inv: Invoice) => {
     setEditInvoice(inv);
     setEditForm({
-      charges:  String(parseFloat(String(inv.charges)).toFixed(2)),
-      discount: String(parseFloat(String(inv.discount)).toFixed(2)),
-      advance:  String(parseFloat(String(inv.advance)).toFixed(2)),
-      dueDate:  inv.dueDate?.split('T')[0] ?? '',
-      notes:    inv.notes ?? '',
-      status:   inv.status,
+      charges:    String(parseFloat(String(inv.charges)).toFixed(2)),
+      discount:   String(parseFloat(String(inv.discount)).toFixed(2)),
+      advance:    String(parseFloat(String(inv.advance)).toFixed(2)),
+      paidAmount: String(parseFloat(String(inv.paidAmount)).toFixed(2)),
+      dueDate:    inv.dueDate?.split('T')[0] ?? '',
+      notes:      inv.notes ?? '',
     });
   };
 
@@ -144,7 +119,7 @@ const InvoiceList: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} invoices · payment recorded manually, set status here</p>
+          <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} invoices · payment recorded manually via Amount Paid</p>
         </div>
         <Can permissions={['invoices:write']}>
           <Button leftIcon={<Receipt className="w-4 h-4" />} onClick={() => setCreateOpen(true)}>
@@ -157,20 +132,7 @@ const InvoiceList: React.FC = () => {
       {success && <Alert variant="success" message={success} onClose={() => setSuccess(null)} />}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {TABS.map(t => (
-              <button
-                key={t.key}
-                onClick={() => { setTab(t.key); setPage(1); }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  tab === t.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+        <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-end">
           <Input
             placeholder="Search by ref, client name..."
             value={search}
@@ -198,7 +160,7 @@ const InvoiceList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Charges</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Total</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Outstanding</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Issued</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
@@ -219,23 +181,11 @@ const InvoiceList: React.FC = () => {
                     <td className="px-4 py-3 text-gray-700">{fmtMoney(inv.charges)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{fmtMoney(inv.totalAmount)}</td>
                     <td className="px-4 py-3">
-                      <Can
-                        permissions={['invoices:write']}
-                        fallback={
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${INV_COLORS[inv.status]}`}>
-                            {inv.status}
-                          </span>
-                        }
-                      >
-                        <select
-                          value={inv.status}
-                          disabled={statusMut.isPending}
-                          onChange={e => statusMut.mutate({ id: inv.id, status: e.target.value as InvoiceStatus })}
-                          className={`text-xs font-medium rounded-full border-0 px-2 py-1 cursor-pointer focus:ring-2 focus:ring-indigo-500 ${INV_COLORS[inv.status]}`}
-                        >
-                          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </Can>
+                      {parseFloat(String(inv.outstanding)) > 0 ? (
+                        <span className="font-medium text-red-600">{fmtMoney(inv.outstanding)}</span>
+                      ) : (
+                        <span className="text-green-600">Settled</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(inv.issueDate)}</td>
                     <td className="px-4 py-3">
@@ -351,11 +301,8 @@ const InvoiceList: React.FC = () => {
               <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editForm.advance} onChange={e => setEditForm(f => ({ ...f, advance: e.target.value }))} />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Status</label>
-              <select className={`${inputCls} mt-1`} value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value as InvoiceStatus }))}>
-                <option value="DRAFT">Draft</option><option value="SENT">Sent</option>
-                <option value="PARTIAL">Partial</option><option value="PAID">Paid</option>
-              </select>
+              <label className="text-sm font-medium text-gray-700">Amount Paid (£)</label>
+              <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editForm.paidAmount} onChange={e => setEditForm(f => ({ ...f, paidAmount: e.target.value }))} />
             </div>
           </div>
           <div>

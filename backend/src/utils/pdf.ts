@@ -190,7 +190,12 @@ const COMPANY = {
 // ── Invoice / receipt ─────────────────────────────────────────
 export const streamInvoicePdf = (res: Response, inv: any): void => {
   const client = inv.case?.client ?? {};
-  const isPaid = inv.status === 'PAID';
+  const charges = parseFloat(String(inv.charges ?? 0));
+  const discount = parseFloat(String(inv.discount ?? 0));
+  const advance = parseFloat(String(inv.advance ?? 0));
+  const total = parseFloat(String(inv.totalAmount ?? charges - discount));
+  const outstanding = parseFloat(String(inv.outstanding ?? 0));
+  const isPaid = outstanding <= 0;
   const doc = start(res, `${inv.invoiceRef}.pdf`);
 
   // Header: company block (left) + INVOICE title & meta (right)
@@ -236,12 +241,6 @@ export const streamInvoicePdf = (res: Response, inv: any): void => {
   doc.y = Math.max(doc.y, colY + 60);
 
   // Line-items table
-  const charges = parseFloat(String(inv.charges ?? 0));
-  const discount = parseFloat(String(inv.discount ?? 0));
-  const advance = parseFloat(String(inv.advance ?? 0));
-  const total = parseFloat(String(inv.totalAmount ?? charges - discount));
-  const outstanding = parseFloat(String(inv.outstanding ?? 0));
-
   const colDesc = LEFT, colQty = 360, colUnit = 410, colAmt = 480;
   let ty = doc.y + 6;
   doc.rect(LEFT, ty, RIGHT - LEFT, 24).fill(NAVY);
@@ -277,21 +276,15 @@ export const streamInvoicePdf = (res: Response, inv: any): void => {
     doc.text(val, sumX + sumW - 100, rowY, { width: 100, align: 'right', lineBreak: false });
     doc.y = rowY + 18;
   };
-  sumRow('Subtotal', money(charges));
+  sumRow('Subtotal', money(total));
   if (advance > 0) sumRow('Advance Paid', money(-advance));
 
   const barY = doc.y;
   doc.rect(sumX, barY, sumW, 28).fill(NAVY);
   doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#FFFFFF')
     .text(isPaid ? 'Amount Paid' : 'Total Due', sumX + 10, barY + 9, { width: sumW - 120, lineBreak: false });
-  doc.text(money(isPaid ? total - advance : outstanding), sumX + sumW - 110, barY + 9, { width: 100, align: 'right', lineBreak: false });
+  doc.text(money(isPaid ? parseFloat(String(inv.paidAmount ?? 0)) : outstanding), sumX + sumW - 110, barY + 9, { width: 100, align: 'right', lineBreak: false });
   doc.y = barY + 40;
-
-  // Status badge
-  const badgeColor = isPaid ? '#16A34A' : inv.status === 'SENT' ? '#2563EB' : inv.status === 'PARTIAL' ? '#D97706' : '#6B7280';
-  doc.roundedRect(sumX, doc.y, 90, 20, 4).fill(badgeColor);
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF').text(String(inv.status), sumX, doc.y + 5, { width: 90, align: 'center' });
-  doc.y += 36;
 
   // Notes & payment terms
   sectionTitle(doc, 'Notes & Payment Terms');
