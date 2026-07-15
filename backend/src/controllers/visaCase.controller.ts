@@ -93,6 +93,38 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
+// Combines "Advance to Invoiced" with auto-invoice generation and immediate completion —
+// see visaCaseService.advanceToInvoicedWithInvoice for the workflow rationale.
+export const advanceToInvoiced = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await visaCaseService.advanceToInvoicedWithInvoice(req.params.id, {
+      createdById: req.user?.sub,
+    });
+    await createAuditLog({
+      userId: req.user?.sub,
+      action: 'CASE_STAGE_CHANGED',
+      resource: 'cases',
+      resourceId: req.params.id,
+      details: { stage: 'COMPLETED', invoiceId: result.invoice.id, invoiceRef: result.invoice.invoiceRef },
+      req,
+    });
+    await createAuditLog({
+      userId: req.user?.sub,
+      action: 'INVOICE_CREATED',
+      resource: 'invoices',
+      resourceId: result.invoice.id,
+      details: { caseId: req.params.id, auto: true },
+      req,
+    });
+    sendSuccess(res, 'Invoice created and case completed', result);
+  } catch (error: any) {
+    const wf = WORKFLOW_ERRORS[error?.message];
+    if (wf) { sendError(res, wf.message, wf.status); return; }
+    if (error?.code === 'P2025') { sendError(res, 'Case not found', 404); return; }
+    sendError(res, 'Failed to advance case', 500);
+  }
+};
+
 export const downloadAdvanceReceipt = async (req: Request, res: Response): Promise<void> => {
   const visaCase = await visaCaseService.getCaseById(req.params.id);
   if (!visaCase) { sendError(res, 'Case not found', 404); return; }

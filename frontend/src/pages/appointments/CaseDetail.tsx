@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog } from 'lucide-react';
-import { getCase, updateCase } from '../../api/cases';
+import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
+import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
 import { downloadAdvanceReceipt, downloadInvoicePdf } from '../../api/pdf';
@@ -140,6 +140,8 @@ const CaseDetail: React.FC = () => {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
+  const [invoicingOpen, setInvoicingOpen] = useState(false);
+  const [invoicingResult, setInvoicingResult] = useState<AdvanceToInvoicedResult | null>(null);
   const [docPaidBy, setDocPaidBy] = useState<Record<DocKey, 'client' | 'agency'>>({
     docAppointment: 'client', docTicket: 'client', docInsurance: 'client', docHotel: 'client',
     docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency', docSelfEmployment: 'client',
@@ -293,6 +295,24 @@ const CaseDetail: React.FC = () => {
       showSuccess('Stage advanced');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to advance stage'),
+  });
+
+  // File Processing → Invoiced is a single combined action: it auto-creates the invoice
+  // from the case's own charges/discount/advance and completes the case immediately —
+  // there's no separate manual "Invoiced" step to sit in.
+  const advanceToInvoicedMut = useMutation({
+    mutationFn: () => advanceToInvoiced(id!),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['case', id] });
+      qc.invalidateQueries({ queryKey: ['cases'] });
+      qc.invalidateQueries({ queryKey: ['invoices'] });
+      setInvoicingResult(res.data ?? null);
+      setActiveSection('COMPLETED');
+    },
+    onError: (e: AxiosError<{ message: string }>) => {
+      setInvoicingOpen(false);
+      onErr(e, 'Failed to create invoice and complete case');
+    },
   });
 
   const cancelMut = useMutation({
@@ -503,7 +523,15 @@ const CaseDetail: React.FC = () => {
                 loading={advanceStageMut.isPending}
                 disabled={!!gateReason}
                 onClick={() => {
-                  if (nextStage && confirm(`Move to ${STAGE_LABELS[nextStage]}?`)) advanceStageMut.mutate();
+                  if (!nextStage) return;
+                  if (nextStage === 'INVOICED') {
+                    if (!confirm('Move to Invoiced? This will auto-generate an invoice from the case charges and complete the case.')) return;
+                    setInvoicingResult(null);
+                    setInvoicingOpen(true);
+                    advanceToInvoicedMut.mutate();
+                    return;
+                  }
+                  if (confirm(`Move to ${STAGE_LABELS[nextStage]}?`)) advanceStageMut.mutate();
                 }}
               >
                 Advance to {nextStage && STAGE_LABELS[nextStage]}
@@ -1017,7 +1045,8 @@ const CaseDetail: React.FC = () => {
         </div>
       )}
 
-      {/* Invoices */}
+      {/* Invoices — not applicable while a case is still in File Processing */}
+      {activeSection !== 'FILE_PROCESSING' && (
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
@@ -1070,6 +1099,48 @@ const CaseDetail: React.FC = () => {
           </div>
         )}
       </div>
+      )}
+
+      {/* Advance-to-Invoiced progress/result modal */}
+      <Modal
+        open={invoicingOpen}
+        onClose={() => { if (!advanceToInvoicedMut.isPending) setInvoicingOpen(false); }}
+        title={invoicingResult ? 'Invoice created' : 'Creating invoice…'}
+        size="sm"
+        footer={
+          invoicingResult ? (
+            <>
+              <Button variant="outline" onClick={() => setInvoicingOpen(false)}>Close</Button>
+              <Button
+                leftIcon={<Download className="w-3.5 h-3.5" />}
+                loading={downloading}
+                onClick={() => handleDownload(() =>
+                  downloadInvoicePdf(invoicingResult.invoice.id, invoicingResult.invoice.invoiceRef)
+                )}
+              >
+                Download Invoice
+              </Button>
+            </>
+          ) : undefined
+        }
+      >
+        {invoicingResult ? (
+          <div className="flex flex-col items-center text-center py-4 gap-3">
+            <CheckCircle2 className="w-10 h-10 text-green-500" />
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Invoice {invoicingResult.invoice.invoiceRef} created — {fmtMoney(invoicingResult.invoice.totalAmount)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">The case has been moved to Completed.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center text-center py-6 gap-3">
+            <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-gray-500">Generating the invoice and completing the case…</p>
+          </div>
+        )}
+      </Modal>
 
       {/* Create Invoice Modal */}
       <Modal

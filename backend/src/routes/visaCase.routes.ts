@@ -26,6 +26,11 @@ router.put(
   requireAnyPermission('appointments:write', 'files:write', 'clients:write', 'invoices:write'),
   visaCaseController.updateCase
 );
+router.post(
+  '/:id/advance-to-invoiced',
+  requireAnyPermission('files:write', 'invoices:write'),
+  visaCaseController.advanceToInvoiced
+);
 router.delete('/:id', requirePermission('clients:delete'), visaCaseController.deleteCase);
 
 export default router;

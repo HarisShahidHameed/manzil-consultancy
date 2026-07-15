@@ -294,6 +294,65 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
   return updated;
 };
 
+// Combines the FILE_PROCESSING → INVOICED → COMPLETED transition into one step: an invoice
+// is auto-generated from the case's own charges/discount/advance figures, and the case is
+// completed immediately — there is no separate manual "Invoiced" stage to sit in.
+export const advanceToInvoicedWithInvoice = async (
+  id: string,
+  opts: { dueDate?: string; notes?: string; createdById?: string } = {}
+) => {
+  const existing = await prisma.visaCase.findUnique({
+    where: { id },
+    select: {
+      stage: true, onHold: true,
+      destination: true, destinationOptions: true, city: true, cityOptions: true,
+      charges: true, discount: true, advance: true,
+    },
+  });
+  if (!existing) {
+    const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
+  }
+  if (existing.stage !== 'FILE_PROCESSING') throw new Error('STAGE_INVALID');
+  if (existing.onHold) throw new Error('ON_HOLD');
+  if ((existing.destinationOptions?.length ?? 0) > 0 && !existing.destination) {
+    throw new Error('DESTINATION_NOT_FINALIZED');
+  }
+  if ((existing.cityOptions?.length ?? 0) > 0 && !existing.city) {
+    throw new Error('CITY_NOT_FINALIZED');
+  }
+
+  const charges  = existing.charges  ?? new Prisma.Decimal(0);
+  const discount = existing.discount ?? new Prisma.Decimal(0);
+  const advance  = existing.advance  ?? new Prisma.Decimal(0);
+  const total = charges.minus(discount);
+  const outstanding = total.minus(advance);
+
+  const [invoice, updatedCase] = await prisma.$transaction(async (tx) => {
+    const last = await tx.invoice.findFirst({ orderBy: { invoiceRef: 'desc' }, select: { invoiceRef: true } });
+    const num = last ? parseInt(last.invoiceRef.replace('INV-', ''), 10) + 1 : 1000;
+    const invoiceRef = `INV-${num}`;
+
+    const inv = await tx.invoice.create({
+      data: {
+        invoiceRef, caseId: id,
+        dueDate: opts.dueDate ? new Date(opts.dueDate) : undefined,
+        charges, discount, advance,
+        totalAmount: total,
+        paidAmount: new Prisma.Decimal(0),
+        outstanding,
+        notes: opts.notes,
+        createdById: opts.createdById,
+      },
+      select: { id: true, invoiceRef: true, totalAmount: true, outstanding: true, status: true, issueDate: true },
+    });
+
+    const updated = await tx.visaCase.update({ where: { id }, data: { stage: 'COMPLETED' }, select: CASE_SELECT });
+    return [inv, updated] as const;
+  });
+
+  return { invoice, case: updatedCase };
+};
+
 // Returns current stage so the controller can resolve the required permission for a transition.
 export const getCaseStage = async (id: string): Promise<CaseStageName | null> => {
   const c = await prisma.visaCase.findUnique({ where: { id }, select: { stage: true } });
