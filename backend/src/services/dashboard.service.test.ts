@@ -49,6 +49,8 @@ const defaultCaseGroupByImpl = (args: VisaCaseGroupByArgs) => {
       return Promise.resolve([{ docSop: 'PENDING', _count: { _all: 5 } }]);
     case 'docVisaForm':
       return Promise.resolve([{ docVisaForm: 'PENDING', _count: { _all: 5 } }]);
+    case 'docSelfEmployment':
+      return Promise.resolve([{ docSelfEmployment: 'PENDING', _count: { _all: 5 } }]);
     default:
       return Promise.resolve([]);
   }
@@ -136,7 +138,7 @@ describe('getAnalytics', () => {
         { field: 'docTicket', statuses: [{ status: 'DONE', count: 5 }] },
       ])
     );
-    expect(result.pipeline.documentCompletion).toHaveLength(7);
+    expect(result.pipeline.documentCompletion).toHaveLength(8);
   });
 
   it('defaults numeric sums to 0 when Prisma returns null aggregates', async () => {

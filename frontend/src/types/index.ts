@@ -199,6 +199,7 @@ export interface VisaCase {
   docEVisa: DocumentStatus;
   docSop: DocumentStatus;
   docVisaForm: DocumentStatus;
+  docSelfEmployment: DocumentStatus;
   docAppointmentCost?: number | string | null;
   docTicketCost?: number | string | null;
   docInsuranceCost?: number | string | null;
@@ -206,10 +207,12 @@ export interface VisaCase {
   docEVisaCost?: number | string | null;
   docSopCost?: number | string | null;
   docVisaFormCost?: number | string | null;
+  docSelfEmploymentCost?: number | string | null;
   docAppointmentClientPaid?: number | string | null;
   docTicketClientPaid?: number | string | null;
   docInsuranceClientPaid?: number | string | null;
   docHotelClientPaid?: number | string | null;
+  docSelfEmploymentClientPaid?: number | string | null;
   paymentReceived?: number | string;
   client?: {
     id: string; clientRef: string; firstName: string; lastName: string; gender?: Gender;

@@ -50,7 +50,7 @@ export const getDashboardStats = async () => {
 };
 
 const DOC_FIELDS = [
-  'docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docEVisa', 'docSop', 'docVisaForm',
+  'docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
 ] as const;
 
 const resolveDateRange = (f: AnalyticsQuery) => {

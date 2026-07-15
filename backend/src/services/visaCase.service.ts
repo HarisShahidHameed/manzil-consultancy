@@ -33,10 +33,11 @@ const CASE_SELECT = {
   fraNo: true, tlsAccount: true, appointmentNotes: true,
   travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
   docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
-  docEVisa: true, docSop: true, docVisaForm: true,
+  docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,
   docAppointmentCost: true, docTicketCost: true, docInsuranceCost: true, docHotelCost: true,
-  docEVisaCost: true, docSopCost: true, docVisaFormCost: true,
+  docEVisaCost: true, docSopCost: true, docVisaFormCost: true, docSelfEmploymentCost: true,
   docAppointmentClientPaid: true, docTicketClientPaid: true, docInsuranceClientPaid: true, docHotelClientPaid: true,
+  docSelfEmploymentClientPaid: true,
   paymentReceived: true,
   createdAt: true, updatedAt: true,
   client: {

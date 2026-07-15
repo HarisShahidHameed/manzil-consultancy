@@ -43,7 +43,7 @@ const CLIENT_DETAIL_SELECT = {
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
-      docEVisa: true, docSop: true, docVisaForm: true,
+      docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,
       advance: true, charges: true, discount: true, paymentReceived: true,
       advancePaid: true, advancePaidDate: true,
       createdAt: true, updatedAt: true,

@@ -272,6 +272,7 @@ model VisaCase {
   docEVisa                DocumentStatus @default(PENDING)
   docSop                  DocumentStatus @default(PENDING)
   docVisaForm             DocumentStatus @default(PENDING)
+  docSelfEmployment       DocumentStatus @default(PENDING)
   docAppointmentCost      Decimal?       @db.Decimal(10, 2)
   docTicketCost           Decimal?       @db.Decimal(10, 2)
   docInsuranceCost        Decimal?       @db.Decimal(10, 2)
@@ -279,12 +280,14 @@ model VisaCase {
   docEVisaCost            Decimal?       @db.Decimal(10, 2)
   docSopCost              Decimal?       @db.Decimal(10, 2)
   docVisaFormCost         Decimal?       @db.Decimal(10, 2)
+  docSelfEmploymentCost   Decimal?       @db.Decimal(10, 2)
   // How much of the agency-paid cost above the client has already reimbursed —
-  // only meaningful for the 4 docs the client/agency payer toggle applies to.
+  // only meaningful for the docs the client/agency payer toggle applies to.
   docAppointmentClientPaid Decimal?      @db.Decimal(10, 2)
   docTicketClientPaid      Decimal?      @db.Decimal(10, 2)
   docInsuranceClientPaid   Decimal?      @db.Decimal(10, 2)
   docHotelClientPaid       Decimal?      @db.Decimal(10, 2)
+  docSelfEmploymentClientPaid Decimal?   @db.Decimal(10, 2)
   paymentReceived         Decimal?       @db.Decimal(10, 2)
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt

@@ -98,23 +98,26 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
-type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm';
+type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm' | 'docSelfEmployment';
 const DOC_LABELS: Record<DocKey, string> = {
   docAppointment: 'Appointment Docs', docTicket: 'Ticket',
   docInsurance: 'Insurance', docHotel: 'Hotel', docEVisa: 'E-Visa',
-  docSop: 'SOP', docVisaForm: 'Visa Form',
+  docSop: 'SOP', docVisaForm: 'Visa Form', docSelfEmployment: 'Self Employment Letter',
 };
 const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docAppointment: 'docAppointmentCost', docTicket: 'docTicketCost', docInsurance: 'docInsuranceCost',
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
+  docSelfEmployment: 'docSelfEmploymentCost',
 };
 // E-Visa, SOP and Visa Form only ever show a status — no Paid By / Cost / Client
-// Given columns apply to them.
-const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel']);
-// Only the 4 agency-paid docs above track a client-contribution amount.
+// Given columns apply to them. Self Employment Letter does get the Paid By toggle —
+// we charge the client for it, same as the other agency-fronted docs.
+const AGENCY_PAID_DOCS = new Set<DocKey>(['docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docSelfEmployment']);
+// Only the agency-paid docs above track a client-contribution amount.
 const DOC_CLIENT_PAID_KEY: Partial<Record<DocKey, keyof VisaCase>> = {
   docAppointment: 'docAppointmentClientPaid', docTicket: 'docTicketClientPaid',
   docInsurance: 'docInsuranceClientPaid', docHotel: 'docHotelClientPaid',
+  docSelfEmployment: 'docSelfEmploymentClientPaid',
 };
 const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'WAITING', label: 'Waiting' },
@@ -139,7 +142,7 @@ const CaseDetail: React.FC = () => {
   const [downloading, setDownloading] = useState(false);
   const [docPaidBy, setDocPaidBy] = useState<Record<DocKey, 'client' | 'agency'>>({
     docAppointment: 'client', docTicket: 'client', docInsurance: 'client', docHotel: 'client',
-    docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency',
+    docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency', docSelfEmployment: 'client',
   });
 
   const { data, isLoading } = useQuery({
@@ -179,10 +182,12 @@ const CaseDetail: React.FC = () => {
         docEVisa: vc.docEVisa,
         docSop: vc.docSop,
         docVisaForm: vc.docVisaForm,
+        docSelfEmployment: vc.docSelfEmployment,
         docAppointmentClientPaid: vc.docAppointmentClientPaid,
         docTicketClientPaid: vc.docTicketClientPaid,
         docInsuranceClientPaid: vc.docInsuranceClientPaid,
         docHotelClientPaid: vc.docHotelClientPaid,
+        docSelfEmploymentClientPaid: vc.docSelfEmploymentClientPaid,
         charges: vc.charges,
         discount: vc.discount,
         advance: vc.advance,
@@ -195,6 +200,7 @@ const CaseDetail: React.FC = () => {
         docTicket:      (vc.docTicketCost      != null && Number(vc.docTicketCost)      > 0) ? 'agency' : 'client',
         docInsurance:   (vc.docInsuranceCost   != null && Number(vc.docInsuranceCost)   > 0) ? 'agency' : 'client',
         docHotel:       (vc.docHotelCost       != null && Number(vc.docHotelCost)       > 0) ? 'agency' : 'client',
+        docSelfEmployment: (vc.docSelfEmploymentCost != null && Number(vc.docSelfEmploymentCost) > 0) ? 'agency' : 'client',
       }));
     }
   }, [vc?.id]);
@@ -237,6 +243,7 @@ const CaseDetail: React.FC = () => {
       docEVisa:       editFields.docEVisa,
       docSop:         editFields.docSop,
       docVisaForm:    editFields.docVisaForm,
+      docSelfEmployment: editFields.docSelfEmployment,
       docAppointmentCost: toNum(editFields.docAppointmentCost),
       docTicketCost:      toNum(editFields.docTicketCost),
       docInsuranceCost:   toNum(editFields.docInsuranceCost),
@@ -244,10 +251,12 @@ const CaseDetail: React.FC = () => {
       docEVisaCost:       toNum(editFields.docEVisaCost),
       docSopCost:         toNum(editFields.docSopCost),
       docVisaFormCost:    toNum(editFields.docVisaFormCost),
+      docSelfEmploymentCost: toNum(editFields.docSelfEmploymentCost),
       docAppointmentClientPaid: toNum(editFields.docAppointmentClientPaid),
       docTicketClientPaid:      toNum(editFields.docTicketClientPaid),
       docInsuranceClientPaid:   toNum(editFields.docInsuranceClientPaid),
       docHotelClientPaid:       toNum(editFields.docHotelClientPaid),
+      docSelfEmploymentClientPaid: toNum(editFields.docSelfEmploymentClientPaid),
       charges:         toNum(editFields.charges),
       discount:        toNum(editFields.discount),
       advance:         toNum(editFields.advance),

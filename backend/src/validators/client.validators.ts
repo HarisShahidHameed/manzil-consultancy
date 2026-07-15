@@ -212,6 +212,7 @@ export const updateCaseSchema = z.object({
   docEVisa:       z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docSop:         z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docVisaForm:    z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
+  docSelfEmployment: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docAppointmentCost: z.number().nonnegative().nullable().optional(),
   docTicketCost:      z.number().nonnegative().nullable().optional(),
   docInsuranceCost:   z.number().nonnegative().nullable().optional(),
@@ -219,10 +220,12 @@ export const updateCaseSchema = z.object({
   docEVisaCost:       z.number().nonnegative().nullable().optional(),
   docSopCost:         z.number().nonnegative().nullable().optional(),
   docVisaFormCost:    z.number().nonnegative().nullable().optional(),
+  docSelfEmploymentCost: z.number().nonnegative().nullable().optional(),
   docAppointmentClientPaid: z.number().nonnegative().nullable().optional(),
   docTicketClientPaid:      z.number().nonnegative().nullable().optional(),
   docInsuranceClientPaid:   z.number().nonnegative().nullable().optional(),
   docHotelClientPaid:       z.number().nonnegative().nullable().optional(),
+  docSelfEmploymentClientPaid: z.number().nonnegative().nullable().optional(),
   paymentReceived: z.number().nonnegative().optional(),
 });
 
