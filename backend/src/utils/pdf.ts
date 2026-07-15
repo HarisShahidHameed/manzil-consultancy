@@ -6,7 +6,10 @@ const ORANGE = '#F7941D';
 const GREY = '#6B7280';
 const LIGHT = '#9CA3AF';
 
-const money = (v: unknown) => `£${(v != null ? parseFloat(String(v)) : 0).toFixed(2)}`;
+const money = (v: unknown) => {
+  const n = v != null ? parseFloat(String(v)) : 0;
+  return n < 0 ? `-£${Math.abs(n).toFixed(2)}` : `£${n.toFixed(2)}`;
+};
 const fdate = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('en-GB') : '—');
 const cap = (s?: string | null) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '—');
 const formatAddress = (c: { addressStreet?: string | null; addressCity?: string | null; addressShire?: string | null; addressPostalCode?: string | null; addressCountry?: string | null }) =>
@@ -171,63 +174,131 @@ export const streamAdvanceReceiptPdf = (res: Response, vc: any): void => {
   doc.end();
 };
 
+// ── Company details printed on invoices ────────────────────────
+// TODO: replace the placeholder registration numbers below with the real ones once available.
+const COMPANY = {
+  name: 'Manzil Visa Consultancy',
+  addressLines: ['London, United Kingdom'],
+  phone: '+44 79 4747 8899',
+  email: 'visa@manzilconsultancy.com',
+  website: 'www.manzilconsultancy.com',
+  companyNo: '00000000',
+  vatReg: 'GB000000000',
+  oiscRef: 'F000000000',
+};
+
 // ── Invoice / receipt ─────────────────────────────────────────
 export const streamInvoicePdf = (res: Response, inv: any): void => {
   const client = inv.case?.client ?? {};
   const isPaid = inv.status === 'PAID';
   const doc = start(res, `${inv.invoiceRef}.pdf`);
-  brandHeader(doc, isPaid ? 'Receipt' : 'Invoice', inv.invoiceRef);
 
-  sectionTitle(doc, 'Bill To');
-  kvRows(doc, [
-    ['Client', `${client.firstName ?? ''} ${client.lastName ?? ''}`.trim()],
-    ['Client Ref', client.clientRef],
-    ['Phone', client.phone],
-    ['Destination', inv.case?.destination],
-    ['Issue Date', fdate(inv.issueDate)],
-    ['Due Date', fdate(inv.dueDate)],
-  ]);
+  // Header: company block (left) + INVOICE title & meta (right)
+  doc.fontSize(20).font('Helvetica-Bold').fillColor(NAVY).text(COMPANY.name, LEFT, 48, { width: 260 });
+  doc.fontSize(8.5).font('Helvetica').fillColor(GREY)
+    .text(COMPANY.addressLines.join(', '), LEFT, doc.y + 2, { width: 260 });
+  doc.text(`${COMPANY.email} | ${COMPANY.phone} | ${COMPANY.website}`, LEFT, doc.y + 2, { width: 280 });
 
-  // Line items table
-  sectionTitle(doc, 'Details');
+  doc.fontSize(26).font('Helvetica-Bold').fillColor(ORANGE)
+    .text(isPaid ? 'RECEIPT' : 'INVOICE', 300, 48, { width: RIGHT - 300, align: 'right' });
+
+  // Right-anchored "label: value" lines — measured manually since PDFKit's
+  // `continued` + `align: right` don't compose (each call right-aligns on
+  // its own, so label and value overlap instead of sitting side by side).
+  const rightMetaLine = (label: string, value: string, y: number) => {
+    doc.fontSize(9);
+    const labelW = doc.font('Helvetica-Bold').widthOfString(label);
+    const valueW = doc.font('Helvetica').widthOfString(value);
+    const x = RIGHT - labelW - valueW;
+    doc.font('Helvetica-Bold').fillColor('#111827').text(label, x, y, { lineBreak: false });
+    doc.font('Helvetica').text(value, x + labelW, y, { lineBreak: false });
+  };
+  rightMetaLine('Invoice No: ', inv.invoiceRef, 78);
+  rightMetaLine('Date: ', fdate(inv.issueDate), 91);
+  rightMetaLine('Due Date: ', fdate(inv.dueDate), 104);
+
+  doc.moveTo(LEFT, 126).lineTo(RIGHT, 126).lineWidth(1.5).strokeColor(ORANGE).stroke();
+  doc.y = 142;
+
+  // Bill To / Service Reference
+  const colY = doc.y;
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY).text('BILL TO', LEFT, colY);
+  const billLines = [
+    `${client.firstName ?? ''} ${client.lastName ?? ''}`.trim(),
+    formatAddress(client) || client.phone || '',
+  ].filter(Boolean);
+  doc.fontSize(10).font('Helvetica').fillColor('#111827').text(billLines.join('\n'), LEFT, colY + 14, { width: 260 });
+
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(NAVY).text('SERVICE REFERENCE', 320, colY, { width: RIGHT - 320 });
+  doc.fontSize(10).font('Helvetica').fillColor('#111827')
+    .text(inv.case?.visaType || inv.case?.destination || '—', 320, colY + 14, { width: RIGHT - 320 });
+
+  doc.y = Math.max(doc.y, colY + 60);
+
+  // Line-items table
   const charges = parseFloat(String(inv.charges ?? 0));
   const discount = parseFloat(String(inv.discount ?? 0));
   const advance = parseFloat(String(inv.advance ?? 0));
   const total = parseFloat(String(inv.totalAmount ?? charges - discount));
   const outstanding = parseFloat(String(inv.outstanding ?? 0));
 
-  let ty = doc.y + 2;
-  doc.rect(LEFT, ty, RIGHT - LEFT, 22).fill('#F3F4F6');
-  doc.fontSize(9).font('Helvetica-Bold').fillColor(GREY).text('Description', LEFT + 10, ty + 7);
-  doc.text('Amount', 400, ty + 7, { width: RIGHT - 400 - 10, align: 'right' });
-  ty += 22;
+  const colDesc = LEFT, colQty = 360, colUnit = 410, colAmt = 480;
+  let ty = doc.y + 6;
+  doc.rect(LEFT, ty, RIGHT - LEFT, 24).fill(NAVY);
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF')
+    .text('Description', colDesc + 10, ty + 8)
+    .text('Qty', colQty, ty + 8, { width: colUnit - colQty - 10, align: 'right' })
+    .text('Unit Price', colUnit, ty + 8, { width: colAmt - colUnit - 10, align: 'right' })
+    .text('Amount', colAmt, ty + 8, { width: RIGHT - colAmt - 10, align: 'right' });
+  ty += 24;
 
-  const row = (label: string, val: string, bold = false) => {
-    doc.fontSize(10).font(bold ? 'Helvetica-Bold' : 'Helvetica').fillColor('#111827')
-      .text(label, LEFT + 10, ty + 7, { width: 300 });
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica')
-      .text(val, 400, ty + 7, { width: RIGHT - 400 - 10, align: 'right' });
-    doc.moveTo(LEFT, ty + 26).lineTo(RIGHT, ty + 26).lineWidth(0.5).strokeColor('#E5E7EB').stroke();
-    ty += 27;
+  const lineItems: [string, number][] = [['Service Charges', charges]];
+  if (discount > 0) lineItems.push(['Discount', -discount]);
+
+  lineItems.forEach(([label, amt], idx) => {
+    const rowH = 26;
+    if (idx % 2 === 1) doc.rect(LEFT, ty, RIGHT - LEFT, rowH).fill('#F3F4F6');
+    doc.fontSize(9.5).font('Helvetica').fillColor('#111827')
+      .text(label, colDesc + 10, ty + 8, { width: colQty - colDesc - 10 })
+      .text('1', colQty, ty + 8, { width: colUnit - colQty - 10, align: 'right' })
+      .text(money(amt), colUnit, ty + 8, { width: colAmt - colUnit - 10, align: 'right' })
+      .text(money(amt), colAmt, ty + 8, { width: RIGHT - colAmt - 10, align: 'right' });
+    ty += rowH;
+  });
+  doc.y = ty + 10;
+
+  // Totals summary — right-aligned box. Each row's y is captured once and reused for
+  // both the label and value text() calls, since text() advances doc.y as it renders —
+  // reading doc.y again after the first call would read the already-advanced position.
+  const sumW = 245, sumX = RIGHT - sumW;
+  const sumRow = (label: string, val: string) => {
+    const rowY = doc.y;
+    doc.fontSize(9.5).font('Helvetica').fillColor('#374151').text(label, sumX, rowY, { width: sumW - 100, lineBreak: false });
+    doc.text(val, sumX + sumW - 100, rowY, { width: 100, align: 'right', lineBreak: false });
+    doc.y = rowY + 18;
   };
-  row('Service Charges', money(charges));
-  if (discount > 0) row('Discount', `- ${money(discount)}`);
-  row('Total', money(total), true);
-  if (advance > 0) row('Advance Paid', `- ${money(advance)}`);
-  row(isPaid ? 'Amount Paid' : 'Outstanding', money(isPaid ? total - advance : outstanding), true);
+  sumRow('Subtotal', money(charges));
+  if (advance > 0) sumRow('Advance Paid', money(-advance));
+
+  const barY = doc.y;
+  doc.rect(sumX, barY, sumW, 28).fill(NAVY);
+  doc.fontSize(10.5).font('Helvetica-Bold').fillColor('#FFFFFF')
+    .text(isPaid ? 'Amount Paid' : 'Total Due', sumX + 10, barY + 9, { width: sumW - 120, lineBreak: false });
+  doc.text(money(isPaid ? total - advance : outstanding), sumX + sumW - 110, barY + 9, { width: 100, align: 'right', lineBreak: false });
+  doc.y = barY + 40;
 
   // Status badge
-  doc.y = ty + 12;
-  const badgeColor = isPaid ? '#16A34A' : inv.status === 'SENT' ? '#2563EB' : '#6B7280';
-  doc.roundedRect(RIGHT - 120, doc.y, 120, 26, 4).fill(badgeColor);
-  doc.fontSize(11).font('Helvetica-Bold').fillColor('#FFFFFF').text(String(inv.status), RIGHT - 120, doc.y + 8, { width: 120, align: 'center' });
+  const badgeColor = isPaid ? '#16A34A' : inv.status === 'SENT' ? '#2563EB' : inv.status === 'PARTIAL' ? '#D97706' : '#6B7280';
+  doc.roundedRect(sumX, doc.y, 90, 20, 4).fill(badgeColor);
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#FFFFFF').text(String(inv.status), sumX, doc.y + 5, { width: 90, align: 'center' });
+  doc.y += 36;
 
-  if (inv.notes) {
-    doc.y += 44;
-    sectionTitle(doc, 'Notes');
-    doc.fontSize(9).font('Helvetica').fillColor(GREY).text(inv.notes, LEFT, doc.y, { width: RIGHT - LEFT });
-  }
+  // Notes & payment terms
+  sectionTitle(doc, 'Notes & Payment Terms');
+  doc.fontSize(9).font('Helvetica').fillColor(GREY)
+    .text(inv.notes || 'Payment due by the date shown above. Please contact us for any billing enquiries.', LEFT, doc.y, { width: RIGHT - LEFT });
 
-  footer(doc);
+  doc.fontSize(7.5).font('Helvetica').fillColor(LIGHT)
+    .text(`Company No. ${COMPANY.companyNo} | VAT Reg. ${COMPANY.vatReg} | OISC Ref. ${COMPANY.oiscRef}`, LEFT, 770, { width: RIGHT - LEFT });
   doc.end();
 };

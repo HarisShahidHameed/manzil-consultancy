@@ -9,7 +9,12 @@ const INVOICE_SELECT = {
   case: {
     select: {
       id: true, destination: true, visaType: true,
-      client: { select: { id: true, clientRef: true, firstName: true, lastName: true, phone: true } },
+      client: {
+        select: {
+          id: true, clientRef: true, firstName: true, lastName: true, phone: true,
+          addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
+        },
+      },
     },
   },
   createdBy: { select: { id: true, firstName: true, lastName: true } },
