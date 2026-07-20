@@ -37,6 +37,7 @@ const StageBadge: React.FC<{ stage: CaseStage }> = ({ stage }) => (
 );
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');
+const fmtDateOrDash = (d?: string | null) => (d ? fmtDate(d) : '—');
 
 const ClientList: React.FC = () => {
   const navigate = useNavigate();
@@ -134,7 +135,10 @@ const ClientList: React.FC = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Ref / Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue / Expiry</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Phone</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Cases</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Received</th>
@@ -174,16 +178,20 @@ const ClientList: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-gray-400 text-xs">{c.nationality ?? '—'}</p>
-                        {c.group && (
+                      {c.group && (
+                        <div className="flex items-center gap-1.5">
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
                             {c.group.groupRef} — {c.group.name}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </td>
+                    <td className="px-4 py-3 text-gray-700">{fmtDateOrDash(c.dob)}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.nationality ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                      {fmtDateOrDash(c.passportIssue)} / {fmtDateOrDash(c.passportExpiry)}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
