@@ -1050,7 +1050,23 @@ const CaseDetail: React.FC = () => {
           </h3>
           {!locked && (
             <Can permissions={['invoices:write']}>
-              <Button size="sm" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setInvoiceOpen(true)}>
+              <Button
+                size="sm"
+                leftIcon={<Plus className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  // Prefill from the case's own charges/discount/advance — the backend adds
+                  // the agency-paid doc costs as extra line items (and their client-paid
+                  // contribution as extra advance) automatically on top of these.
+                  setInvoiceForm({
+                    charges:  vc.charges  != null ? String(num(vc.charges))  : '',
+                    discount: vc.discount != null ? String(num(vc.discount)) : '',
+                    advance:  vc.advance  != null ? String(num(vc.advance))  : '',
+                    dueDate: '',
+                    notes: '',
+                  });
+                  setInvoiceOpen(true);
+                }}
+              >
                 Create Invoice
               </Button>
             </Can>

@@ -31,6 +31,10 @@ export const createInvoice = async (req: Request, res: Response): Promise<void> 
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
       return;
     }
+    if (error?.message === 'CASE_NOT_FOUND') {
+      sendError(res, 'Case not found', 404);
+      return;
+    }
     sendError(res, 'Failed to create invoice', 500);
   }
 };

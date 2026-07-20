@@ -251,7 +251,14 @@ export const streamInvoicePdf = (res: Response, inv: any): void => {
     .text('Amount', colAmt, ty + 8, { width: RIGHT - colAmt - 10, align: 'right' });
   ty += 24;
 
-  const lineItems: [string, number][] = [['Service Charges', charges]];
+  // Prefer the snapshotted line items (service charges + any agency-fronted doc costs
+  // captured when the invoice was created) — fall back to a single lump line for
+  // invoices created before line items existed.
+  const storedItems: { label: string; amount: number }[] | null =
+    Array.isArray(inv.lineItems) ? inv.lineItems : null;
+  const lineItems: [string, number][] = storedItems
+    ? storedItems.map(i => [i.label, i.amount] as [string, number])
+    : [['Service Charges', charges]];
   if (discount > 0) lineItems.push(['Discount', -discount]);
 
   lineItems.forEach(([label, amt], idx) => {

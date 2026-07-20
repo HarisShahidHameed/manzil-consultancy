@@ -243,6 +243,7 @@ export interface Invoice {
   paidAmount: number | string;
   outstanding: number | string;
   status: InvoiceStatus;
+  lineItems?: { label: string; amount: number }[];
   notes?: string;
   case?: {
     id: string; destination: string; visaType?: string;

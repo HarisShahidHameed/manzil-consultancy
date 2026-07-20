@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
+import { computeAgencyDocLineItems, InvoiceLineItem } from '../utils/invoiceItems';
 
 // A case is created with either a single decided `destination` or a shortlist of
 // `destinationOptions` when it isn't decided yet. A single-entry shortlist has no real
@@ -307,6 +308,11 @@ export const advanceToInvoicedWithInvoice = async (
       stage: true, onHold: true,
       destination: true, destinationOptions: true, city: true, cityOptions: true,
       charges: true, discount: true, advance: true,
+      docAppointmentCost: true, docAppointmentClientPaid: true,
+      docTicketCost: true, docTicketClientPaid: true,
+      docInsuranceCost: true, docInsuranceClientPaid: true,
+      docHotelCost: true, docHotelClientPaid: true,
+      docSelfEmploymentCost: true, docSelfEmploymentClientPaid: true,
     },
   });
   if (!existing) {
@@ -323,9 +329,13 @@ export const advanceToInvoicedWithInvoice = async (
 
   const charges  = existing.charges  ?? new Prisma.Decimal(0);
   const discount = existing.discount ?? new Prisma.Decimal(0);
-  const advance  = existing.advance  ?? new Prisma.Decimal(0);
-  const total = charges.minus(discount);
+  // Each agency-fronted doc cost becomes its own invoice line item, and whatever the
+  // client has already paid back toward it counts as an advance on the invoice.
+  const { items: docItems, clientContribution, costTotal } = computeAgencyDocLineItems(existing);
+  const advance = (existing.advance ?? new Prisma.Decimal(0)).plus(clientContribution);
+  const total = charges.plus(costTotal).minus(discount);
   const outstanding = total.minus(advance);
+  const lineItems: InvoiceLineItem[] = [{ label: 'Service Charges', amount: charges.toNumber() }, ...docItems];
 
   const [invoice, updatedCase] = await prisma.$transaction(async (tx) => {
     const last = await tx.invoice.findFirst({ orderBy: { invoiceRef: 'desc' }, select: { invoiceRef: true } });
@@ -340,6 +350,7 @@ export const advanceToInvoicedWithInvoice = async (
         totalAmount: total,
         paidAmount: new Prisma.Decimal(0),
         outstanding,
+        lineItems: lineItems as unknown as Prisma.InputJsonValue,
         notes: opts.notes,
         createdById: opts.createdById,
       },

@@ -1,10 +1,11 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { computeAgencyDocLineItems, InvoiceLineItem } from '../utils/invoiceItems';
 
 const INVOICE_SELECT = {
   id: true, invoiceRef: true, caseId: true, issueDate: true, dueDate: true,
   charges: true, discount: true, advance: true, totalAmount: true,
-  paidAmount: true, outstanding: true, status: true, notes: true,
+  paidAmount: true, outstanding: true, status: true, notes: true, lineItems: true,
   createdById: true, createdAt: true, updatedAt: true,
   case: {
     select: {
@@ -33,12 +34,29 @@ export const createInvoice = async (data: {
   caseId: string; dueDate?: string; charges: number;
   discount?: number; advance?: number; notes?: string; createdById?: string;
 }) => {
+  const caseRecord = await prisma.visaCase.findUnique({
+    where: { id: data.caseId },
+    select: {
+      docAppointmentCost: true, docAppointmentClientPaid: true,
+      docTicketCost: true, docTicketClientPaid: true,
+      docInsuranceCost: true, docInsuranceClientPaid: true,
+      docHotelCost: true, docHotelClientPaid: true,
+      docSelfEmploymentCost: true, docSelfEmploymentClientPaid: true,
+    },
+  });
+  if (!caseRecord) throw new Error('CASE_NOT_FOUND');
+
   const invoiceRef = await generateInvoiceRef();
   const charges    = new Prisma.Decimal(data.charges);
   const discount   = new Prisma.Decimal(data.discount ?? 0);
-  const advance    = new Prisma.Decimal(data.advance  ?? 0);
-  const total      = charges.minus(discount);
+  // Each agency-fronted doc cost becomes its own invoice line item, and whatever the
+  // client has already paid back toward it counts as an advance on the invoice —
+  // on top of whatever base advance was entered.
+  const { items: docItems, clientContribution, costTotal } = computeAgencyDocLineItems(caseRecord);
+  const advance    = new Prisma.Decimal(data.advance ?? 0).plus(clientContribution);
+  const total      = charges.plus(costTotal).minus(discount);
   const outstanding = total.minus(advance);
+  const lineItems: InvoiceLineItem[] = [{ label: 'Service Charges', amount: charges.toNumber() }, ...docItems];
 
   return prisma.invoice.create({
     data: {
@@ -51,6 +69,7 @@ export const createInvoice = async (data: {
       totalAmount: total,
       paidAmount:  new Prisma.Decimal(0),
       outstanding,
+      lineItems: lineItems as unknown as Prisma.InputJsonValue,
       notes:       data.notes,
       createdById: data.createdById,
     },

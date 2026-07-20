@@ -314,6 +314,11 @@ model Invoice {
   paidAmount  Decimal       @default(0) @db.Decimal(10, 2)
   outstanding Decimal       @db.Decimal(10, 2)
   status      InvoiceStatus @default(DRAFT)
+  // Snapshot of the line items shown on the invoice PDF — service charges plus one entry
+  // per agency-fronted doc cost — captured at creation time so edits to the underlying
+  // case's doc costs afterwards don't retroactively change a already-issued invoice.
+  // Array of { label: string, amount: number }.
+  lineItems   Json?
   notes       String?
   createdById String?
   createdAt   DateTime      @default(now())
