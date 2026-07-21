@@ -238,6 +238,12 @@ export const createInvoiceSchema = z.object({
   notes:    z.string().optional(),
 });
 
+export const createApiKeySchema = z.object({
+  name:      z.string().min(1).max(100).trim(),
+  scopes:    z.array(z.enum(['clients:read', 'appointments:read'])).min(1),
+  expiresAt: optionalDate(),
+});
+
 export const updateInvoiceSchema = z.object({
   dueDate:    optionalDate(),
   charges:    z.number().nonnegative().optional(),

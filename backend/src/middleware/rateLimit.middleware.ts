@@ -27,3 +27,16 @@ export const apiLimiter = rateLimit({
   handler: (_req, res) =>
     sendError(res, 'Too many requests. Please slow down.', 429),
 });
+
+// Keyed per API key rather than per IP — a third party's own backend fronts many end
+// users from one IP, so an IP-based limit would throttle every legitimate integration
+// consumer as one bucket. Falls back to IP only for the pre-auth case (no key yet/bad key).
+export const publicApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.header('X-API-Key') ?? req.ip ?? 'unknown',
+  handler: (_req, res) =>
+    sendError(res, 'Too many requests. Please slow down.', 429),
+});

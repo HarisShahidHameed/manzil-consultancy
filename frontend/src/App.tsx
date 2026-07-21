@@ -15,6 +15,7 @@ const Users        = lazy(() => import('./pages/admin/Users'));
 const Roles        = lazy(() => import('./pages/admin/Roles'));
 const Permissions  = lazy(() => import('./pages/admin/Permissions'));
 const AuditLogs    = lazy(() => import('./pages/admin/AuditLogs'));
+const ApiKeys      = lazy(() => import('./pages/admin/ApiKeys'));
 const Forbidden    = lazy(() => import('./pages/Forbidden'));
 // Phase 2
 const ClientList   = lazy(() => import('./pages/clients/ClientList'));
@@ -111,6 +112,9 @@ const App: React.FC = () => (
                 </Route>
                 <Route element={<RoleGuard permissions={['audit:read']} />}>
                   <Route path="/admin/audit-logs" element={<AuditLogs />} />
+                </Route>
+                <Route element={<RoleGuard permissions={['apikeys:read']} />}>
+                  <Route path="/admin/api-keys" element={<ApiKeys />} />
                 </Route>
               </Route>
             </Route>

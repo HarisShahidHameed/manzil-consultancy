@@ -83,6 +83,7 @@ model User {
   casesAssigned     VisaCase[] @relation("CaseAssignedTo")
   casesFileAssigned VisaCase[] @relation("CaseFileAssignedTo")
   invoicesCreated   Invoice[]  @relation("InvoiceCreatedBy")
+  apiKeysCreated    ApiKey[]   @relation("ApiKeyCreatedBy")
 
   @@map("users")
 }
@@ -299,6 +300,31 @@ model VisaCase {
   invoices            Invoice[]
 
   @@map("visa_cases")
+}
+
+// Long-lived credential for machine-to-machine access (third-party integrations) —
+// no user login involved. Only a salted hash of the raw key is stored; the raw value
+// is shown to the creator exactly once, at creation time (see apiKey.service.ts).
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String
+  // First few chars of the raw key (e.g. "mzk_ab12cd"), kept in the clear purely so the
+  // key can be recognized in the management UI without ever re-displaying the secret.
+  keyPrefix   String
+  keyHash     String    @unique
+  // e.g. ["clients:read", "appointments:read"] — mirrors the users:permissions naming
+  // scheme but is a separate, deliberately narrower namespace (see apiKey.middleware.ts).
+  scopes      String[]
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  createdBy User? @relation("ApiKeyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@map("api_keys")
 }
 
 model Invoice {

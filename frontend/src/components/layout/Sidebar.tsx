@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard, Users, Shield, Key, FileText, LogOut,
-  UserCheck, CalendarDays, FolderOpen, Receipt, Layers, CheckCircle2,
+  UserCheck, CalendarDays, FolderOpen, Receipt, Layers, CheckCircle2, KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../routes/RoleGuard';
@@ -68,7 +68,7 @@ export const Sidebar: React.FC = () => {
         </Can>
 
         {/* Administration */}
-        <Can permissions={['users:read', 'roles:read', 'permissions:read', 'audit:read']} requireAll={false}>
+        <Can permissions={['users:read', 'roles:read', 'permissions:read', 'audit:read', 'apikeys:read']} requireAll={false}>
           <SectionLabel label="Administration" />
         </Can>
         <Can permissions={['users:read']}>
@@ -82,6 +82,9 @@ export const Sidebar: React.FC = () => {
         </Can>
         <Can permissions={['audit:read']}>
           <NavItem to="/admin/audit-logs" icon={<FileText className="w-5 h-5" />} label="Audit Logs" />
+        </Can>
+        <Can permissions={['apikeys:read']}>
+          <NavItem to="/admin/api-keys" icon={<KeyRound className="w-5 h-5" />} label="API Keys" />
         </Can>
       </nav>
 

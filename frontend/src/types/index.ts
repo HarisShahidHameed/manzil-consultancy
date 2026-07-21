@@ -28,6 +28,21 @@ export interface Permission {
   description?: string;
 }
 
+export interface ApiKey {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  scopes: string[];
+  isActive: boolean;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  revokedAt?: string;
+  createdAt: string;
+  createdBy?: { id: string; firstName: string; lastName: string };
+  // Only present in the response to the create call — never sent again afterwards.
+  rawKey?: string;
+}
+
 export interface UserRole {
   id: string;
   role: Pick<Role, 'id' | 'name'>;

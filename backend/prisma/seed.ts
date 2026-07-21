@@ -38,6 +38,10 @@ const PERMISSIONS = [
   { name: 'invoices:read',   resource: 'invoices', action: 'read',   description: 'View invoices' },
   { name: 'invoices:write',  resource: 'invoices', action: 'write',  description: 'Create/update invoices' },
   { name: 'invoices:delete', resource: 'invoices', action: 'delete', description: 'Delete invoices' },
+  // API keys (third-party integration credentials)
+  { name: 'apikeys:read',   resource: 'apikeys', action: 'read',   description: 'View API keys' },
+  { name: 'apikeys:write',  resource: 'apikeys', action: 'write',  description: 'Create/revoke API keys' },
+  { name: 'apikeys:delete', resource: 'apikeys', action: 'delete', description: 'Delete API keys' },
 ];
 
 const ALL_PERM_NAMES = PERMISSIONS.map(p => p.name);
@@ -64,6 +68,7 @@ const ROLES = [
       'appointments:read', 'appointments:write', 'appointments:delete',
       'files:read', 'files:write',
       'invoices:read', 'invoices:write', 'invoices:delete',
+      'apikeys:read', 'apikeys:write', 'apikeys:delete',
     ],
   },
   {
