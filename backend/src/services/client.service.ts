@@ -111,7 +111,7 @@ export const createClient = async (data: {
   clientRef?: string;
   receivedDate: string; firstName: string; lastName?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER'; dob?: string; phone: string;
-  email?: string; whatsapp?: string;
+  email?: string; whatsapp?: string; availability?: string;
   addressStreet?: string; addressCity?: string; addressShire?: string; addressPostalCode?: string; addressCountry?: string;
   passportNumber?: string; passportIssue?: string; passportExpiry?: string;
   birthCity?: string; nationality?: string;
@@ -300,7 +300,7 @@ export const updateClient = async (
   data: Partial<{
     receivedDate: string; firstName: string; lastName: string;
     gender: 'MALE' | 'FEMALE' | 'OTHER'; dob: string; phone: string;
-    email: string; whatsapp: string;
+    email: string; whatsapp: string; availability: string;
     addressStreet: string; addressCity: string; addressShire: string; addressPostalCode: string; addressCountry: string;
     passportNumber: string; passportIssue: string; passportExpiry: string;
     birthCity: string; nationality: string;

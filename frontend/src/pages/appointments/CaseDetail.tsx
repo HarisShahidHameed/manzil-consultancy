@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
 import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';

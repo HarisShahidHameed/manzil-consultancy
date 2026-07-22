@@ -142,6 +142,7 @@ export interface Client {
   phone: string;
   email?: string;
   whatsapp?: string;
+  availability?: string;
   addressStreet?: string;
   addressCity?: string;
   addressShire?: string;

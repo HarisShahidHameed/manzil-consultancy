@@ -88,6 +88,7 @@ export const streamClientPdf = (res: Response, c: any): void => {
     ['Birth City', c.birthCity],
     ['Phone', c.phone],
     ['WhatsApp', c.whatsapp],
+    ['Availability', c.availability],
     ['Email', c.email],
     ['Registered Email', c.registeredEmail],
     ['Residential Address', formatAddress(c)],

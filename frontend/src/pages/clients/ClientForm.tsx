@@ -38,7 +38,7 @@ const warnInputCls = 'w-full rounded-lg border border-amber-400 bg-amber-50 px-3
 const emptyForm = {
   receivedDate: new Date().toISOString().split('T')[0],
   firstName: '', lastName: '', gender: 'MALE' as 'MALE' | 'FEMALE' | 'OTHER',
-  dob: '', phone: '', email: '', whatsapp: '',
+  dob: '', phone: '', email: '', whatsapp: '', availability: '',
   addressStreet: '', addressCity: '', addressShire: '', addressPostalCode: '', addressCountry: '',
   passportNumber: '', passportIssue: '', passportExpiry: '',
   birthCity: '', nationality: '', maritalStatus: '' as '' | 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED',
@@ -81,6 +81,7 @@ const ClientForm: React.FC = () => {
       gender: client.gender ?? 'MALE',
       dob: client.dob?.split('T')[0] ?? '', phone: client.phone ?? '',
       email: client.email ?? '', whatsapp: client.whatsapp ?? '',
+      availability: client.availability ?? '',
       addressStreet: client.addressStreet ?? '',
       addressCity: client.addressCity ?? '',
       addressShire: client.addressShire ?? '',
@@ -288,6 +289,9 @@ const ClientForm: React.FC = () => {
             <input type="email" className={inputCls} value={form.registeredEmail} onChange={set('registeredEmail')} />
           </Field>
         </div>
+        <Field label="Availability">
+          <input className={inputCls} value={form.availability} onChange={set('availability')} placeholder="e.g. Weekdays after 5pm" />
+        </Field>
         <Field label="Street Address">
           <input className={inputCls} value={form.addressStreet} onChange={set('addressStreet')} placeholder="123 Main Street" />
         </Field>

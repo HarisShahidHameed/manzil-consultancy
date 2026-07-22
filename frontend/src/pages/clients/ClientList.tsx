@@ -142,6 +142,7 @@ const ClientList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue / Expiry</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Phone</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Availability</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Cases</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Received</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
@@ -198,6 +199,7 @@ const ClientList: React.FC = () => {
                       {fmtDateOrDash(c.passportIssue)} / {fmtDateOrDash(c.passportExpiry)}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>
+                    <td className="px-4 py-3 text-gray-700">{c.availability ?? '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {c.visaCases.slice(0, 2).map(vc => (

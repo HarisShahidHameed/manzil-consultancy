@@ -128,6 +128,7 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="Birth City" value={client.birthCity} />
             <InfoRow label="Phone" value={client.phone} />
             <InfoRow label="WhatsApp" value={client.whatsapp} />
+            <InfoRow label="Availability" value={client.availability} />
             <InfoRow label="Email" value={client.email} />
             <InfoRow label="Registered Email" value={client.registeredEmail} />
             <InfoRow label="Street Address" value={client.addressStreet} />
