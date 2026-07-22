@@ -5,7 +5,7 @@ import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequir
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
   firstName: true, lastName: true, gender: true, dob: true,
-  phone: true, email: true, whatsapp: true,
+  phone: true, email: true, whatsapp: true, availability: true,
   addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
@@ -27,7 +27,7 @@ const CLIENT_SELECT = {
 const CLIENT_DETAIL_SELECT = {
   id: true, clientRef: true, receivedDate: true,
   firstName: true, lastName: true, gender: true, dob: true,
-  phone: true, email: true, whatsapp: true,
+  phone: true, email: true, whatsapp: true, availability: true,
   addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,

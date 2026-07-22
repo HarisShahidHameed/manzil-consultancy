@@ -199,6 +199,7 @@ model Client {
   phone                String
   email                String?
   whatsapp             String?
+  availability         String?
   addressStreet        String?
   addressCity          String?
   addressShire         String?
