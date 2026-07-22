@@ -157,7 +157,9 @@ const InvoiceList: React.FC = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Invoice</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Charges</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Total</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Outstanding</th>
@@ -172,12 +174,9 @@ const InvoiceList: React.FC = () => {
                       <p className="font-semibold text-indigo-600">{inv.invoiceRef}</p>
                       <p className="text-xs text-gray-400">{inv.case?.destination}</p>
                     </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-gray-900">
-                        {inv.case?.client?.firstName} {inv.case?.client?.lastName}
-                      </p>
-                      <p className="text-xs text-gray-400">{inv.case?.client?.clientRef}</p>
-                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{inv.case?.client?.clientRef}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{inv.case?.client?.firstName}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{inv.case?.client?.lastName}</td>
                     <td className="px-4 py-3 text-gray-700">{fmtMoney(inv.charges)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{fmtMoney(inv.totalAmount)}</td>
                     <td className="px-4 py-3">

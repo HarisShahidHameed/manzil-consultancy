@@ -206,7 +206,9 @@ const Dashboard: React.FC = () => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
+                    <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-500">Added</th>
@@ -215,10 +217,9 @@ const Dashboard: React.FC = () => {
                 <tbody className="divide-y divide-gray-100">
                   {stats.recentClients.map(c => (
                     <tr key={c.id} className="hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => navigate(`/clients/${c.id}`)}>
-                      <td className="px-4 py-3">
-                        <p className="text-xs font-bold text-indigo-600">{c.clientRef}</p>
-                        <p className="font-medium text-gray-900">{c.firstName} {c.lastName}</p>
-                      </td>
+                      <td className="px-4 py-3 text-xs font-bold text-indigo-600">{c.clientRef}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900">{c.firstName}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900">{c.lastName}</td>
                       <td className="px-4 py-3 text-gray-600">{c.visaCases[0]?.destination ?? '—'}</td>
                       <td className="px-4 py-3">
                         {c.visaCases[0] ? (

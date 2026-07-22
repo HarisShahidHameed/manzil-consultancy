@@ -173,7 +173,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Client</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>
@@ -196,10 +198,11 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
+                    <td className="px-4 py-3 text-xs font-bold text-indigo-600">{c.client?.clientRef}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{c.client?.firstName}</td>
                     <td className="px-4 py-3">
-                      <p className="text-xs font-bold text-indigo-600">{c.client?.clientRef}</p>
                       <div className="flex items-center gap-1.5">
-                        <p className="font-medium text-gray-900">{c.client?.firstName} {c.client?.lastName}</p>
+                        <p className="font-medium text-gray-900">{c.client?.lastName}</p>
                         {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
                           <span
                             title={[

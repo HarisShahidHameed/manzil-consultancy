@@ -134,7 +134,9 @@ const ClientList: React.FC = () => {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Ref / Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No</th>
@@ -164,8 +166,18 @@ const ClientList: React.FC = () => {
                           </span>
                         )}
                       </div>
+                      {c.group && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                            {c.group.groupRef} — {c.group.name}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{c.firstName}</td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <p className="font-medium text-gray-900">{c.firstName} {c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
+                        <p className="font-medium text-gray-900">{c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
                         {(isExpiringSoon(c.passportExpiry) || c.visaCases.some(vc => isExpiringSoon(vc.ukVisaExpiry))) && (
                           <span
                             title={[
@@ -178,13 +190,6 @@ const ClientList: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      {c.group && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
-                            {c.group.groupRef} — {c.group.name}
-                          </span>
-                        </div>
-                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-700">{fmtDateOrDash(c.dob)}</td>
                     <td className="px-4 py-3 text-gray-700">{c.nationality ?? '—'}</td>
