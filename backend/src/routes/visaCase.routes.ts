@@ -21,6 +21,11 @@ router.get(
   requireAnyPermission('appointments:read', 'files:read', 'clients:read', 'invoices:read'),
   visaCaseController.downloadAdvanceReceipt
 );
+router.get(
+  '/:id/receipt-preview',
+  requireAnyPermission('files:read', 'files:write', 'invoices:read', 'invoices:write'),
+  visaCaseController.downloadReceiptPreview
+);
 router.put(
   '/:id',
   requireAnyPermission('appointments:write', 'files:write', 'clients:write', 'invoices:write'),

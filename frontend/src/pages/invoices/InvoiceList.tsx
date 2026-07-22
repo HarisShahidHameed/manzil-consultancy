@@ -121,11 +121,11 @@ const InvoiceList: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
           <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} invoices · payment recorded manually via Amount Paid</p>
         </div>
-        <Can permissions={['invoices:write']}>
+        {/* <Can permissions={['invoices:write']}>
           <Button leftIcon={<Receipt className="w-4 h-4" />} onClick={() => setCreateOpen(true)}>
             Create Invoice
           </Button>
-        </Can>
+        </Can> */}
       </div>
 
       {error   && <Alert variant="error"   message={error}   onClose={() => setError(null)} />}

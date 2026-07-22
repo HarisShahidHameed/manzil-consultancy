@@ -6,7 +6,7 @@ import { ArrowLeft, Save, Plus, Lock, UserCircle, Download, PauseCircle, PlayCir
 import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
-import { downloadAdvanceReceipt, downloadInvoicePdf } from '../../api/pdf';
+import { downloadAdvanceReceipt, downloadInvoicePdf, downloadReceiptPreview } from '../../api/pdf';
 import type { AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
@@ -137,6 +137,7 @@ const CaseDetail: React.FC = () => {
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
   const [invoicingOpen, setInvoicingOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [invoicingResult, setInvoicingResult] = useState<AdvanceToInvoicedResult | null>(null);
   const [docPaidBy, setDocPaidBy] = useState<Record<DocKey, 'client' | 'agency'>>({
     docAppointment: 'client', docTicket: 'client', docInsurance: 'client', docHotel: 'client',
@@ -1036,10 +1037,46 @@ const CaseDetail: React.FC = () => {
                 {fmtMoney(caseDue)}
               </span>
             </div>
+            <div className="mt-3 flex justify-end">
+              <Button variant="outline" size="sm" leftIcon={<Receipt className="w-3.5 h-3.5" />} onClick={() => setPreviewOpen(true)}>
+                Preview Receipt
+              </Button>
+            </div>
           </div>
           </fieldset>
         </div>
       )}
+
+      {/* Preview Receipt — generate the same-shaped receipt PDF on demand, any time
+          during File Processing, without creating a real invoice or moving the stage. */}
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title="Preview Receipt"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Close</Button>
+            <Button
+              leftIcon={<Download className="w-3.5 h-3.5" />}
+              loading={downloading}
+              onClick={() => handleDownload(() => downloadReceiptPreview(vc.id, vc.client!.clientRef))}
+            >
+              Download PDF
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-gray-700">
+          This generates a receipt using the case's current charges, discount, advance, and
+          agency-paid document costs — the same figures and layout the real invoice will use
+          once this case moves to Invoiced.
+        </p>
+        <p className="text-xs text-gray-500 mt-2">
+          It's a preview only: nothing is saved, no invoice record is created, and the case's
+          stage doesn't change. Generate it as many times as you like.
+        </p>
+      </Modal>
 
       {/* Invoices — not applicable while a case is still in File Processing */}
       {activeSection !== 'FILE_PROCESSING' && (
@@ -1048,7 +1085,7 @@ const CaseDetail: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
             Invoices ({vc.invoices?.length ?? 0})
           </h3>
-          {!locked && (
+          {/* {!locked && (
             <Can permissions={['invoices:write']}>
               <Button
                 size="sm"
@@ -1070,7 +1107,7 @@ const CaseDetail: React.FC = () => {
                 Create Invoice
               </Button>
             </Can>
-          )}
+          )} */}
         </div>
         {(vc.invoices?.length ?? 0) === 0 ? (
           <p className="text-sm text-gray-400 text-center py-4">No invoices yet</p>

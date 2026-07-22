@@ -21,5 +21,8 @@ export const downloadClientPdf = (clientId: string, ref: string) =>
 export const downloadAdvanceReceipt = (caseId: string, ref: string) =>
   downloadPdf(`/cases/${caseId}/advance-receipt`, `ADV-${ref}-receipt.pdf`);
 
+export const downloadReceiptPreview = (caseId: string, ref: string) =>
+  downloadPdf(`/cases/${caseId}/receipt-preview`, `PREVIEW-${ref}.pdf`);
+
 export const downloadInvoicePdf = (invoiceId: string, ref: string) =>
   downloadPdf(`/invoices/${invoiceId}/receipt`, `${ref}.pdf`);

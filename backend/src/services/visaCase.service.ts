@@ -364,6 +364,53 @@ export const advanceToInvoicedWithInvoice = async (
   return { invoice, case: updatedCase };
 };
 
+// Lets a user preview the receipt at any point during File Processing — same figures
+// and line items advanceToInvoicedWithInvoice would produce — without creating a real
+// Invoice row or touching the case's stage. Purely read-only, generate-on-demand.
+export const buildInvoicePreview = async (id: string) => {
+  const c = await prisma.visaCase.findUnique({
+    where: { id },
+    select: {
+      id: true, destination: true, visaType: true,
+      charges: true, discount: true, advance: true,
+      docAppointmentCost: true, docAppointmentClientPaid: true,
+      docTicketCost: true, docTicketClientPaid: true,
+      docInsuranceCost: true, docInsuranceClientPaid: true,
+      docHotelCost: true, docHotelClientPaid: true,
+      docSelfEmploymentCost: true, docSelfEmploymentClientPaid: true,
+      client: {
+        select: {
+          id: true, clientRef: true, firstName: true, lastName: true, phone: true,
+          addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
+        },
+      },
+    },
+  });
+  if (!c) return null;
+
+  const charges  = c.charges  ?? new Prisma.Decimal(0);
+  const discount = c.discount ?? new Prisma.Decimal(0);
+  const { items: docItems, clientContribution, costTotal } = computeAgencyDocLineItems(c);
+  const advance = (c.advance ?? new Prisma.Decimal(0)).plus(clientContribution);
+  const total = charges.plus(costTotal).minus(discount);
+  const outstanding = total.minus(advance);
+  const lineItems: InvoiceLineItem[] = [{ label: 'Service Charges', amount: charges.toNumber() }, ...docItems];
+
+  return {
+    invoiceRef: `PREVIEW-${c.client?.clientRef ?? c.id}`,
+    issueDate: new Date(),
+    dueDate: null,
+    charges, discount, advance,
+    totalAmount: total,
+    paidAmount: new Prisma.Decimal(0),
+    outstanding,
+    status: 'DRAFT' as const,
+    lineItems,
+    notes: 'Preview only — not a final invoice. Figures may change until the case is moved to Invoiced.',
+    case: { id: c.id, destination: c.destination, visaType: c.visaType, client: c.client },
+  };
+};
+
 // Returns current stage so the controller can resolve the required permission for a transition.
 export const getCaseStage = async (id: string): Promise<CaseStageName | null> => {
   const c = await prisma.visaCase.findUnique({ where: { id }, select: { stage: true } });

@@ -4,7 +4,7 @@ import * as visaCaseService from '../services/visaCase.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
 import { updateCaseSchema } from '../validators/client.validators';
-import { streamAdvanceReceiptPdf } from '../utils/pdf';
+import { streamAdvanceReceiptPdf, streamInvoicePdf } from '../utils/pdf';
 
 const caseQuerySchema = z.object({
   page:   z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
@@ -129,6 +129,12 @@ export const downloadAdvanceReceipt = async (req: Request, res: Response): Promi
   const visaCase = await visaCaseService.getCaseById(req.params.id);
   if (!visaCase) { sendError(res, 'Case not found', 404); return; }
   streamAdvanceReceiptPdf(res, visaCase);
+};
+
+export const downloadReceiptPreview = async (req: Request, res: Response): Promise<void> => {
+  const preview = await visaCaseService.buildInvoicePreview(req.params.id);
+  if (!preview) { sendError(res, 'Case not found', 404); return; }
+  streamInvoicePdf(res, preview);
 };
 
 export const deleteCase = async (req: Request, res: Response): Promise<void> => {
