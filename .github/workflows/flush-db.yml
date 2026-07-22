@@ -47,8 +47,10 @@ jobs:
           set -euo pipefail
           npm ci
           npx prisma generate
-          npx tsc prisma/flush.ts --outDir dist --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
-          npx tsc prisma/seed.ts  --outDir dist --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
+          npx tsc prisma/flush.ts --outDir dist --rootDir prisma --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
+          npx tsc prisma/seed.ts  --outDir dist --rootDir prisma --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
+          echo "== backend/dist after compile =="
+          ls -la dist
 
       - name: Configure SSH
         env:
@@ -64,6 +66,22 @@ jobs:
           PORT="${{ secrets.SSH_PORT }}"
           echo "SSH_OPTS=-i $HOME/.ssh/deploy_key -p ${PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts" >> "$GITHUB_ENV"
           echo "REMOTE=${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" >> "$GITHUB_ENV"
+
+      - name: Verify local files exist before uploading
+        run: |
+          set -euo pipefail
+          for f in backend/dist/flush.js backend/dist/seed.js scripts/remote-flush-backup.sh scripts/remote-flush-apply.sh; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing local file before upload: $f"
+              exit 1
+            fi
+          done
+          echo "All local files present."
+
+      - name: Verify SSH connectivity and remote layout
+        run: |
+          set -euo pipefail
+          ssh $SSH_OPTS "$REMOTE" "test -d $DEPLOY_ROOT/current/backend/dist && test -d $DEPLOY_ROOT/current/scripts && echo 'Remote layout OK'"
 
       - name: Upload scripts to the server's current release
         run: |
