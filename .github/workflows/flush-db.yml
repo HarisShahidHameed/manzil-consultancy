@@ -1,0 +1,82 @@
+name: Flush Database
+
+# One-time, manual-only (workflow_dispatch): truncates every application table on the
+# production server's Postgres, then reseeds (roles/permissions/admin user). There is
+# no in-app "undo" — the pg_dump backup taken on the server before truncating (see
+# remote-flush-backup.sh) is the recovery path if this was triggered by mistake.
+#
+# Gate: `confirm_phrase` must exactly match "FLUSH PRODUCTION" (case-sensitive) or the
+# job fails before anything else runs.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_phrase:
+        description: 'Type exactly: FLUSH PRODUCTION'
+        required: true
+        type: string
+
+env:
+  NODE_VERSION: '20'
+  DEPLOY_ROOT: /opt/manzil
+
+jobs:
+  flush:
+    name: Backup, flush, and reseed
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Verify confirmation phrase
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.inputs.confirm_phrase }}" != "FLUSH PRODUCTION" ]; then
+            echo "::error::Confirmation phrase did not match. Expected exactly: FLUSH PRODUCTION"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Compile flush + seed scripts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma generate
+          npx tsc prisma/flush.ts --outDir dist --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
+          npx tsc prisma/seed.ts  --outDir dist --module commonjs --target ES2020 --esModuleInterop --skipLibCheck --resolveJsonModule
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          PORT="${{ secrets.SSH_PORT }}"
+          echo "SSH_OPTS=-i $HOME/.ssh/deploy_key -p ${PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts" >> "$GITHUB_ENV"
+          echo "REMOTE=${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" >> "$GITHUB_ENV"
+
+      - name: Upload scripts to the server's current release
+        run: |
+          set -euo pipefail
+          scp $SSH_OPTS backend/dist/flush.js backend/dist/seed.js "$REMOTE:$DEPLOY_ROOT/current/backend/dist/"
+          scp $SSH_OPTS scripts/remote-flush-backup.sh scripts/remote-flush-apply.sh "$REMOTE:$DEPLOY_ROOT/current/scripts/"
+
+      - name: Backup database (pg_dump) before touching anything
+        run: |
+          set -euo pipefail
+          ssh $SSH_OPTS "$REMOTE" "bash $DEPLOY_ROOT/current/scripts/remote-flush-backup.sh"
+
+      - name: Flush and reseed
+        run: |
+          set -euo pipefail
+          ssh $SSH_OPTS "$REMOTE" "CONFIRM_FLUSH=YES_FLUSH_THIS_DATABASE bash $DEPLOY_ROOT/current/scripts/remote-flush-apply.sh"
