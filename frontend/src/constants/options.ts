@@ -1,6 +1,8 @@
 export const DESTINATION_OPTIONS = [
-  'Netherlands', 'Malta', 'Italy', 'Germany', 'Iceland', 'Spain', 'France',
-  'UK', 'Australia', 'USA', 'Canada', 'Austria', 'Japan', 'Turkey',
+  'Austria', 'Belgium', 'Croatia', 'Czech Republic', 'Cyprus', 'Denmark', 'Estonia',
+  'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Iceland', 'Italy', 'Latvia',
+  'Liechtenstein', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands', 'Norway',
+  'Poland', 'Portugal', 'Slovakia', 'Slovenia', 'Spain', 'Sweden', 'Switzerland',
 ];
 
 export const APPOINTMENT_CITY_OPTIONS = [
