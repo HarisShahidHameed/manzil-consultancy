@@ -7,7 +7,7 @@ import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 
 const PRI_COLORS: Record<Priority, string> = {
@@ -19,11 +19,11 @@ const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '�
 
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (c: { destination: string | null; destinationOptions?: string[] }) =>
-  c.destination ?? (c.destinationOptions?.length ? `${c.destinationOptions.join(', ')} (undecided)` : '—');
+  c.destination ?? (c.destinationOptions?.length ? `${formatShortlist(c.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
 
 // Same shortlist-then-finalize pattern as destinationLabel, for the appointment city.
 const cityLabel = (c: { city?: string; cityOptions?: string[] }) =>
-  c.city ?? (c.cityOptions?.length ? `${c.cityOptions.join(', ')} (undecided)` : undefined);
+  c.city ?? (c.cityOptions?.length ? `${formatShortlist(c.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : undefined);
 
 const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'bg-amber-100 text-amber-700',

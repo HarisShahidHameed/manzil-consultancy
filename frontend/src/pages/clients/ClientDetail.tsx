@@ -8,6 +8,7 @@ import type { CaseStage, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Can } from '../../routes/RoleGuard';
+import { DESTINATION_OPTIONS, formatShortlist } from '../../constants/options';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT:     'bg-blue-100 text-blue-700',
@@ -26,7 +27,7 @@ const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB
 
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
-  vc.destination ?? (vc.destinationOptions?.length ? `${vc.destinationOptions.join(', ')} (undecided)` : '—');
+  vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
 
 const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({ label, value }) => (
   <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">

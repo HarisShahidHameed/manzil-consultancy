@@ -13,6 +13,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 const STAGE_LABELS: Record<CaseStage, string> = {
@@ -53,11 +54,11 @@ const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloa
 // A case's destination is either decided (`destination`) or still a shortlist
 // (`destinationOptions`) awaiting finalization in File Processing.
 const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
-  vc.destination ?? (vc.destinationOptions?.length ? `${vc.destinationOptions.join(', ')} (undecided)` : '—');
+  vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
 
 // Same shortlist-then-finalize pattern as destinationLabel, for the appointment city.
 const cityLabel = (vc: { city?: string | null; cityOptions?: string[] }) =>
-  vc.city ?? (vc.cityOptions?.length ? `${vc.cityOptions.join(', ')} (undecided)` : undefined);
+  vc.city ?? (vc.cityOptions?.length ? `${formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : undefined);
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
@@ -662,7 +663,7 @@ const CaseDetail: React.FC = () => {
                   {vc.destinationOptions.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
-                  Shortlisted: {vc.destinationOptions.join(', ')} — edit the shortlist via Edit Client Info.
+                  Shortlisted: {formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} — edit the shortlist via Edit Client Info.
                 </p>
               </>
             ) : (
@@ -682,7 +683,7 @@ const CaseDetail: React.FC = () => {
                   {vc.cityOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
-                  Shortlisted: {vc.cityOptions.join(', ')} — edit the shortlist via Edit Client Info.
+                  Shortlisted: {formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)} — edit the shortlist via Edit Client Info.
                 </p>
               </>
             ) : (
@@ -818,7 +819,7 @@ const CaseDetail: React.FC = () => {
                 <p className="text-sm font-medium text-amber-800">
                   {vc.destination ? `Finalized destination: ${vc.destination}` : 'Destination not yet finalized'}
                 </p>
-                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {vc.destinationOptions.join(', ')}</p>
+                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)}</p>
               </div>
               {!vc.destination && (
                 <select
@@ -840,7 +841,7 @@ const CaseDetail: React.FC = () => {
                 <p className="text-sm font-medium text-amber-800">
                   {vc.city ? `Finalized city: ${vc.city}` : 'City not yet finalized'}
                 </p>
-                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {vc.cityOptions.join(', ')}</p>
+                <p className="text-xs text-amber-700 mt-0.5">Shortlisted: {formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)}</p>
               </div>
               {!vc.city && (
                 <select

@@ -12,6 +12,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 import ImportClientsModal from './ImportClientsModal';
+import { DESTINATION_OPTIONS, formatShortlist } from '../../constants/options';
 
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
@@ -204,7 +205,7 @@ const ClientList: React.FC = () => {
                       <div className="flex flex-wrap gap-1">
                         {c.visaCases.slice(0, 2).map(vc => (
                           <div key={vc.id} className="flex flex-col gap-0.5">
-                            <span className="text-xs text-gray-600" title={vc.destinationOptions?.join(', ')}>
+                            <span className="text-xs text-gray-600" title={vc.destinationOptions ? formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS) : undefined}>
                               {vc.destination ?? (vc.destinationOptions?.length ? 'Undecided' : '—')}
                             </span>
                             <StageBadge stage={vc.stage} />
