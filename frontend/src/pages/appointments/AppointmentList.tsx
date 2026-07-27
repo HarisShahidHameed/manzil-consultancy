@@ -220,7 +220,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>
                     <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportExpiry ?? undefined)}</td>
+                    <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                      {fmtDate(c.client?.passportExpiry ?? undefined)}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     <td className="px-4 py-3">

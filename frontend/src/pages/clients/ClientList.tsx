@@ -12,7 +12,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Pagination } from '../../components/ui/Pagination';
 import { Can } from '../../routes/RoleGuard';
 import ImportClientsModal from './ImportClientsModal';
-import { DESTINATION_OPTIONS, formatShortlist } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
 
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
@@ -39,6 +39,14 @@ const StageBadge: React.FC<{ stage: CaseStage }> = ({ stage }) => (
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');
 const fmtDateOrDash = (d?: string | null) => (d ? fmtDate(d) : '—');
+
+// Same shortlist-then-finalize pattern as the Appointments table — shown here for the
+// client's primary (most recent) case so Destination/City are visible from the Clients
+// list too, not just buried inside the Cases column.
+const destinationLabel = (vc?: { destination: string | null; destinationOptions?: string[] }) =>
+  !vc ? '—' : vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
+const cityLabel = (vc?: { city?: string | null; cityOptions?: string[] }) =>
+  !vc ? '—' : vc.city ?? (vc.cityOptions?.length ? `${formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : '—');
 
 const ClientList: React.FC = () => {
   const navigate = useNavigate();
@@ -144,6 +152,8 @@ const ClientList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue / Expiry</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Phone</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Availability</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Cases</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Received</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
@@ -172,6 +182,7 @@ const ClientList: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
                             {c.group.groupRef} — {c.group.name}
+                            {c.group._count ? ` (${c.group._count.clients} members)` : ''}
                           </span>
                         </div>
                       )}
@@ -196,11 +207,16 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3 text-gray-700">{fmtDateOrDash(c.dob)}</td>
                     <td className="px-4 py-3 text-gray-700">{c.nationality ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                      {fmtDateOrDash(c.passportIssue)} / {fmtDateOrDash(c.passportExpiry)}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-gray-700">{fmtDateOrDash(c.passportIssue)} / </span>
+                      <span className={isExpiringSoon(c.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-700'}>
+                        {fmtDateOrDash(c.passportExpiry)}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>
                     <td className="px-4 py-3 text-gray-700">{c.availability ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c.visaCases[0])}</td>
+                    <td className="px-4 py-3 text-gray-700">{cityLabel(c.visaCases[0])}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {c.visaCases.slice(0, 2).map(vc => (

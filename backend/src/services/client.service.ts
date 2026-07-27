@@ -13,7 +13,7 @@ const CLIENT_SELECT = {
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
-  group: { select: { id: true, groupRef: true, name: true, relation: true } },
+  group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
   visaCases: {
     select: {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, stage: true, priority: true,
@@ -35,7 +35,7 @@ const CLIENT_DETAIL_SELECT = {
   source: true, referredBy: true, hrComments: true, folderUrl: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
-  group: { select: { id: true, groupRef: true, name: true, relation: true } },
+  group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
   visaCases: {
     select: {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,

@@ -124,7 +124,12 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="Gender" value={client.gender} />
             <InfoRow label="Date of Birth" value={fmtDate(client.dob)} />
             <InfoRow label="Nationality" value={client.nationality} />
-            <InfoRow label="Group" value={client.group ? `${client.group.name} (${client.group.groupRef})` : '—'} />
+            <InfoRow
+              label="Group"
+              value={client.group
+                ? `${client.group.name} (${client.group.groupRef})${client.group._count ? ` — ${client.group._count.clients} members` : ''}`
+                : '—'}
+            />
             <InfoRow label="Marital Status" value={client.maritalStatus ? client.maritalStatus.charAt(0) + client.maritalStatus.slice(1).toLowerCase() : '—'} />
             <InfoRow label="Birth City" value={client.birthCity} />
             <InfoRow label="Phone" value={client.phone} />

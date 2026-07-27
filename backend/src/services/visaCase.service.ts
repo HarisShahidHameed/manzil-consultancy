@@ -240,12 +240,19 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (!existing) {
       const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
     }
-    // Finalizing the destination/city must land on one of the shortlisted candidates.
-    if (data.destination !== undefined && existing.destinationOptions.length > 0
+    // Finalizing the destination/city from an existing shortlist must land on one of the
+    // shortlisted candidates — but only when this call is doing exactly that (sending just
+    // `destination`, like the File Processing "finalize" dropdown does). When the caller is
+    // also sending a new `destinationOptions` in the same request (e.g. the client edit form
+    // replacing the whole shortlist), it's declaring a fresh shortlist+destination pair
+    // together, not finalizing from the old one — so the old list shouldn't gate it.
+    if (data.destination !== undefined && data.destinationOptions === undefined
+        && existing.destinationOptions.length > 0
         && !existing.destinationOptions.includes(data.destination)) {
       throw new Error('DESTINATION_NOT_SHORTLISTED');
     }
-    if (data.city !== undefined && existing.cityOptions.length > 0
+    if (data.city !== undefined && data.cityOptions === undefined
+        && existing.cityOptions.length > 0
         && !existing.cityOptions.includes(data.city)) {
       throw new Error('CITY_NOT_SHORTLISTED');
     }

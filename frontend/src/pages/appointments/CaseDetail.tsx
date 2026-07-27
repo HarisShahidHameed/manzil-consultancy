@@ -138,6 +138,7 @@ const CaseDetail: React.FC = () => {
   const [invoiceForm, setInvoiceForm] = useState({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
   const [downloading, setDownloading] = useState(false);
   const [invoicingOpen, setInvoicingOpen] = useState(false);
+  const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [invoicingResult, setInvoicingResult] = useState<AdvanceToInvoicedResult | null>(null);
   const [docPaidBy, setDocPaidBy] = useState<Record<DocKey, 'client' | 'agency'>>({
@@ -370,20 +371,40 @@ const CaseDetail: React.FC = () => {
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
   // Across the agency-paid documents, cost adds to what the client owes and
-  // whatever they've already given toward it subtracts back off — summed net
-  // rather than clamped per-document, so a "given" amount always registers even
-  // when that document's own cost is 0 (e.g. paid entirely by the client).
+  // whatever they've already given toward it subtracts back off. Only counted once
+  // a cost is actually entered (matches computeAgencyDocLineItems on the backend,
+  // which is what the real invoice uses) — an empty Cost with a "Given" amount
+  // already typed in isn't "cost is zero, refund the client", it's "cost isn't
+  // known yet", so it must not swing the balance negative before the cost is filled in.
   // Reads from editFields first so the balance updates live as the cost / given
   // inputs are edited, before the form is saved.
   const agencyDocOutstanding = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
     const costKey = DOC_COST_KEY[key];
     const clientPaidKey = DOC_CLIENT_PAID_KEY[key]!;
     const cost = num((editFields[costKey] as number | string | undefined) ?? (vc[costKey] as number | string | null));
+    if (cost <= 0) return sum;
     const clientPaid = num((editFields[clientPaidKey] as number | string | undefined) ?? (vc[clientPaidKey] as number | string | null));
     return sum + cost - clientPaid;
   }, 0);
   const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived) + agencyDocOutstanding;
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
+
+  // Mirrors backend advanceToInvoicedWithInvoice's line-item + advance math exactly, so the
+  // preview shown before confirming matches what the real invoice will actually contain.
+  const invoicePreviewItems = [...AGENCY_PAID_DOCS]
+    .map(key => ({ label: DOC_LABELS[key], amount: num(vc[DOC_COST_KEY[key]] as number | string | null) }))
+    .filter(i => i.amount > 0);
+  const invoicePreviewDocTotal = invoicePreviewItems.reduce((s, i) => s + i.amount, 0);
+  const invoicePreviewClientContribution = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
+    const cost = num(vc[DOC_COST_KEY[key]] as number | string | null);
+    if (cost <= 0) return sum;
+    return sum + num(vc[DOC_CLIENT_PAID_KEY[key]!] as number | string | null);
+  }, 0);
+  const invoicePreviewCharges = num(vc.charges);
+  const invoicePreviewDiscount = num(vc.discount);
+  const invoicePreviewAdvance = num(vc.advance) + invoicePreviewClientContribution;
+  const invoicePreviewTotal = invoicePreviewCharges + invoicePreviewDocTotal - invoicePreviewDiscount;
+  const invoicePreviewOutstanding = invoicePreviewTotal - invoicePreviewAdvance;
 
   const missingRequiredFields = vc.missingRequiredFields ?? [];
 
@@ -523,10 +544,7 @@ const CaseDetail: React.FC = () => {
                 onClick={() => {
                   if (!nextStage) return;
                   if (nextStage === 'INVOICED') {
-                    if (!confirm('Move to Invoiced? This will auto-generate an invoice from the case charges and complete the case.')) return;
-                    setInvoicingResult(null);
-                    setInvoicingOpen(true);
-                    advanceToInvoicedMut.mutate();
+                    setInvoicePreviewOpen(true);
                     return;
                   }
                   if (confirm(`Move to ${STAGE_LABELS[nextStage]}?`)) advanceStageMut.mutate();
@@ -1152,6 +1170,75 @@ const CaseDetail: React.FC = () => {
         )}
       </div>
       )}
+
+      {/* Preview before committing to Advance-to-Invoiced — this is the actual invoice
+          the "Confirm" button below will create, not just a rough estimate. */}
+      <Modal
+        open={invoicePreviewOpen}
+        onClose={() => setInvoicePreviewOpen(false)}
+        title="Preview Invoice"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setInvoicePreviewOpen(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              leftIcon={<Download className="w-3.5 h-3.5" />}
+              loading={downloading}
+              onClick={() => handleDownload(() => downloadReceiptPreview(vc.id, vc.client!.clientRef))}
+            >
+              Download PDF
+            </Button>
+            <Button
+              loading={advanceToInvoicedMut.isPending}
+              onClick={() => {
+                setInvoicePreviewOpen(false);
+                setInvoicingResult(null);
+                setInvoicingOpen(true);
+                advanceToInvoicedMut.mutate();
+              }}
+            >
+              Confirm & Create Invoice
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Service Charges</span>
+            <span className="text-gray-900">{fmtMoney(invoicePreviewCharges)}</span>
+          </div>
+          {invoicePreviewItems.map(i => (
+            <div key={i.label} className="flex justify-between text-gray-600">
+              <span>{i.label}</span>
+              <span>{fmtMoney(i.amount)}</span>
+            </div>
+          ))}
+          {invoicePreviewDiscount > 0 && (
+            <div className="flex justify-between text-red-600">
+              <span>Discount</span>
+              <span>-{fmtMoney(invoicePreviewDiscount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-medium text-gray-900 border-t border-gray-100 pt-1.5">
+            <span>Subtotal</span>
+            <span>{fmtMoney(invoicePreviewTotal)}</span>
+          </div>
+          {invoicePreviewAdvance > 0 && (
+            <div className="flex justify-between text-green-700">
+              <span>Advance Paid</span>
+              <span>-{fmtMoney(invoicePreviewAdvance)}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold text-base text-gray-900 border-t border-gray-100 pt-1.5">
+            <span>Total Due</span>
+            <span>{fmtMoney(invoicePreviewOutstanding)}</span>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-3">
+          This is exactly what will be invoiced. Confirming creates the real invoice and moves this case to Completed — download the PDF first if you want a copy to review or share.
+        </p>
+      </Modal>
 
       {/* Advance-to-Invoiced progress/result modal */}
       <Modal

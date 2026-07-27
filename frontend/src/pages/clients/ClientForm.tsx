@@ -145,13 +145,18 @@ const ClientForm: React.FC = () => {
       delete clientPayload.charges; delete clientPayload.discount;
 
       // A single pick sets the decided destination/city directly; more than one leaves it
-      // as a shortlist for File Processing to finalize down to one later.
+      // as a shortlist for File Processing to finalize down to one later. destinationOptions
+      // is sent as an explicit [] (not undefined) in the single-pick case — the backend uses
+      // its presence to tell "replacing the whole shortlist+destination together" apart from
+      // "finalizing from the existing shortlist" (see visaCase.service.ts updateCase), so an
+      // omitted key here would wrongly re-trigger the old shortlist-membership check against
+      // whatever destinationOptions the case already had stored.
       const destinationFields = form.destinations.length > 1
         ? { destination: undefined, destinationOptions: form.destinations }
-        : { destination: form.destinations[0], destinationOptions: undefined };
+        : { destination: form.destinations[0], destinationOptions: [] as string[] };
       const cityFields = form.cities.length > 1
         ? { city: undefined, cityOptions: form.cities }
-        : { city: form.cities[0], cityOptions: undefined };
+        : { city: form.cities[0], cityOptions: [] as string[] };
 
       if (!isEdit) {
         return createClient({

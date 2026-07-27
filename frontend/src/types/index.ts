@@ -157,7 +157,7 @@ export interface Client {
   previousSchengenVisa?: string;
   registeredEmail?: string;
   groupId?: string;
-  group?: { id: string; groupRef: string; name: string; relation?: string };
+  group?: { id: string; groupRef: string; name: string; relation?: string; _count?: { clients: number } };
   eVisa: boolean;
   visaAndTravelHistory?: string;
   source?: string;
