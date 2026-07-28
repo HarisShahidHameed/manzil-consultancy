@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as publicApiService from '../services/publicApi.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
+import { createPublicClientSchema } from '../validators/client.validators';
 
 const listQuerySchema = z.object({
   page:   z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
@@ -10,8 +11,20 @@ const listQuerySchema = z.object({
   search: z.string().optional(),
 });
 
+const CASE_STAGE = z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']);
+
+// Filters beyond `search` a third party can narrow the client list by — each one
+// optional and ANDed together (see publicApi.service.listPublicClients).
+const clientsQuerySchema = listQuerySchema.extend({
+  nationality:    z.string().optional(),
+  passportNumber: z.string().optional(),
+  destination:    z.string().optional(),
+  city:           z.string().optional(),
+  stage:          CASE_STAGE.optional(),
+});
+
 const appointmentsQuerySchema = listQuerySchema.extend({
-  stage: z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  stage: CASE_STAGE.optional(),
 });
 
 // Every hit is logged against the API key (not a user) so usage is auditable —
@@ -26,12 +39,34 @@ const logApiKeyAccess = (req: Request, resource: string, resourceId?: string) =>
   });
 
 export const listClients = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, search } = listQuerySchema.parse(req.query);
-  const result = await publicApiService.listPublicClients(page, limit, search);
+  const { page, limit, search, nationality, passportNumber, destination, city, stage } = clientsQuerySchema.parse(req.query);
+  const result = await publicApiService.listPublicClients(page, limit, { search, nationality, passportNumber, destination, city, stage });
   await logApiKeyAccess(req, 'public_clients');
   sendSuccess(res, 'Clients retrieved', result.clients, 200, {
     total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages,
   });
+};
+
+export const createClient = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = createPublicClientSchema.parse(req.body);
+    const created = await publicApiService.createPublicClient({
+      ...data,
+      receivedDate: data.receivedDate || new Date().toISOString().split('T')[0],
+    });
+    await logApiKeyAccess(req, 'public_clients', created?.id);
+    sendSuccess(res, 'Client created', created, 201);
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
+      return;
+    }
+    if (error?.code === 'P2002') {
+      sendError(res, 'A client with this passport number already exists', 409);
+      return;
+    }
+    sendError(res, 'Failed to create client', 500);
+  }
 };
 
 export const getClient = async (req: Request, res: Response): Promise<void> => {

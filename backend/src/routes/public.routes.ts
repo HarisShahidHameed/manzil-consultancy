@@ -11,6 +11,7 @@ router.use(authenticateApiKey);
 
 router.get('/clients',           requireApiScope('clients:read'),       publicApiController.listClients);
 router.get('/clients/:id',       requireApiScope('clients:read'),       publicApiController.getClient);
+router.post('/clients',          requireApiScope('clients:write'),      publicApiController.createClient);
 router.get('/appointments',      requireApiScope('appointments:read'),  publicApiController.listAppointments);
 router.get('/appointments/:id',  requireApiScope('appointments:read'),  publicApiController.getAppointment);
 

@@ -1,10 +1,10 @@
 import { prisma } from '../config/database';
 import { generateApiKey, hashApiKey } from '../utils/apiKey';
 
-// Scopes an API key may be granted — deliberately just the read side of the two
-// resources exposed to third parties (see routes/public.routes.ts). Extend this list
-// (and the corresponding query in publicApi.service.ts) if more gets exposed later.
-export const AVAILABLE_API_SCOPES = ['clients:read', 'appointments:read'] as const;
+// Scopes an API key may be granted — the resources exposed to third parties (see
+// routes/public.routes.ts). Extend this list (and the corresponding logic in
+// publicApi.service.ts) if more gets exposed later.
+export const AVAILABLE_API_SCOPES = ['clients:read', 'clients:write', 'appointments:read'] as const;
 export type ApiScope = (typeof AVAILABLE_API_SCOPES)[number];
 
 const API_KEY_SELECT = {

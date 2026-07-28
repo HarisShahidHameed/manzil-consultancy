@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { createClient } from './client.service';
 
 // Deliberately narrower than the internal CLIENT_SELECT/CASE_SELECT in
 // client.service.ts / visaCase.service.ts — third parties get identity, contact and
@@ -36,18 +37,42 @@ const PUBLIC_CASE_SELECT = {
   },
 } satisfies Prisma.VisaCaseSelect;
 
-export const listPublicClients = async (page = 1, limit = 20, search?: string) => {
+export interface PublicClientFilters {
+  search?: string;
+  nationality?: string;
+  passportNumber?: string;
+  destination?: string;
+  city?: string;
+  stage?: string;
+}
+
+export const listPublicClients = async (page = 1, limit = 20, filters: PublicClientFilters = {}) => {
   const skip = (page - 1) * limit;
-  const where: Prisma.ClientWhereInput = search
-    ? {
-        OR: [
-          { firstName:      { contains: search, mode: 'insensitive' } },
-          { lastName:       { contains: search, mode: 'insensitive' } },
-          { clientRef:      { contains: search, mode: 'insensitive' } },
-          { passportNumber: { contains: search, mode: 'insensitive' } },
-        ],
-      }
-    : {};
+  const { search, nationality, passportNumber, destination, city, stage } = filters;
+
+  // Each filter ANDs together (Prisma's default for sibling where keys), same pattern
+  // as the internal listClients/listCases — search, nationality, passport, and the
+  // case-level destination/city/stage filters can all narrow the result set at once.
+  const where: Prisma.ClientWhereInput = {};
+  if (search) {
+    where.OR = [
+      { firstName:      { contains: search, mode: 'insensitive' } },
+      { lastName:       { contains: search, mode: 'insensitive' } },
+      { clientRef:      { contains: search, mode: 'insensitive' } },
+      { passportNumber: { contains: search, mode: 'insensitive' } },
+    ];
+  }
+  if (nationality)    where.nationality    = { contains: nationality, mode: 'insensitive' };
+  if (passportNumber) where.passportNumber = { contains: passportNumber, mode: 'insensitive' };
+  if (destination || city || stage) {
+    where.visaCases = {
+      some: {
+        ...(destination ? { destination: { contains: destination, mode: 'insensitive' } } : {}),
+        ...(city        ? { city:        { contains: city,        mode: 'insensitive' } } : {}),
+        ...(stage        ? { stage: stage as any } : {}),
+      },
+    };
+  }
 
   const [clients, total] = await Promise.all([
     prisma.client.findMany({ where, skip, take: limit, select: PUBLIC_CLIENT_SELECT, orderBy: { createdAt: 'desc' } }),
@@ -61,6 +86,14 @@ export const getPublicClientById = async (id: string) => {
     where: { OR: [{ id }, { clientRef: id }] },
     select: PUBLIC_CLIENT_SELECT,
   });
+};
+
+// Creates through the same service the internal client form uses (including the
+// DB-level unique passport number constraint), then re-reads through the sanitized
+// public select so the response never leaks internal-only fields.
+export const createPublicClient = async (data: Parameters<typeof createClient>[0]) => {
+  const created = await createClient(data);
+  return getPublicClientById(created.id);
 };
 
 export const listPublicAppointments = async (page = 1, limit = 20, stage?: string) => {

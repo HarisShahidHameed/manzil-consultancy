@@ -12,6 +12,7 @@ import { Can } from '../../routes/RoleGuard';
 
 const SCOPE_OPTIONS = [
   { value: 'clients:read',      label: 'Clients — read' },
+  { value: 'clients:write',     label: 'Clients — write (create)' },
   { value: 'appointments:read', label: 'Appointments — read' },
 ];
 

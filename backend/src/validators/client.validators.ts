@@ -71,6 +71,46 @@ export const createClientSchema = createClientObjectSchema.refine(requireDestina
   message: 'Destination (or destination options) is required', path: ['destination'],
 });
 
+// Public API create — a deliberately narrower field set than the internal form: no
+// staff-only concepts (assignedToId, groupId, source, referredBy, hrComments, folderUrl)
+// and no financial fields (charges/advance/discount/priority are internal ops decisions,
+// not something a third-party integration should be setting on a brand-new client).
+const createPublicClientObjectSchema = z.object({
+  receivedDate: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).optional(),
+  firstName:    z.string().min(1).max(100).trim(),
+  lastName:     z.string().min(1).max(100).trim(),
+  gender:       z.enum(['MALE', 'FEMALE', 'OTHER']),
+  dob:          z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
+  phone:        z.string().min(7).max(30).trim(),
+  email:        z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
+  whatsapp:     z.string().max(30).optional(),
+  availability: z.string().max(200).optional(),
+  addressStreet:     z.string().max(200).optional(),
+  addressCity:       z.string().max(100).optional(),
+  addressShire:      z.string().max(100).optional(),
+  addressPostalCode: z.string().max(20).optional(),
+  addressCountry:    z.string().max(100).optional(),
+  passportNumber: z.string().min(3).max(30).trim(),
+  passportIssue:  z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
+  passportExpiry: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
+  birthCity:      z.string().max(100).optional(),
+  nationality:    z.string().min(1).max(100).trim(),
+  maritalStatus:  z.enum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED']).optional(),
+  previousSchengenVisa: z.string().max(500).optional(),
+  registeredEmail: z.string().email().optional().or(z.literal('')).transform(v => v || undefined),
+  eVisa:    z.boolean().default(false),
+  visaAndTravelHistory: z.string().optional(),
+  // First visa case
+  ...destinationFields,
+  ...cityFields,
+  visaType:     z.string().max(100).optional(),
+  ukVisaExpiry: z.string().regex(DATE_REGEX).optional().or(z.literal('')).transform(v => v || undefined),
+  eVisaType:    z.string().max(100).optional(),
+});
+export const createPublicClientSchema = createPublicClientObjectSchema.refine(requireDestination, {
+  message: 'Destination (or destination options) is required', path: ['destination'],
+});
+
 // Bulk import accepts incomplete records — anything not on file yet is left blank
 // and the case stays flagged incomplete in the Appointment queue until the required
 // fields are filled in (see utils/caseRequiredInfo.ts for what file processing needs).
@@ -242,7 +282,7 @@ export const createInvoiceSchema = z.object({
 
 export const createApiKeySchema = z.object({
   name:      z.string().min(1).max(100).trim(),
-  scopes:    z.array(z.enum(['clients:read', 'appointments:read'])).min(1),
+  scopes:    z.array(z.enum(['clients:read', 'clients:write', 'appointments:read'])).min(1),
   expiresAt: optionalDate(),
 });
 
