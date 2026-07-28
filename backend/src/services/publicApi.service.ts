@@ -14,6 +14,7 @@ const PUBLIC_CLIENT_SELECT = {
   addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true,
+  status: true,
   createdAt: true, updatedAt: true,
   visaCases: {
     select: {
@@ -44,15 +45,20 @@ export interface PublicClientFilters {
   destination?: string;
   city?: string;
   stage?: string;
+  status?: string;
+  // Client's own address fields — distinct from `city` above (a case's appointment
+  // city). Named to match what a third party is most likely to actually have on hand
+  // when looking a client up (see the single-client lookup endpoint).
+  addressCity?: string;
+  addressCountry?: string;
+  phone?: string;
+  email?: string;
 }
 
-export const listPublicClients = async (page = 1, limit = 20, filters: PublicClientFilters = {}) => {
-  const skip = (page - 1) * limit;
-  const { search, nationality, passportNumber, destination, city, stage } = filters;
-
-  // Each filter ANDs together (Prisma's default for sibling where keys), same pattern
-  // as the internal listClients/listCases — search, nationality, passport, and the
-  // case-level destination/city/stage filters can all narrow the result set at once.
+// Shared by both the list and single-client lookup endpoints — every filter is
+// optional and ANDs together (Prisma's default for sibling where keys).
+const buildPublicClientWhere = (filters: PublicClientFilters): Prisma.ClientWhereInput => {
+  const { search, nationality, passportNumber, destination, city, stage, status, addressCity, addressCountry, phone, email } = filters;
   const where: Prisma.ClientWhereInput = {};
   if (search) {
     where.OR = [
@@ -62,8 +68,13 @@ export const listPublicClients = async (page = 1, limit = 20, filters: PublicCli
       { passportNumber: { contains: search, mode: 'insensitive' } },
     ];
   }
-  if (nationality)    where.nationality    = { contains: nationality, mode: 'insensitive' };
-  if (passportNumber) where.passportNumber = { contains: passportNumber, mode: 'insensitive' };
+  if (nationality)     where.nationality     = { contains: nationality, mode: 'insensitive' };
+  if (passportNumber)  where.passportNumber  = { contains: passportNumber, mode: 'insensitive' };
+  if (addressCity)     where.addressCity     = { contains: addressCity, mode: 'insensitive' };
+  if (addressCountry)  where.addressCountry  = { contains: addressCountry, mode: 'insensitive' };
+  if (phone)           where.phone           = { contains: phone, mode: 'insensitive' };
+  if (email)           where.email           = { contains: email, mode: 'insensitive' };
+  if (status)          where.status          = status as any;
   if (destination || city || stage) {
     where.visaCases = {
       some: {
@@ -73,6 +84,12 @@ export const listPublicClients = async (page = 1, limit = 20, filters: PublicCli
       },
     };
   }
+  return where;
+};
+
+export const listPublicClients = async (page = 1, limit = 20, filters: PublicClientFilters = {}) => {
+  const skip = (page - 1) * limit;
+  const where = buildPublicClientWhere(filters);
 
   const [clients, total] = await Promise.all([
     prisma.client.findMany({ where, skip, take: limit, select: PUBLIC_CLIENT_SELECT, orderBy: { createdAt: 'desc' } }),
@@ -88,12 +105,31 @@ export const getPublicClientById = async (id: string) => {
   });
 };
 
+// Returns exactly one client (the most recently created match) for callers that only
+// have identifying attributes on hand — e.g. city + country — rather than our id or
+// clientRef. Requires at least one filter so a bare call can't return an arbitrary
+// client; returns null (not an array) so the caller never has to disambiguate.
+export const getSinglePublicClient = async (filters: PublicClientFilters) => {
+  const where = buildPublicClientWhere(filters);
+  return prisma.client.findFirst({ where, select: PUBLIC_CLIENT_SELECT, orderBy: { createdAt: 'desc' } });
+};
+
 // Creates through the same service the internal client form uses (including the
 // DB-level unique passport number constraint), then re-reads through the sanitized
 // public select so the response never leaks internal-only fields.
 export const createPublicClient = async (data: Parameters<typeof createClient>[0]) => {
   const created = await createClient(data);
   return getPublicClientById(created.id);
+};
+
+// The one write a third party can do on an existing client through the public
+// API — flip its processing status. Kept separate from a general "update client"
+// endpoint so the write surface stays exactly as wide as what's actually needed.
+export const updatePublicClientStatus = async (id: string, status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED') => {
+  const existing = await prisma.client.findFirst({ where: { OR: [{ id }, { clientRef: id }] }, select: { id: true } });
+  if (!existing) return null;
+  await prisma.client.update({ where: { id: existing.id }, data: { status } });
+  return getPublicClientById(existing.id);
 };
 
 export const listPublicAppointments = async (page = 1, limit = 20, stage?: string) => {

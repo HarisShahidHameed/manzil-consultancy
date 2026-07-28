@@ -10,7 +10,7 @@ const CLIENT_SELECT = {
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
-  source: true, referredBy: true, hrComments: true, folderUrl: true,
+  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
   group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
@@ -32,7 +32,7 @@ const CLIENT_DETAIL_SELECT = {
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
-  source: true, referredBy: true, hrComments: true, folderUrl: true,
+  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
   group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
@@ -309,6 +309,7 @@ export const updateClient = async (
     eVisa: boolean; visaAndTravelHistory: string;
     source: string; referredBy: string; hrComments: string;
     folderUrl: string; assignedToId: string; groupId: string | null;
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
   }>
 ) => {
   const existingCases = await prisma.visaCase.findMany({ where: { clientId: id }, select: { stage: true } });

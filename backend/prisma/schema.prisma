@@ -59,6 +59,16 @@ enum InvoiceStatus {
   PAID
 }
 
+// Processing status for third-party integrations working a client record off the
+// Public API (see docs/PUBLIC_API.md) — deliberately separate from VisaCase.stage
+// (the internal appointment/file-processing workflow). Lets an external consumer mark
+// a client as picked up / done so repeated polling doesn't reprocess (or skip) records.
+enum ClientProcessingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -219,6 +229,7 @@ model Client {
   referredBy           String?
   hrComments           String?
   folderUrl            String?
+  status               ClientProcessingStatus @default(PENDING)
   assignedToId         String?
   createdById          String?
   createdAt            DateTime @default(now())

@@ -125,6 +125,10 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="Date of Birth" value={fmtDate(client.dob)} />
             <InfoRow label="Nationality" value={client.nationality} />
             <InfoRow
+              label="Processing Status"
+              value={client.status ? client.status.replace('_', ' ') : 'Pending'}
+            />
+            <InfoRow
               label="Group"
               value={client.group
                 ? `${client.group.name} (${client.group.groupRef})${client.group._count ? ` — ${client.group._count.clients} members` : ''}`

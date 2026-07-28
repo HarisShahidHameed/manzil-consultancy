@@ -19,6 +19,18 @@ import dashboardRoutes from './routes/dashboard.routes';
 import apiKeyRoutes from './routes/apiKey.routes';
 import publicRoutes from './routes/public.routes';
 
+// Safety net for exactly the crash this comment is here because of: an Express 4 route
+// handler is `async`, and a validation error (or anything else) thrown after an `await`
+// rejects that handler's promise — Express 4 has no built-in way to route that to
+// errorHandler, so it becomes an unhandled rejection. Since Node 15, an unhandled
+// rejection crashes the whole process by default, taking down every other in-flight
+// request with it. Every route handler should really have its own try/catch (most do),
+// but this is the last line of defense so a single missed one — internal or, worse,
+// reachable by a third party on the public API — can't kill the server.
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled promise rejection (recovered — process kept alive)', { reason });
+});
+
 const app = express();
 
 // Security headers

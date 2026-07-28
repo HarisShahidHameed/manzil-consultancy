@@ -38,8 +38,10 @@ internal API (`page`, `limit`, `meta.total` / `meta.totalPages` in the response)
 | Method | Path                        | Scope                | Notes |
 |--------|-----------------------------|-----------------------|-------|
 | GET    | `/clients`                  | `clients:read`        | See filters below — all optional and ANDed together |
+| GET    | `/clients/single`           | `clients:read`        | Same filters as `/clients`, but returns **one** client object (not a list) — see below |
 | GET    | `/clients/:id`               | `clients:read`        | `:id` is either the client's UUID or its `clientRef` (e.g. `CL-104`) |
 | POST   | `/clients`                  | `clients:write`       | Creates a client (+ its first case). See fields below |
+| PATCH  | `/clients/:id/status`       | `clients:write`       | Updates the client's processing status. See below |
 | GET    | `/appointments`             | `appointments:read`   | `?stage=` filters by case stage (`APPOINTMENT`, `FILE_PROCESSING`, `INVOICED`, `COMPLETED`, `CANCELLED`) |
 | GET    | `/appointments/:id`          | `appointments:read`   | `:id` is the case UUID |
 
@@ -53,9 +55,43 @@ All optional, all combinable in the same request (e.g.
 | `search` | Name, client ref, or passport number (partial, case-insensitive) |
 | `nationality` | Client's nationality (partial, case-insensitive) |
 | `passportNumber` | Passport number (partial, case-insensitive) |
+| `addressCity` | Client's own address city (partial, case-insensitive) |
+| `addressCountry` | Client's own address country (partial, case-insensitive) |
+| `phone` | Client's phone number (partial) |
+| `email` | Client's email (partial, case-insensitive) |
+| `status` | Processing status (exact: `PENDING`, `IN_PROGRESS`, `COMPLETED`) |
 | `destination` | Any of the client's cases' destination (partial, case-insensitive) |
-| `city` | Any of the client's cases' appointment city (partial, case-insensitive) |
+| `city` | Any of the client's cases' appointment city (partial, case-insensitive) — note this is the *case's* city, not the client's own `addressCity` |
 | `stage` | Any of the client's cases' stage (exact: `APPOINTMENT`, `FILE_PROCESSING`, `INVOICED`, `COMPLETED`, `CANCELLED`) |
+
+### `GET /clients/single`
+
+Same filters as above, but instead of a paginated array it returns exactly **one**
+client object under `data` (the most recently created match) — for callers who don't
+have our `id`/`clientRef` on hand and just want "the client matching what I know about
+them", e.g.:
+
+```
+GET /api/public/v1/clients/single?addressCity=London&addressCountry=UK
+```
+
+At least one filter is required (a bare call is rejected with `422` — there's no
+sensible "the one client matching nothing" answer). No match → `404`. If your filters
+could match more than one client, you'll get whichever was created most recently —
+narrow with more filters (e.g. add `passportNumber`) if you need a guaranteed-unique
+match.
+
+### `PATCH /clients/:id/status`
+
+```json
+{ "status": "IN_PROGRESS" }
+```
+
+`status` is one of `PENDING` (default on creation), `IN_PROGRESS`, `COMPLETED`. This is
+a separate concept from the internal case workflow (`stage`) — it exists so a
+third-party integration can mark a client as picked up / done on its end, so repeated
+polling of `/clients` doesn't reprocess the same record twice or skip one. `:id` accepts
+either the UUID or `clientRef`.
 
 ### `POST /clients`
 

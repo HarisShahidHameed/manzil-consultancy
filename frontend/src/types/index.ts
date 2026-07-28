@@ -164,6 +164,7 @@ export interface Client {
   referredBy?: string;
   hrComments?: string;
   folderUrl?: string;
+  status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
   assignedToId?: string;
   assignedTo?: { id: string; firstName: string; lastName: string; email: string };
   visaCases: VisaCase[];

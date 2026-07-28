@@ -171,6 +171,7 @@ export const updateClientSchema = z.object({
   folderUrl:  z.string().url().optional().or(z.literal('')).transform(v => v || undefined),
   assignedToId: z.string().uuid().optional(),
   groupId:    z.string().uuid().nullable().optional(),
+  status:     z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED']).optional(),
 });
 
 export const clientQuerySchema = z.object({
