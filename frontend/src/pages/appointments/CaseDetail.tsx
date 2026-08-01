@@ -204,7 +204,22 @@ const CaseDetail: React.FC = () => {
         docSelfEmployment: (vc.docSelfEmploymentCost != null && Number(vc.docSelfEmploymentCost) > 0) ? 'agency' : 'client',
       }));
     }
-  }, [vc?.id]);
+  // Re-syncs whenever the server record actually changes (save/refetch), not just when
+  // switching cases — otherwise editFields keeps showing pre-save values (e.g. discount)
+  // until a full page reload re-mounts the component.
+  }, [vc?.id, vc?.updatedAt]);
+
+  // Any mutation that touches a case's stage/financials can move figures shown on the
+  // client's page and on the dashboard totals — invalidate all of them together so those
+  // pages don't need a manual refresh to catch up.
+  const invalidateFinancials = () => {
+    qc.invalidateQueries({ queryKey: ['case', id] });
+    qc.invalidateQueries({ queryKey: ['cases'] });
+    qc.invalidateQueries({ queryKey: ['invoices'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+    if (vc?.clientId) qc.invalidateQueries({ queryKey: ['client', vc.clientId] });
+  };
 
   const showSuccess = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
   const onErr = (e: AxiosError<{ message: string }>, fallback: string) =>
@@ -224,8 +239,7 @@ const CaseDetail: React.FC = () => {
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
+      invalidateFinancials();
       showSuccess('Appointment details saved');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save'),
@@ -264,8 +278,7 @@ const CaseDetail: React.FC = () => {
       paymentReceived: toNum(editFields.paymentReceived),
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
+      invalidateFinancials();
       showSuccess('File processing saved');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to save'),
@@ -275,8 +288,7 @@ const CaseDetail: React.FC = () => {
   const patchMut = useMutation({
     mutationFn: (vars: { patch: Record<string, unknown>; msg: string }) => updateCase(id!, vars.patch),
     onSuccess: (_d, vars) => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
+      invalidateFinancials();
       showSuccess(vars.msg);
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Update failed'),
@@ -289,8 +301,7 @@ const CaseDetail: React.FC = () => {
       return updateCase(id!, { stage: next });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
+      invalidateFinancials();
       showSuccess('Stage advanced');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to advance stage'),
@@ -302,9 +313,7 @@ const CaseDetail: React.FC = () => {
   const advanceToInvoicedMut = useMutation({
     mutationFn: () => advanceToInvoiced(id!),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
-      qc.invalidateQueries({ queryKey: ['invoices'] });
+      invalidateFinancials();
       setInvoicingResult(res.data ?? null);
       setActiveSection('COMPLETED');
     },
@@ -317,8 +326,7 @@ const CaseDetail: React.FC = () => {
   const cancelMut = useMutation({
     mutationFn: () => updateCase(id!, { stage: 'CANCELLED' }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['cases'] });
+      invalidateFinancials();
       showSuccess('Case cancelled');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to cancel'),
@@ -334,8 +342,7 @@ const CaseDetail: React.FC = () => {
       notes:    invoiceForm.notes     || undefined,
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['case', id] });
-      qc.invalidateQueries({ queryKey: ['invoices'] });
+      invalidateFinancials();
       setInvoiceOpen(false);
       setInvoiceForm({ charges: '', discount: '', advance: '', dueDate: '', notes: '' });
       showSuccess('Invoice created');
@@ -402,7 +409,7 @@ const CaseDetail: React.FC = () => {
   }, 0);
   const invoicePreviewCharges = num(vc.charges);
   const invoicePreviewDiscount = num(vc.discount);
-  const invoicePreviewAdvance = num(vc.advance) + invoicePreviewClientContribution;
+  const invoicePreviewAdvance = num(vc.advance) + invoicePreviewClientContribution + num(vc.paymentReceived);
   const invoicePreviewTotal = invoicePreviewCharges + invoicePreviewDocTotal - invoicePreviewDiscount;
   const invoicePreviewOutstanding = invoicePreviewTotal - invoicePreviewAdvance;
 

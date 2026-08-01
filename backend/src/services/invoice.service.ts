@@ -109,14 +109,21 @@ export const updateInvoice = async (
 ) => {
   const current = await prisma.invoice.findUnique({
     where: { id },
-    select: { charges: true, discount: true, advance: true, paidAmount: true },
+    select: { charges: true, discount: true, advance: true, paidAmount: true, lineItems: true },
   });
   if (!current) throw new Error('NOT_FOUND');
 
   const charges  = new Prisma.Decimal(data.charges  ?? current.charges.toNumber());
   const discount = new Prisma.Decimal(data.discount ?? current.discount.toNumber());
   const advance  = new Prisma.Decimal(data.advance  ?? current.advance.toNumber());
-  const total    = charges.minus(discount);
+  // Agency doc-cost line items are a frozen snapshot taken at invoice creation time (see
+  // schema comment on Invoice.lineItems) — they don't get re-derived from the live case,
+  // but their total still has to stay folded into totalAmount or an edit here (e.g. just
+  // changing charges/discount) would silently drop them from the invoice total.
+  const docCostTotal = ((current.lineItems as unknown as InvoiceLineItem[]) ?? [])
+    .filter(i => i.label !== 'Service Charges')
+    .reduce((sum, i) => sum.plus(i.amount), new Prisma.Decimal(0));
+  const total = charges.plus(docCostTotal).minus(discount);
 
   // Payment is handled manually outside the system — the status drives the figures.
   let paidAmount = new Prisma.Decimal(data.paidAmount ?? current.paidAmount.toNumber());

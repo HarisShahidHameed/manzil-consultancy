@@ -49,6 +49,18 @@ const InvoiceList: React.FC = () => {
   const showSuccess = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000); };
   const onErr = (e: AxiosError<{ message: string }>, fallback: string) => setError(e.response?.data?.message ?? fallback);
 
+  // An invoice edit/create/delete also moves the figures shown on that invoice's case
+  // page, the client's page, and the dashboard totals — invalidate all of them together
+  // so those pages don't need a manual refresh to catch up.
+  const invalidateFinancials = (caseId?: string, clientId?: string) => {
+    qc.invalidateQueries({ queryKey: ['invoices'] });
+    qc.invalidateQueries({ queryKey: ['cases'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-stats'] });
+    qc.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+    if (caseId)   qc.invalidateQueries({ queryKey: ['case', caseId] });
+    if (clientId) qc.invalidateQueries({ queryKey: ['client', clientId] });
+  };
+
   const createMut = useMutation({
     mutationFn: () => createInvoice({
       caseId:   newForm.caseId,
@@ -59,7 +71,8 @@ const InvoiceList: React.FC = () => {
       notes:    newForm.notes    || undefined,
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['invoices'] });
+      const selectedCase = allCases.find(c => c.id === newForm.caseId);
+      invalidateFinancials(newForm.caseId, selectedCase?.clientId);
       setCreateOpen(false);
       setNewForm({ caseId: '', charges: '', discount: '', advance: '', dueDate: '', notes: '' });
       showSuccess('Invoice created');
@@ -77,7 +90,7 @@ const InvoiceList: React.FC = () => {
       notes:      editForm.notes      || undefined,
     }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['invoices'] });
+      invalidateFinancials(editInvoice?.caseId, editInvoice?.case?.client.id);
       setEditInvoice(null);
       showSuccess('Invoice updated');
     },
@@ -85,9 +98,9 @@ const InvoiceList: React.FC = () => {
   });
 
   const delMut = useMutation({
-    mutationFn: deleteInvoice,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['invoices'] });
+    mutationFn: (inv: Invoice) => deleteInvoice(inv.id),
+    onSuccess: (_d, inv) => {
+      invalidateFinancials(inv.caseId, inv.case?.client.id);
       showSuccess('Invoice deleted');
     },
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to delete invoice'),
@@ -203,7 +216,7 @@ const InvoiceList: React.FC = () => {
                         </Can>
                         <Can permissions={['invoices:delete']}>
                           <Button variant="danger" size="sm" leftIcon={<Trash2 className="w-3.5 h-3.5" />}
-                            onClick={() => { if (confirm('Delete this invoice?')) delMut.mutate(inv.id); }}
+                            onClick={() => { if (confirm('Delete this invoice?')) delMut.mutate(inv); }}
                           >
                             Delete
                           </Button>

@@ -314,7 +314,7 @@ export const advanceToInvoicedWithInvoice = async (
     select: {
       stage: true, onHold: true,
       destination: true, destinationOptions: true, city: true, cityOptions: true,
-      charges: true, discount: true, advance: true,
+      charges: true, discount: true, advance: true, paymentReceived: true,
       docAppointmentCost: true, docAppointmentClientPaid: true,
       docTicketCost: true, docTicketClientPaid: true,
       docInsuranceCost: true, docInsuranceClientPaid: true,
@@ -337,9 +337,14 @@ export const advanceToInvoicedWithInvoice = async (
   const charges  = existing.charges  ?? new Prisma.Decimal(0);
   const discount = existing.discount ?? new Prisma.Decimal(0);
   // Each agency-fronted doc cost becomes its own invoice line item, and whatever the
-  // client has already paid back toward it counts as an advance on the invoice.
+  // client has already paid back toward it counts as an advance on the invoice. Any
+  // part-payment already taken from the client during File Processing (paymentReceived)
+  // counts toward the advance too, so it isn't lost from the outstanding figure once
+  // the case is invoiced.
   const { items: docItems, clientContribution, costTotal } = computeAgencyDocLineItems(existing);
-  const advance = (existing.advance ?? new Prisma.Decimal(0)).plus(clientContribution);
+  const advance = (existing.advance ?? new Prisma.Decimal(0))
+    .plus(clientContribution)
+    .plus(existing.paymentReceived ?? new Prisma.Decimal(0));
   const total = charges.plus(costTotal).minus(discount);
   const outstanding = total.minus(advance);
   const lineItems: InvoiceLineItem[] = [{ label: 'Service Charges', amount: charges.toNumber() }, ...docItems];
@@ -379,7 +384,7 @@ export const buildInvoicePreview = async (id: string) => {
     where: { id },
     select: {
       id: true, destination: true, visaType: true,
-      charges: true, discount: true, advance: true,
+      charges: true, discount: true, advance: true, paymentReceived: true,
       docAppointmentCost: true, docAppointmentClientPaid: true,
       docTicketCost: true, docTicketClientPaid: true,
       docInsuranceCost: true, docInsuranceClientPaid: true,
@@ -398,7 +403,9 @@ export const buildInvoicePreview = async (id: string) => {
   const charges  = c.charges  ?? new Prisma.Decimal(0);
   const discount = c.discount ?? new Prisma.Decimal(0);
   const { items: docItems, clientContribution, costTotal } = computeAgencyDocLineItems(c);
-  const advance = (c.advance ?? new Prisma.Decimal(0)).plus(clientContribution);
+  const advance = (c.advance ?? new Prisma.Decimal(0))
+    .plus(clientContribution)
+    .plus(c.paymentReceived ?? new Prisma.Decimal(0));
   const total = charges.plus(costTotal).minus(discount);
   const outstanding = total.minus(advance);
   const lineItems: InvoiceLineItem[] = [{ label: 'Service Charges', amount: charges.toNumber() }, ...docItems];
