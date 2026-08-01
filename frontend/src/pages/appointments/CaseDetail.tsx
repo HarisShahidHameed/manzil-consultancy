@@ -406,9 +406,10 @@ const CaseDetail: React.FC = () => {
   // Payment Received are edited, before the form is saved.
   const docField = (fieldKey: keyof VisaCase) =>
     num((editFields[fieldKey] as number | string | undefined) ?? (vc[fieldKey] as number | string | null));
+  // Every agency-fronted doc is listed, even at £0.00, so the preview (and the real
+  // invoice/receipt it mirrors) shows the full File Processing breakdown.
   const invoicePreviewItems = [...AGENCY_PAID_DOCS]
-    .map(key => ({ label: DOC_LABELS[key], amount: docField(DOC_COST_KEY[key]) }))
-    .filter(i => i.amount > 0);
+    .map(key => ({ label: DOC_LABELS[key], amount: docField(DOC_COST_KEY[key]) }));
   const invoicePreviewDocTotal = invoicePreviewItems.reduce((s, i) => s + i.amount, 0);
   const invoicePreviewClientContribution = [...AGENCY_PAID_DOCS].reduce(
     (sum, key) => sum + docField(DOC_CLIENT_PAID_KEY[key]!), 0

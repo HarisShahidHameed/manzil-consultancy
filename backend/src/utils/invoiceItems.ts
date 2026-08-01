@@ -39,10 +39,11 @@ export const computeAgencyDocLineItems = (
 
   for (const { label, cost, clientPaid } of AGENCY_DOC_FIELDS) {
     const costVal = caseRecord[cost];
-    if (costVal && costVal.gt(0)) {
-      items.push({ label, amount: costVal.toNumber() });
-      costTotal = costTotal.plus(costVal);
-    }
+    // Every agency-fronted doc gets its own line item on the receipt/invoice, even at
+    // £0.00 — so the client can see the full breakdown of what was tracked in File
+    // Processing, not just the ones that ended up costing something.
+    items.push({ label, amount: costVal ? costVal.toNumber() : 0 });
+    if (costVal && costVal.gt(0)) costTotal = costTotal.plus(costVal);
     // Whatever the client has already given toward a doc counts as an advance
     // regardless of whether the cost side is filled in yet (or is 0 because the
     // agency never fronted it) — it's money in hand either way, so it always
