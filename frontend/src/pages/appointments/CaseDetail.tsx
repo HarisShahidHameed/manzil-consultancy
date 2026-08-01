@@ -377,39 +377,45 @@ const CaseDetail: React.FC = () => {
   const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
   const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
 
-  // Across the agency-paid documents, cost adds to what the client owes and
-  // whatever they've already given toward it subtracts back off. Only counted once
-  // a cost is actually entered (matches computeAgencyDocLineItems on the backend,
-  // which is what the real invoice uses) — an empty Cost with a "Given" amount
-  // already typed in isn't "cost is zero, refund the client", it's "cost isn't
-  // known yet", so it must not swing the balance negative before the cost is filled in.
+  // Across the agency-paid documents, cost adds to what the client owes; whatever
+  // they've already given toward it always subtracts back off, regardless of whether
+  // a cost has been entered yet — it's money already in hand either way (matches
+  // computeAgencyDocLineItems on the backend, which is what the real invoice uses).
   // Reads from editFields first so the balance updates live as the cost / given
   // inputs are edited, before the form is saved.
   const agencyDocOutstanding = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
     const costKey = DOC_COST_KEY[key];
     const clientPaidKey = DOC_CLIENT_PAID_KEY[key]!;
     const cost = num((editFields[costKey] as number | string | undefined) ?? (vc[costKey] as number | string | null));
-    if (cost <= 0) return sum;
     const clientPaid = num((editFields[clientPaidKey] as number | string | undefined) ?? (vc[clientPaidKey] as number | string | null));
-    return sum + cost - clientPaid;
+    return sum + (cost > 0 ? cost : 0) - clientPaid;
   }, 0);
-  const caseDue = num(vc.charges) - num(vc.discount) - num(vc.advance) - num(vc.paymentReceived) + agencyDocOutstanding;
+  // Same live-editFields-first pattern as agencyDocOutstanding above — the balance has to
+  // move as soon as Charges/Discount/Advance/Payment Received are typed, not only after Save.
+  const caseDueCharges  = num((editFields.charges  as number | string | undefined) ?? vc.charges);
+  const caseDueDiscount = num((editFields.discount as number | string | undefined) ?? vc.discount);
+  const caseDueAdvance  = num((editFields.advance  as number | string | undefined) ?? vc.advance);
+  const caseDueReceived = num((editFields.paymentReceived as number | string | undefined) ?? vc.paymentReceived);
+  const caseDue = caseDueCharges - caseDueDiscount - caseDueAdvance - caseDueReceived + agencyDocOutstanding;
   const unpaidInvoices = (vc.invoices ?? []).filter(i => i.status !== 'PAID');
 
   // Mirrors backend advanceToInvoicedWithInvoice's line-item + advance math exactly, so the
   // preview shown before confirming matches what the real invoice will actually contain.
+  // Reads editFields first (same live-first pattern as agencyDocOutstanding/caseDue above)
+  // so the preview updates as Cost / Client Given / Paid-By / Charges / Discount / Advance /
+  // Payment Received are edited, before the form is saved.
+  const docField = (fieldKey: keyof VisaCase) =>
+    num((editFields[fieldKey] as number | string | undefined) ?? (vc[fieldKey] as number | string | null));
   const invoicePreviewItems = [...AGENCY_PAID_DOCS]
-    .map(key => ({ label: DOC_LABELS[key], amount: num(vc[DOC_COST_KEY[key]] as number | string | null) }))
+    .map(key => ({ label: DOC_LABELS[key], amount: docField(DOC_COST_KEY[key]) }))
     .filter(i => i.amount > 0);
   const invoicePreviewDocTotal = invoicePreviewItems.reduce((s, i) => s + i.amount, 0);
-  const invoicePreviewClientContribution = [...AGENCY_PAID_DOCS].reduce((sum, key) => {
-    const cost = num(vc[DOC_COST_KEY[key]] as number | string | null);
-    if (cost <= 0) return sum;
-    return sum + num(vc[DOC_CLIENT_PAID_KEY[key]!] as number | string | null);
-  }, 0);
-  const invoicePreviewCharges = num(vc.charges);
-  const invoicePreviewDiscount = num(vc.discount);
-  const invoicePreviewAdvance = num(vc.advance) + invoicePreviewClientContribution + num(vc.paymentReceived);
+  const invoicePreviewClientContribution = [...AGENCY_PAID_DOCS].reduce(
+    (sum, key) => sum + docField(DOC_CLIENT_PAID_KEY[key]!), 0
+  );
+  const invoicePreviewCharges = caseDueCharges;
+  const invoicePreviewDiscount = caseDueDiscount;
+  const invoicePreviewAdvance = caseDueAdvance + invoicePreviewClientContribution + caseDueReceived;
   const invoicePreviewTotal = invoicePreviewCharges + invoicePreviewDocTotal - invoicePreviewDiscount;
   const invoicePreviewOutstanding = invoicePreviewTotal - invoicePreviewAdvance;
 

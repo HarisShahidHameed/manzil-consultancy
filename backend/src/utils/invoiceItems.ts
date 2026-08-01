@@ -42,9 +42,13 @@ export const computeAgencyDocLineItems = (
     if (costVal && costVal.gt(0)) {
       items.push({ label, amount: costVal.toNumber() });
       costTotal = costTotal.plus(costVal);
-      const paidVal = caseRecord[clientPaid];
-      if (paidVal) clientContribution = clientContribution.plus(paidVal);
     }
+    // Whatever the client has already given toward a doc counts as an advance
+    // regardless of whether the cost side is filled in yet (or is 0 because the
+    // agency never fronted it) — it's money in hand either way, so it always
+    // reduces what's still owed.
+    const paidVal = caseRecord[clientPaid];
+    if (paidVal && paidVal.gt(0)) clientContribution = clientContribution.plus(paidVal);
   }
 
   return { items, clientContribution, costTotal };
