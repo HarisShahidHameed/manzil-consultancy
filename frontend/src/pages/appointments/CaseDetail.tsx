@@ -6,6 +6,7 @@ import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, R
 import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
+import { appendHrComment } from '../../api/clients';
 import { downloadAdvanceReceipt, downloadInvoicePdf, downloadReceiptPreview } from '../../api/pdf';
 import type { AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
@@ -140,6 +141,7 @@ const CaseDetail: React.FC = () => {
     docAppointment: 'client', docTicket: 'client', docInsurance: 'client', docHotel: 'client',
     docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency', docSelfEmployment: 'client',
   });
+  const [hrCommentNote, setHrCommentNote] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['case', id],
@@ -170,7 +172,6 @@ const CaseDetail: React.FC = () => {
         travelDate: vc.travelDate?.split('T')[0] ?? '',
         hotelDate: vc.hotelDate?.split('T')[0] ?? '',
         salamComments: vc.salamComments ?? '',
-        hrComments: vc.hrComments ?? '',
         docAppointment: vc.docAppointment,
         docTicket: vc.docTicket,
         docInsurance: vc.docInsurance,
@@ -220,6 +221,19 @@ const CaseDetail: React.FC = () => {
   const onErr = (e: AxiosError<{ message: string }>, fallback: string) =>
     setError(e.response?.data?.message ?? fallback);
 
+  // HR Comments is one running log on the client, not a per-stage field — this appends
+  // a new phase-tagged note rather than overwriting anything already there.
+  const addHrCommentMut = useMutation({
+    mutationFn: () => appendHrComment(vc!.clientId, 'File Processing', hrCommentNote.trim()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['case', id] });
+      qc.invalidateQueries({ queryKey: ['client', vc?.clientId] });
+      setHrCommentNote('');
+      showSuccess('Comment added');
+    },
+    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to add comment'),
+  });
+
   const saveAppointmentMut = useMutation({
     mutationFn: () => updateCase(id!, {
       destination:      (editFields.destination as string) || undefined,
@@ -245,7 +259,6 @@ const CaseDetail: React.FC = () => {
       travelDate:    (editFields.travelDate as string) || undefined,
       hotelDate:     (editFields.hotelDate as string) || undefined,
       salamComments: (editFields.salamComments as string) || undefined,
-      hrComments:    (editFields.hrComments as string) || undefined,
       docAppointment: editFields.docAppointment,
       docTicket:      editFields.docTicket,
       docInsurance:   editFields.docInsurance,
@@ -931,7 +944,31 @@ const CaseDetail: React.FC = () => {
             </div>
             <div>
               <label className="text-xs text-gray-500">HR Comments</label>
-              <textarea className={`${inputCls} mt-1`} rows={2} value={editFields.hrComments as string ?? ''} onChange={setEF('hrComments')} />
+              {/* One running log on the client spanning every phase — shown read-only here,
+                  never overwritten. Add a note below to append a new File Processing entry. */}
+              {vc.client?.hrComments && (
+                <div className="mt-1 max-h-24 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 whitespace-pre-line">
+                  {vc.client.hrComments}
+                </div>
+              )}
+              <div className="mt-1 flex gap-2">
+                <textarea
+                  className={inputCls}
+                  rows={2}
+                  placeholder="Add a note…"
+                  value={hrCommentNote}
+                  onChange={e => setHrCommentNote(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!hrCommentNote.trim()}
+                  loading={addHrCommentMut.isPending}
+                  onClick={() => addHrCommentMut.mutate()}
+                >
+                  Add
+                </Button>
+              </div>
             </div>
           </div>
 

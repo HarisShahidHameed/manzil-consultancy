@@ -235,6 +235,9 @@ model Client {
   visaAndTravelHistory String?
   source               String?
   referredBy           String?
+  // A single running log spanning the client's whole lifecycle, not a per-stage field —
+  // each entry is appended (never overwritten) with the phase it was added from, e.g.
+  // "[Client Intake — 01/08/2026] ...". See utils/hrComments.ts appendHrCommentEntry.
   hrComments           String?
   folderUrl            String?
   status               ClientProcessingStatus @default(PENDING)
@@ -286,7 +289,6 @@ model VisaCase {
   travelDate              DateTime?
   hotelDate               DateTime?
   salamComments           String?
-  hrComments              String?
   docAppointment          DocumentStatus @default(PENDING)
   docTicket               DocumentStatus @default(PENDING)
   docInsurance            DocumentStatus @default(PENDING)

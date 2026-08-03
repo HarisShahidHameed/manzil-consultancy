@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { ArrowLeft, Save } from 'lucide-react';
-import { createClient, getClient, updateClient } from '../../api/clients';
+import { createClient, getClient, updateClient, appendHrComment } from '../../api/clients';
 import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
 import { Button } from '../../components/ui/Button';
@@ -98,7 +98,10 @@ const ClientForm: React.FC = () => {
       eVisa: client.eVisa ?? false,
       visaAndTravelHistory: client.visaAndTravelHistory ?? '',
       source: client.source ?? '', referredBy: client.referredBy ?? '',
-      hrComments: client.hrComments ?? '', folderUrl: client.folderUrl ?? '',
+      // hrComments deliberately NOT pre-filled from client.hrComments — that field is the
+      // full accumulated history (shown read-only below), while this input is only ever
+      // the new note being added right now, appended server-side rather than overwriting.
+      hrComments: '', folderUrl: client.folderUrl ?? '',
       destinations: targetCase?.destinationOptions?.length
         ? targetCase.destinationOptions
         : (targetCase?.destination ? [targetCase.destination] : []),
@@ -132,7 +135,6 @@ const ClientForm: React.FC = () => {
         birthCity:      form.birthCity      || undefined,
         source:         form.source         || undefined,
         referredBy:     form.referredBy     || undefined,
-        hrComments:     form.hrComments     || undefined,
         visaAndTravelHistory: form.visaAndTravelHistory || undefined,
         previousSchengenVisa: form.previousSchengenVisa || undefined,
         addressStreet:        form.addressStreet      || undefined,
@@ -161,8 +163,11 @@ const ClientForm: React.FC = () => {
         : { city: form.cities[0], cityOptions: [] as string[] };
 
       if (!isEdit) {
+        // First entry in the client's HR Comments log — the backend tags it "Client
+        // Intake" automatically. Later phases only ever append to this, never overwrite it.
         return createClient({
           ...clientPayload,
+          hrComments: form.hrComments || undefined,
           ...destinationFields,
           ...cityFields,
           visaType:     form.visaType     || undefined,
@@ -176,6 +181,11 @@ const ClientForm: React.FC = () => {
       }
 
       const clientResp = await updateClient(id!, clientPayload);
+      // The HR Comments box on this form is only ever a new note to add, appended as its
+      // own "Client Update" entry — the accumulated history itself is never resubmitted.
+      if (form.hrComments.trim()) {
+        await appendHrComment(id!, 'Client Update', form.hrComments.trim());
+      }
       if (targetCase) {
         await updateCase(targetCase.id, {
           ...destinationFields,
@@ -472,7 +482,14 @@ const ClientForm: React.FC = () => {
           <input type="url" className={inputCls} value={form.folderUrl} onChange={set('folderUrl')} placeholder="https://drive.google.com/..." />
         </Field>
         <Field label="HR Comments">
-          <textarea className={inputCls} rows={3} value={form.hrComments} onChange={set('hrComments')} />
+          {/* One running log spanning the client's whole lifecycle — shown read-only here,
+              never overwritten. The box below only ever adds a new, phase-tagged note. */}
+          {client?.hrComments && (
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 mb-2 text-xs text-gray-600 whitespace-pre-line">
+              {client.hrComments}
+            </div>
+          )}
+          <textarea className={inputCls} rows={3} placeholder="Add a note…" value={form.hrComments} onChange={set('hrComments')} />
         </Field>
       </Section>
       </fieldset>

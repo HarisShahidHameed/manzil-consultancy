@@ -10,6 +10,7 @@ import {
   importClientSchema,
   updateClientSchema,
   createCaseSchema,
+  appendHrCommentSchema,
 } from '../validators/client.validators';
 import { streamClientPdf } from '../utils/pdf';
 
@@ -72,6 +73,29 @@ export const updateClient = async (req: Request, res: Response): Promise<void> =
     if (error?.code === 'P2025') { sendError(res, 'Client not found', 404); return; }
     if (error?.message === 'CLIENT_LOCKED') { sendError(res, 'This client is locked because all cases are completed', 409); return; }
     sendError(res, 'Failed to update client', 500);
+  }
+};
+
+export const appendHrComment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { phase, text } = appendHrCommentSchema.parse(req.body);
+    const client = await clientService.appendClientHrComment(req.params.id, phase, text);
+    await createAuditLog({
+      userId: req.user?.sub,
+      action: 'CLIENT_HR_COMMENT_ADDED',
+      resource: 'clients',
+      resourceId: req.params.id,
+      details: { phase },
+      req,
+    });
+    sendSuccess(res, 'Comment added', client);
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
+      return;
+    }
+    if (error?.code === 'P2025') { sendError(res, 'Client not found', 404); return; }
+    sendError(res, 'Failed to add comment', 500);
   }
 };
 

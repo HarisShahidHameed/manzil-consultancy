@@ -209,7 +209,6 @@ export interface VisaCase {
   travelDate?: string;
   hotelDate?: string;
   salamComments?: string;
-  hrComments?: string;
   docAppointment: DocumentStatus;
   docTicket: DocumentStatus;
   docInsurance: DocumentStatus;
@@ -240,6 +239,7 @@ export interface VisaCase {
     maritalStatus?: MaritalStatus;
     previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string; folderUrl?: string;
     serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
+    hrComments?: string;
   };
   bookedBy?: { id: string; firstName: string; lastName: string };
   appointmentAssigned?: { id: string; firstName: string; lastName: string };

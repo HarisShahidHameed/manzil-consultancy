@@ -212,6 +212,8 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       {DOC_LABELS[key]}
                     </th>
                   ))}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Salam Comments</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
@@ -277,6 +279,16 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         </td>
                       );
                     })}
+                    {isFileProcessing && (
+                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.salamComments ?? ''}>
+                        {c.salamComments || '—'}
+                      </td>
+                    )}
+                    {isFileProcessing && (
+                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.client?.hrComments ?? ''}>
+                        {c.client?.hrComments || '—'}
+                      </td>
+                    )}
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}

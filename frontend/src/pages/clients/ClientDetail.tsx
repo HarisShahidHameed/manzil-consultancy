@@ -171,11 +171,14 @@ const ClientDetail: React.FC = () => {
         </div>
       </div>
 
-      {/* HR Comments */}
+      {/* HR Comments — one running log spanning the client's whole lifecycle, each line
+          tagged with the phase it was added from (Client Intake, Appointment, File
+          Processing, ...). New notes are added from the client edit form or the case's
+          File Processing tab, never overwritten here. */}
       {client.hrComments && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">HR Comments</h3>
-          <p className="text-sm text-gray-700">{client.hrComments}</p>
+          <p className="text-sm text-gray-700 whitespace-pre-line">{client.hrComments}</p>
         </div>
       )}
 

@@ -16,6 +16,11 @@ export const updateClient = (id: string, data: unknown) =>
 export const deleteClient = (id: string) =>
   api.delete<ApiResponse<void>>(`/clients/${id}`).then(r => r.data);
 
+// Appends a phase-tagged note to the client's running HR Comments log — never
+// overwrites earlier entries. See backend appendClientHrComment.
+export const appendHrComment = (id: string, phase: string, text: string) =>
+  api.post<ApiResponse<Client>>(`/clients/${id}/hr-comments`, { phase, text }).then(r => r.data);
+
 export interface ImportResult {
   imported: number;
   failed: number;

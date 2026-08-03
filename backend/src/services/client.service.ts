@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 import { generateClientRef, resolveGroupNumber, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
+import { appendHrComment, formatHrCommentEntry } from '../utils/hrComments';
 
 export { generateClientRef };
 
@@ -44,7 +45,7 @@ const CLIENT_DETAIL_SELECT = {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
       stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
-      travelDate: true, hotelDate: true, salamComments: true, hrComments: true,
+      travelDate: true, hotelDate: true, salamComments: true,
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
       docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,
       advance: true, charges: true, discount: true, paymentReceived: true,
@@ -142,6 +143,10 @@ export const createClient = async (data: {
     data: {
       ...rest,
       clientRef,
+      // The first entry in the client's HR Comments log, tagged with the phase it
+      // was written from — every later note (Client Update, Appointment, File
+      // Processing, ...) appends to this rather than overwriting it.
+      hrComments: rest.hrComments ? formatHrCommentEntry('Client Intake', rest.hrComments) : undefined,
       receivedDate:  new Date(rest.receivedDate),
       dob:           rest.dob           ? new Date(rest.dob)           : undefined,
       passportIssue: rest.passportIssue ? new Date(rest.passportIssue) : undefined,
@@ -346,6 +351,21 @@ export const updateClient = async (
   }
 
   return prisma.client.update({ where: { id }, data: d, select: CLIENT_SELECT });
+};
+
+// Appends a new phase-tagged HR Comment note to the client's running log — used by
+// every later-phase surface (Client Update, Appointment, File Processing, ...) instead
+// of letting each stage overwrite its own separate field.
+export const appendClientHrComment = async (id: string, phase: string, text: string) => {
+  const existing = await prisma.client.findUnique({ where: { id }, select: { hrComments: true } });
+  if (!existing) {
+    const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
+  }
+  return prisma.client.update({
+    where: { id },
+    data: { hrComments: appendHrComment(existing.hrComments, phase, text) },
+    select: CLIENT_SELECT,
+  });
 };
 
 export const deleteClient = async (id: string) => {

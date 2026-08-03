@@ -176,6 +176,11 @@ export const updateClientSchema = z.object({
   serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).optional(),
 });
 
+export const appendHrCommentSchema = z.object({
+  phase: z.string().min(1).max(50).trim(),
+  text:  z.string().min(1).max(2000).trim(),
+});
+
 export const clientQuerySchema = z.object({
   page:        z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
   limit:       z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
@@ -249,7 +254,6 @@ export const updateCaseSchema = z.object({
   travelDate:    optionalDate(),
   hotelDate:     optionalDate(),
   salamComments: z.string().optional(),
-  hrComments:    z.string().optional(),
   docAppointment: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docTicket:      z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docInsurance:   z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
