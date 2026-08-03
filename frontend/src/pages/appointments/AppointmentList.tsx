@@ -212,7 +212,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       {DOC_LABELS[key]}
                     </th>
                   ))}
-                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Salam Comments</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}

@@ -939,7 +939,7 @@ const CaseDetail: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-gray-500">Salam Comments</label>
+              <label className="text-xs text-gray-500">User Comments</label>
               <textarea className={`${inputCls} mt-1`} rows={2} value={editFields.salamComments as string ?? ''} onChange={setEF('salamComments')} />
             </div>
             <div>
