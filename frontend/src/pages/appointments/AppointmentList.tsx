@@ -39,13 +39,20 @@ const APPT_STATUS_COLORS: Record<string, string> = {
 type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
 
 interface CaseListProps {
-  stage: CaseStage;
+  /** Omit for a cross-stage listing (the Paused page pulls from every active stage). */
+  stage?: CaseStage;
   title: string;
   /** Show the Waiting/Assigned/Registered/... appointment-status sub-tabs (Appointment stage only). */
   showStatusTabs?: boolean;
+  /**
+   * Lists only on-hold cases across every stage, instead of the usual single-stage
+   * pipeline view — paused cases are excluded from the normal Appointment/File
+   * Processing/Completed pages and live here instead, same as Completed gets its own page.
+   */
+  pausedOnly?: boolean;
 }
 
-const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs }) => {
+const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly }) => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
@@ -56,7 +63,13 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const [limit, setLimit] = useState(20);
 
   // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
-  const params: Record<string, string> = { page: String(page), limit: String(limit), stage };
+  const params: Record<string, string> = { page: String(page), limit: String(limit) };
+  if (pausedOnly) {
+    params.onHold = 'true';
+  } else {
+    if (stage) params.stage = stage;
+    params.onHold = 'false';
+  }
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
@@ -64,7 +77,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (advancePaid) params.advancePaid = advancePaid;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, tab, search, destination, city, advancePaid, page, limit],
+    queryKey: ['cases', stage, pausedOnly, tab, search, destination, city, advancePaid, page, limit],
     queryFn:  () => getCases(params),
   });
 
@@ -184,7 +197,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
+                  {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                  {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Assigned To</th>
@@ -230,6 +245,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         {c.priority}
                       </span>
                     </td>
+                    {pausedOnly && (
+                      <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
@@ -249,6 +267,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         )}
                       </div>
                     </td>
+                    {pausedOnly && (
+                      <td className="px-4 py-3 text-gray-700">{c.onHoldReason || '—'}</td>
+                    )}
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>

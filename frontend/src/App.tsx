@@ -90,6 +90,11 @@ const App: React.FC = () => (
                   <Route path="/completed" element={<AppointmentList stage="COMPLETED" title="Completed" />} />
                 </Route>
 
+                {/* Paused — every on-hold case pulled out of its stage's normal queue, across all stages */}
+                <Route element={<RoleGuard permissions={['appointments:read', 'files:read', 'clients:read']} requireAll={false} />}>
+                  <Route path="/paused" element={<AppointmentList pausedOnly title="Paused" />} />
+                </Route>
+
                 {/* Case detail (shared across appointment + file processing) */}
                 <Route element={<RoleGuard permissions={['appointments:read', 'files:read', 'clients:read']} requireAll={false} />}>
                   <Route path="/cases/:id" element={<CaseDetail />} />
