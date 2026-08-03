@@ -49,6 +49,7 @@ const CASE_SELECT = {
       addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
       maritalStatus: true, previousSchengenVisa: true,
       visaAndTravelHistory: true, registeredEmail: true, folderUrl: true,
+      serviceType: true,
     },
   },
   bookedBy:           { select: { id: true, firstName: true, lastName: true } },
@@ -63,11 +64,19 @@ export type CaseStageName = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'CO
 
 export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
+// APPOINTMENT_ONLY clients just want the appointment booked — their cases skip File
+// Processing/Invoiced entirely and go straight from Appointment to Completed.
+const APPOINTMENT_ONLY_STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'COMPLETED'];
+
+export const getStageOrder = (clientServiceType?: string): CaseStageName[] =>
+  clientServiceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
+
 // Permission required to perform a given stage transition (team-scoped separation of duties).
 // There is no Intake stage: a case enters the appointment queue as soon as the client's
 // information is filled in, and the appointment team hands it over to file processing.
 export const TRANSITION_PERMISSIONS: Record<string, string[]> = {
   'APPOINTMENT>FILE_PROCESSING':['appointments:write'],
+  'APPOINTMENT>COMPLETED':      ['appointments:write'],
   'FILE_PROCESSING>INVOICED':   ['files:write', 'invoices:write'],
   'INVOICED>COMPLETED':         ['invoices:write'],
   '*>CANCELLED':                ['clients:write'],
@@ -97,6 +106,7 @@ export const assertTransitionAllowed = (
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
       passportIssue: Date | null; passportExpiry: Date | null;
+      serviceType?: string;
     };
   }
 ): void => {
@@ -110,14 +120,16 @@ export const assertTransitionAllowed = (
   // A paused (on-hold) case cannot move forward until it is resumed
   if (caseRecord.onHold) throw new Error('ON_HOLD');
 
-  const ci = STAGE_ORDER.indexOf(current);
-  const ni = STAGE_ORDER.indexOf(next);
+  const stageOrder = getStageOrder(caseRecord.client.serviceType);
+  const ci = stageOrder.indexOf(current);
+  const ni = stageOrder.indexOf(next);
   if (ci === -1 || ni === -1) throw new Error('STAGE_INVALID');
   if (ni !== ci + 1) throw new Error('STAGE_SKIP');
 
-  // Gate 1: before the appointment team hands a case over to file processing,
-  // the client's required info must be complete and the appointment booked.
-  if (current === 'APPOINTMENT' && next === 'FILE_PROCESSING') {
+  // Gate 1: before a case leaves the Appointment stage — whether it's handed over to
+  // file processing, or (for an APPOINTMENT_ONLY client) completed directly — the
+  // client's required info must be complete and the appointment booked.
+  if (current === 'APPOINTMENT' && (next === 'FILE_PROCESSING' || next === 'COMPLETED')) {
     const missingFields = getMissingRequiredFields(caseRecord.client, { destination: caseRecord.destination, destinationOptions: caseRecord.destinationOptions });
     if (missingFields.length > 0) {
       const e = new Error('CLIENT_INFO_INCOMPLETE') as Error & { missingFields: CaseRequiredField[] };
@@ -155,12 +167,12 @@ const decorateCase = <T extends { stage: string; destination: string | null; des
 
 export const listCases = async (
   page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
-  destination?: string, city?: string, advancePaid?: boolean, onHold?: boolean,
+  destination?: string, city?: string, advancePaid?: boolean, onHold?: boolean, serviceType?: string,
 ) => {
   const skip = (page - 1) * limit;
   // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
-  // destination, city, advance-paid, on-hold and free-text search can all narrow the
-  // result set at once.
+  // destination, city, advance-paid, on-hold, service-type and free-text search can all
+  // narrow the result set at once.
   const where: Prisma.VisaCaseWhereInput = {};
   if (stage) where.stage = stage as any;
   if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
@@ -168,6 +180,7 @@ export const listCases = async (
   if (city) where.city = { contains: city, mode: 'insensitive' };
   if (advancePaid !== undefined) where.advancePaid = advancePaid;
   if (onHold !== undefined) where.onHold = onHold;
+  if (serviceType) where.client = { serviceType: serviceType as any };
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },
@@ -234,7 +247,7 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
         client: {
           select: {
             passportNumber: true, nationality: true, dob: true,
-            passportIssue: true, passportExpiry: true,
+            passportIssue: true, passportExpiry: true, serviceType: true,
           },
         },
       },

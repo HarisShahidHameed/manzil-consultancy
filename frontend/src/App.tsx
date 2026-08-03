@@ -75,9 +75,15 @@ const App: React.FC = () => (
                   <Route path="/groups" element={<Groups />} />
                 </Route>
 
-                {/* Appointments — the queue every new case lands in (Waiting → Assigned → Registered) */}
+                {/* Appointments — the queue every new full-service case lands in (Waiting → Assigned → Registered).
+                    Appointment-only clients don't feed into File Processing, so they live on their own page instead. */}
                 <Route element={<RoleGuard permissions={['appointments:read', 'clients:read']} requireAll={false} />}>
-                  <Route path="/appointments" element={<AppointmentList stage="APPOINTMENT" title="Appointments" showStatusTabs />} />
+                  <Route path="/appointments" element={<AppointmentList stage="APPOINTMENT" serviceType="FULL_SERVICE" title="Appointments" showStatusTabs />} />
+                </Route>
+
+                {/* Appointment Only — clients who just want the appointment booked, no File Processing */}
+                <Route element={<RoleGuard permissions={['appointments:read', 'clients:read']} requireAll={false} />}>
+                  <Route path="/appointment-only" element={<AppointmentList stage="APPOINTMENT" serviceType="APPOINTMENT_ONLY" title="Appointment Only" />} />
                 </Route>
 
                 {/* File Processing shortcut — shows only FILE_PROCESSING stage cases */}

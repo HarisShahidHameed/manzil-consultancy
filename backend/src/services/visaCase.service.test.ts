@@ -87,3 +87,29 @@ describe('assertTransitionAllowed — general workflow rules', () => {
     expect(() => assertTransitionAllowed('INVOICED', 'COMPLETED', paid)).not.toThrow();
   });
 });
+
+describe('assertTransitionAllowed — APPOINTMENT_ONLY clients skip File Processing/Invoiced', () => {
+  const apptOnlyCase = { ...baseCase, client: { ...completeClient, serviceType: 'APPOINTMENT_ONLY' } };
+
+  it('allows APPOINTMENT → COMPLETED directly when info is complete and the appointment is booked', () => {
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', apptOnlyCase)).not.toThrow();
+  });
+
+  it('blocks APPOINTMENT → FILE_PROCESSING — not a stage in an appointment-only case\'s path at all', () => {
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'FILE_PROCESSING', apptOnlyCase)).toThrow('STAGE_INVALID');
+  });
+
+  it('still enforces the required-info gate before completing directly', () => {
+    const incomplete = { ...apptOnlyCase, client: { ...apptOnlyCase.client, passportNumber: null } };
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', incomplete)).toThrow('CLIENT_INFO_INCOMPLETE');
+  });
+
+  it('still enforces the appointment-booked gate before completing directly', () => {
+    const unbooked = { ...apptOnlyCase, appointmentDate: null };
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', unbooked)).toThrow('APPOINTMENT_NOT_BOOKED');
+  });
+
+  it('a FULL_SERVICE client cannot skip straight to COMPLETED from APPOINTMENT', () => {
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', baseCase)).toThrow('STAGE_SKIP');
+  });
+});

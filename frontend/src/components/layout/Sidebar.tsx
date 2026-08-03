@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard, Users, Shield, Key, FileText, LogOut,
-  UserCheck, CalendarDays, FolderOpen, Receipt, Layers, CheckCircle2, KeyRound, PauseCircle,
+  UserCheck, CalendarDays, CalendarCheck, FolderOpen, Receipt, Layers, CheckCircle2, KeyRound, PauseCircle,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../routes/RoleGuard';
@@ -56,6 +56,9 @@ export const Sidebar: React.FC = () => {
         </Can>
         <Can permissions={['appointments:read']}>
           <NavItem to="/appointments" icon={<CalendarDays className="w-5 h-5" />} label="Appointments" />
+        </Can>
+        <Can permissions={['appointments:read']}>
+          <NavItem to="/appointment-only" icon={<CalendarCheck className="w-5 h-5" />} label="Appointment Only" />
         </Can>
         <Can permissions={['files:read']}>
           <NavItem to="/file-processing" icon={<FolderOpen className="w-5 h-5" />} label="File Processing" />

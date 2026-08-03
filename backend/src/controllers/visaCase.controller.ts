@@ -16,11 +16,12 @@ const caseQuerySchema = z.object({
   city:        z.string().optional(),
   advancePaid: z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
   onHold:      z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
+  serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).optional(),
 });
 
 export const listCases = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold } = caseQuerySchema.parse(req.query);
-  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold);
+  const { page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold, serviceType } = caseQuerySchema.parse(req.query);
+  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold, serviceType);
   sendSuccess(res, 'Cases retrieved', result.cases, 200, {
     total: result.total,
     page: result.page,
@@ -40,8 +41,8 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   STAGE_SKIP:         { status: 409, message: 'Stages must be completed in order — you cannot skip a stage.' },
   STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
-  CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move to File Processing.' },
-  APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case to File Processing.' },
+  CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move past the Appointment stage.' },
+  APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case past the Appointment stage.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
   DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },
   DESTINATION_NOT_SHORTLISTED: { status: 422, message: 'The finalized destination must be one of the shortlisted options.' },

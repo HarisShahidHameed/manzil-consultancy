@@ -13,7 +13,7 @@ const CLIENT_SELECT = {
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
-  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true,
+  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true, serviceType: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
   group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
@@ -35,7 +35,7 @@ const CLIENT_DETAIL_SELECT = {
   passportNumber: true, passportIssue: true, passportExpiry: true,
   birthCity: true, nationality: true, maritalStatus: true, previousSchengenVisa: true, registeredEmail: true,
   eVisa: true, visaAndTravelHistory: true,
-  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true,
+  source: true, referredBy: true, hrComments: true, folderUrl: true, status: true, serviceType: true,
   assignedToId: true, createdById: true, groupId: true, createdAt: true, updatedAt: true,
   assignedTo: { select: { id: true, firstName: true, lastName: true, email: true } },
   group: { select: { id: true, groupRef: true, name: true, relation: true, _count: { select: { clients: true } } } },
@@ -110,6 +110,7 @@ export const createClient = async (data: {
   eVisa?: boolean; visaAndTravelHistory?: string;
   source?: string; referredBy?: string; hrComments?: string; folderUrl?: string;
   assignedToId?: string; createdById?: string; groupId?: string;
+  serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
   destination?: string; destinationOptions?: string[];
   city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
@@ -312,6 +313,7 @@ export const updateClient = async (
     source: string; referredBy: string; hrComments: string;
     folderUrl: string; assignedToId: string; groupId: string | null;
     status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+    serviceType: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
   }>
 ) => {
   const existingCases = await prisma.visaCase.findMany({ where: { clientId: id }, select: { stage: true } });

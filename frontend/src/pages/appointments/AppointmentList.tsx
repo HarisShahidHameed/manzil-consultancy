@@ -50,9 +50,15 @@ interface CaseListProps {
    * Processing/Completed pages and live here instead, same as Completed gets its own page.
    */
   pausedOnly?: boolean;
+  /**
+   * Restricts the list to clients of this service type. FULL_SERVICE is used on the
+   * normal Appointments queue so appointment-only clients don't clutter the pipeline
+   * that leads into File Processing; APPOINTMENT_ONLY powers their own dedicated page.
+   */
+  serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
 }
 
-const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly }) => {
+const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly, serviceType }) => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
@@ -70,6 +76,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
     if (stage) params.stage = stage;
     params.onHold = 'false';
   }
+  if (serviceType) params.serviceType = serviceType;
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
@@ -77,7 +84,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (advancePaid) params.advancePaid = advancePaid;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, pausedOnly, tab, search, destination, city, advancePaid, page, limit],
+    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, advancePaid, page, limit],
     queryFn:  () => getCases(params),
   });
 

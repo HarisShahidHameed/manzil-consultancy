@@ -48,6 +48,7 @@ const emptyForm = {
   destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', eVisaType: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
+  serviceType: 'FULL_SERVICE' as 'APPOINTMENT_ONLY' | 'FULL_SERVICE',
 };
 
 const ClientForm: React.FC = () => {
@@ -112,6 +113,7 @@ const ClientForm: React.FC = () => {
       charges:  targetCase?.charges  != null ? String(targetCase.charges)  : '',
       discount: targetCase?.discount != null ? String(targetCase.discount) : '',
       groupId: client.groupId ?? '',
+      serviceType: client.serviceType ?? 'FULL_SERVICE',
     });
   }, [client]);
 
@@ -460,6 +462,12 @@ const ClientForm: React.FC = () => {
             </select>
           </Field>
         </div>
+        <Field label="Service Type" required>
+          <select className={inputCls} value={form.serviceType} onChange={set('serviceType')}>
+            <option value="FULL_SERVICE">Full Service (Appointment + File Processing)</option>
+            <option value="APPOINTMENT_ONLY">Appointment Only</option>
+          </select>
+        </Field>
         <Field label="Folder URL">
           <input type="url" className={inputCls} value={form.folderUrl} onChange={set('folderUrl')} placeholder="https://drive.google.com/..." />
         </Field>

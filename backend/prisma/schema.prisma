@@ -63,6 +63,14 @@ enum InvoiceStatus {
 // Public API (see docs/PUBLIC_API.md) — deliberately separate from VisaCase.stage
 // (the internal appointment/file-processing workflow). Lets an external consumer mark
 // a client as picked up / done so repeated polling doesn't reprocess (or skip) records.
+// Which service the client signed up for. APPOINTMENT_ONLY clients just want the
+// appointment booked — their cases skip File Processing/Invoiced entirely and go
+// straight from Appointment to Completed. FULL_SERVICE is the normal end-to-end pipeline.
+enum ServiceType {
+  APPOINTMENT_ONLY
+  FULL_SERVICE
+}
+
 enum ClientProcessingStatus {
   PENDING
   IN_PROGRESS
@@ -230,6 +238,7 @@ model Client {
   hrComments           String?
   folderUrl            String?
   status               ClientProcessingStatus @default(PENDING)
+  serviceType          ServiceType @default(FULL_SERVICE)
   assignedToId         String?
   createdById          String?
   createdAt            DateTime @default(now())

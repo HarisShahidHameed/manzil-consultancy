@@ -16,6 +16,11 @@ import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumb
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
+// APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
+// getStageOrder in backend/src/services/visaCase.service.ts.
+const APPOINTMENT_ONLY_STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'COMPLETED'];
+const getStageOrder = (serviceType?: string): CaseStage[] =>
+  serviceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
 const STAGE_LABELS: Record<CaseStage, string> = {
   APPOINTMENT: 'Appointment', FILE_PROCESSING: 'File Processing',
   INVOICED: 'Invoiced', COMPLETED: 'Completed', CANCELLED: 'Cancelled',
@@ -296,8 +301,9 @@ const CaseDetail: React.FC = () => {
 
   const advanceStageMut = useMutation({
     mutationFn: () => {
-      const idx = STAGE_ORDER.indexOf(vc!.stage);
-      const next = STAGE_ORDER[idx + 1];
+      const order = getStageOrder(vc?.client?.serviceType);
+      const idx = order.indexOf(vc!.stage);
+      const next = order[idx + 1];
       return updateCase(id!, { stage: next });
     },
     onSuccess: () => {
@@ -371,11 +377,12 @@ const CaseDetail: React.FC = () => {
     </div>
   );
 
-  const stageIdx = STAGE_ORDER.indexOf(vc.stage);
+  const stageOrder = getStageOrder(vc.client?.serviceType);
+  const stageIdx = stageOrder.indexOf(vc.stage);
   const isTerminal = vc.stage === 'COMPLETED' || vc.stage === 'CANCELLED';
   const locked = vc.stage === 'COMPLETED';
-  const canAdvance = stageIdx >= 0 && stageIdx < STAGE_ORDER.length - 1;
-  const nextStage = canAdvance ? STAGE_ORDER[stageIdx + 1] : null;
+  const canAdvance = stageIdx >= 0 && stageIdx < stageOrder.length - 1;
+  const nextStage = canAdvance ? stageOrder[stageIdx + 1] : null;
 
   // Across the agency-paid documents, cost adds to what the client owes; whatever
   // they've already given toward it always subtracts back off, regardless of whether
@@ -429,7 +436,7 @@ const CaseDetail: React.FC = () => {
   } else if (vc.stage === 'APPOINTMENT' && missingRequiredFields.length > 0) {
     gateReason = `Missing required client info: ${missingRequiredFields.map(f => REQUIRED_FIELD_LABELS[f] ?? f).join(', ')}.`;
   } else if (vc.stage === 'APPOINTMENT' && !vc.appointmentDate) {
-    gateReason = 'Set the appointment date before this case can move to File Processing.';
+    gateReason = 'Set the appointment date before this case can move past the Appointment stage.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
     gateReason = `All invoices must be marked Paid before completing (${unpaidInvoices.length} outstanding).`;
   }
@@ -529,7 +536,7 @@ const CaseDetail: React.FC = () => {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <Breadcrumbs
           activeKey={activeSection}
-          steps={STAGE_ORDER.map((s, i): BreadcrumbStep => ({
+          steps={stageOrder.map((s, i): BreadcrumbStep => ({
             key: s,
             label: STAGE_LABELS[s],
             state: i < stageIdx ? 'done' : i === stageIdx ? 'current' : 'upcoming',

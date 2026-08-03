@@ -56,6 +56,7 @@ const createClientObjectSchema = z.object({
   folderUrl:  z.string().url().optional().or(z.literal('')).transform(v => v || undefined),
   assignedToId: z.string().uuid().optional(),
   groupId:    z.string().uuid().optional(),
+  serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).default('FULL_SERVICE'),
   // First visa case
   ...destinationFields,
   ...cityFields,
@@ -172,6 +173,7 @@ export const updateClientSchema = z.object({
   assignedToId: z.string().uuid().optional(),
   groupId:    z.string().uuid().nullable().optional(),
   status:     z.enum(['PENDING', 'IN_PROGRESS', 'COMPLETED']).optional(),
+  serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).optional(),
 });
 
 export const clientQuerySchema = z.object({

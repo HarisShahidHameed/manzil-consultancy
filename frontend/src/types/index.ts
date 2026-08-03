@@ -165,6 +165,7 @@ export interface Client {
   hrComments?: string;
   folderUrl?: string;
   status?: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
   assignedToId?: string;
   assignedTo?: { id: string; firstName: string; lastName: string; email: string };
   visaCases: VisaCase[];
@@ -238,6 +239,7 @@ export interface VisaCase {
     addressStreet?: string; addressCity?: string; addressShire?: string; addressPostalCode?: string; addressCountry?: string;
     maritalStatus?: MaritalStatus;
     previousSchengenVisa?: string; visaAndTravelHistory?: string; registeredEmail?: string; folderUrl?: string;
+    serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
   };
   bookedBy?: { id: string; firstName: string; lastName: string };
   appointmentAssigned?: { id: string; firstName: string; lastName: string };
