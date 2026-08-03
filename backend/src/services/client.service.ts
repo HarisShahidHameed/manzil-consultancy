@@ -1,6 +1,9 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
+import { generateClientRef, resolveGroupNumber, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
+
+export { generateClientRef };
 
 const CLIENT_SELECT = {
   id: true, clientRef: true, receivedDate: true,
@@ -74,19 +77,6 @@ const decorateClient = <
   ),
 });
 
-// Numeric max rather than a lexicographic ORDER BY — imported clientRefs (e.g. CL-9000,
-// carried over as-is, see bulkImportClients) sort before CL-101 as strings, which would
-// make findFirst({ orderBy: clientRef desc }) miss the true high-water mark and hand out
-// a ref that collides with one already imported.
-export const generateClientRef = async (): Promise<string> => {
-  const [{ max }] = await prisma.$queryRaw<{ max: number | null }[]>`
-    SELECT MAX(CAST(SUBSTRING("clientRef" FROM 4) AS INTEGER)) AS max
-    FROM "clients"
-    WHERE "clientRef" ~ '^CL-\\d+$'
-  `;
-  const num = max != null ? max + 1 : 100;
-  return `CL-${num}`;
-};
 
 // Mirrors visaCase.service's resolveDestination — a single-entry shortlist collapses
 // straight to `destination`; only a genuine multi-country shortlist stays as options.
@@ -125,7 +115,19 @@ export const createClient = async (data: {
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
 }) => {
-  const clientRef = data.clientRef?.trim() || await generateClientRef();
+  // An explicit groupId at creation time (picked from the client form's group select)
+  // gets the client its group-formatted ref straight away, same as adding an existing
+  // client to a group later via group.service.addMembers.
+  let clientRef = data.clientRef?.trim();
+  if (!clientRef && data.groupId) {
+    const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
+    if (group) {
+      const groupNumber = await resolveGroupNumber(data.groupId, '');
+      const memberIndex = await nextMemberIndex(data.groupId);
+      clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
+    }
+  }
+  if (!clientRef) clientRef = await generateClientRef();
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   const {
@@ -322,6 +324,24 @@ export const updateClient = async (
   if (data.dob)           d.dob           = new Date(data.dob);
   if (data.passportIssue)  d.passportIssue  = new Date(data.passportIssue);
   if (data.passportExpiry) d.passportExpiry = new Date(data.passportExpiry);
+
+  // groupId changing re-derives the clientRef, same rules as group.service's
+  // addMembers/removeMember — joining (or switching to) a group formats it as
+  // CL-number-GroupName-position; clearing it reverts to a fresh plain CL-###.
+  // Re-saving the same groupId is a no-op here so repeat saves don't inflate positions.
+  if (Object.prototype.hasOwnProperty.call(data, 'groupId')) {
+    const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true } });
+    if (data.groupId && data.groupId !== current?.groupId) {
+      const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
+      if (group) {
+        const groupNumber = await resolveGroupNumber(data.groupId, id);
+        const memberIndex = await nextMemberIndex(data.groupId);
+        d.clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
+      }
+    } else if (data.groupId === null && current?.groupId) {
+      d.clientRef = await generateClientRef();
+    }
+  }
 
   return prisma.client.update({ where: { id }, data: d, select: CLIENT_SELECT });
 };
