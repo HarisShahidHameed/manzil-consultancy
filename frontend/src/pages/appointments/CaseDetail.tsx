@@ -13,7 +13,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 // APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
@@ -29,10 +29,6 @@ const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT: 'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700', INVOICED: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-700',
-};
-const DOC_COLORS: Record<DocumentStatus, string> = {
-  PENDING: 'bg-gray-100 text-gray-600', IN_PROGRESS: 'bg-blue-100 text-blue-700',
-  DONE: 'bg-green-100 text-green-700', NOT_REQUIRED: 'bg-slate-100 text-slate-500',
 };
 
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
@@ -100,12 +96,6 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
-type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm' | 'docSelfEmployment';
-const DOC_LABELS: Record<DocKey, string> = {
-  docAppointment: 'Appointment Docs', docTicket: 'Ticket',
-  docInsurance: 'Insurance', docHotel: 'Hotel', docEVisa: 'E-Visa',
-  docSop: 'SOP', docVisaForm: 'Visa Form', docSelfEmployment: 'Self Employment Letter',
-};
 const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
   docAppointment: 'docAppointmentCost', docTicket: 'docTicketCost', docInsurance: 'docInsuranceCost',
   docHotel: 'docHotelCost', docEVisa: 'docEVisaCost', docSop: 'docSopCost', docVisaForm: 'docVisaFormCost',
@@ -980,7 +970,7 @@ const CaseDetail: React.FC = () => {
                           <option value="NOT_REQUIRED">Not Required</option>
                         </select>
                         {' '}
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DOC_COLORS[editFields[key] as DocumentStatus ?? vc[key]]}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${DOC_STATUS_COLORS[editFields[key] as DocumentStatus ?? vc[key]]}`}>
                           {(editFields[key] as string ?? vc[key]).replace('_', ' ')}
                         </span>
                       </td>

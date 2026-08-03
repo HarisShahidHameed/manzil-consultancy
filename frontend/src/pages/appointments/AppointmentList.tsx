@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
 import { getCases } from '../../api/cases';
-import type { CaseStage, Priority, VisaCase } from '../../types';
+import type { CaseStage, DocumentStatus, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 
 const PRI_COLORS: Record<Priority, string> = {
@@ -207,6 +207,11 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>}
+                  {isFileProcessing && DOC_KEYS.map(key => (
+                    <th key={key} className="text-center px-2 py-3 font-medium text-gray-500" title={DOC_LABELS[key]}>
+                      {DOC_LABELS[key]}
+                    </th>
+                  ))}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
@@ -259,6 +264,19 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         </span>
                       </td>
                     )}
+                    {isFileProcessing && DOC_KEYS.map(key => {
+                      const status = c[key] as DocumentStatus;
+                      return (
+                        <td key={key} className="px-2 py-3 text-center">
+                          <span
+                            title={DOC_LABELS[key]}
+                            className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${DOC_STATUS_COLORS[status]}`}
+                          >
+                            {status === 'NOT_REQUIRED' ? 'N/A' : status.replace('_', ' ')}
+                          </span>
+                        </td>
+                      );
+                    })}
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
