@@ -89,6 +89,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   });
 
   const changeLimit = (l: number) => { setLimit(l); setPage(1); };
+  // File Processing already shows this client/status info on the case detail page itself —
+  // dropped from the list table here per request, to keep it focused on file-processing work.
+  const isFileProcessing = stage === 'FILE_PROCESSING';
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
@@ -196,16 +199,16 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Issuance Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Expiry Date</th>
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Issuance Date</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Expiry Date</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
@@ -238,42 +241,48 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>
-                    <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>
-                    <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                      {fmtDate(c.client?.passportExpiry ?? undefined)}
-                    </td>
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>}
+                    {!isFileProcessing && (
+                      <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                        {fmtDate(c.client?.passportExpiry ?? undefined)}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
-                        {c.priority}
-                      </span>
-                    </td>
+                    {!isFileProcessing && (
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
+                          {c.priority}
+                        </span>
+                      </td>
+                    )}
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
-                            {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                        {(c.missingRequiredFields?.length ?? 0) > 0 && (
-                          <span
-                            title="Missing required client info"
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
-                          >
-                            <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                    {!isFileProcessing && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
+                              {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                          {(c.missingRequiredFields?.length ?? 0) > 0 && (
+                            <span
+                              title="Missing required client info"
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.onHoldReason || '—'}</td>
                     )}
