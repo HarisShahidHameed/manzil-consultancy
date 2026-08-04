@@ -16,16 +16,32 @@ export const generateClientRef = async (): Promise<string> => {
   return `CL-${num}`;
 };
 
-// Group members are id'd like CL-105-Khan-1, CL-105-Khan-2 — same shared number for
-// every member of the group, the (sanitized) group name, and a 1-based position that's
-// assigned once and never renumbered (append-only), mirroring the legacy system.
-export const GROUPED_REF_RE = /^CL-(\d+)-[A-Za-z0-9]+-(\d+)$/;
+// Group members are id'd like CL-105-GRP-001-1, CL-105-GRP-001-2 — same shared number
+// for every member of the group, the group's own immutable groupRef (so renaming the
+// group never touches member refs), and a 1-based position that's assigned once and
+// never renumbered (append-only), mirroring the legacy system.
+// groupRef always looks like "GRP-<digits>" (see group.service's generateGroupRef), so
+// the pattern anchors on that literal prefix — otherwise the hyphen inside "GRP-001"
+// would be ambiguous against the trailing "-<position>".
+export const GROUPED_REF_RE = /^CL-(\d+)-GRP-\d+-(\d+)$/;
+// Refs written by the ref format's first cut, before it switched from a sanitized group
+// name to the immutable groupRef — e.g. CL-105-Khan-1. Still recognized on read so a
+// group touched again after the switch keeps its original number/positions instead of
+// minting a fresh one; buildGroupRef only ever writes the current format, so these
+// upgrade in place the next time backfillGroupMembers runs on their group.
+const LEGACY_NAME_GROUPED_REF_RE = /^CL-(\d+)-[A-Za-z0-9]+-(\d+)$/;
 export const PLAIN_REF_RE = /^CL-(\d+)$/;
 
-export const sanitizeGroupName = (name: string) => name.trim().replace(/[^a-zA-Z0-9]+/g, '') || 'GROUP';
+export const buildGroupRef = (number: number, groupRef: string, memberIndex: number) =>
+  `CL-${number}-${groupRef}-${memberIndex}`;
 
-export const buildGroupRef = (number: number, groupName: string, memberIndex: number) =>
-  `CL-${number}-${sanitizeGroupName(groupName)}-${memberIndex}`;
+const matchGroupedRef = (ref: string): { number: number; position: number } | null => {
+  const current = ref.match(GROUPED_REF_RE);
+  if (current) return { number: parseInt(current[1], 10), position: parseInt(current[2], 10) };
+  const legacy = ref.match(LEGACY_NAME_GROUPED_REF_RE);
+  if (legacy) return { number: parseInt(legacy[1], 10), position: parseInt(legacy[2], 10) };
+  return null;
+};
 
 // The whole group shares one number. Reconciles two situations that both show up on
 // groups formed before this ref format existed: members still carrying a plain CL-###
@@ -34,17 +50,18 @@ export const buildGroupRef = (number: number, groupName: string, memberIndex: nu
 // group format instead of new members picking up a mismatched number of their own — see
 // the CL-110-Anewgroup-4 vs CL-111/112/113 split this was fixing.
 // Returns the settled group number; existing members are updated in place as needed.
-export const backfillGroupMembers = async (groupId: string, groupName: string): Promise<number> => {
+export const backfillGroupMembers = async (groupId: string, groupRef: string): Promise<number> => {
   const members = await prisma.client.findMany({
     where: { groupId }, select: { id: true, clientRef: true }, orderBy: { createdAt: 'asc' },
   });
 
-  // Prefer a number already embedded in a grouped ref; otherwise the lowest plain
-  // number among current members (stable regardless of join order); otherwise mint one.
+  // Prefer a number already embedded in a grouped ref (current or legacy format);
+  // otherwise the lowest plain number among current members (stable regardless of join
+  // order); otherwise mint one.
   let groupNumber: number | null = null;
   for (const m of members) {
-    const grouped = m.clientRef.match(GROUPED_REF_RE);
-    if (grouped) { groupNumber = parseInt(grouped[1], 10); break; }
+    const grouped = matchGroupedRef(m.clientRef);
+    if (grouped) { groupNumber = grouped.number; break; }
   }
   if (groupNumber == null) {
     const plainNumbers = members
@@ -63,8 +80,8 @@ export const backfillGroupMembers = async (groupId: string, groupName: string): 
   // free position in join order.
   const takenPositions = new Set<number>();
   for (const m of members) {
-    const grouped = m.clientRef.match(GROUPED_REF_RE);
-    if (grouped && parseInt(grouped[1], 10) === groupNumber) takenPositions.add(parseInt(grouped[2], 10));
+    const grouped = matchGroupedRef(m.clientRef);
+    if (grouped && grouped.number === groupNumber) takenPositions.add(grouped.position);
   }
   let cursor = 1;
   const nextFreePosition = () => {
@@ -74,14 +91,13 @@ export const backfillGroupMembers = async (groupId: string, groupName: string): 
   };
 
   for (const m of members) {
-    const grouped = m.clientRef.match(GROUPED_REF_RE);
+    const grouped = matchGroupedRef(m.clientRef);
     // Position is append-only: reuse it when this member is already on the settled
     // number, otherwise claim the next free slot. The ref is always rebuilt (even for
-    // members already on the right number/position) so a rename picks up every member.
-    const position = grouped && parseInt(grouped[1], 10) === groupNumber
-      ? parseInt(grouped[2], 10)
-      : nextFreePosition();
-    const newRef = buildGroupRef(groupNumber, groupName, position);
+    // members already on the right number/position, or still on the legacy name-based
+    // format) so a rename picks up every member and legacy refs upgrade in place.
+    const position = grouped && grouped.number === groupNumber ? grouped.position : nextFreePosition();
+    const newRef = buildGroupRef(groupNumber, groupRef, position);
     if (newRef !== m.clientRef) {
       await prisma.client.update({ where: { id: m.id }, data: { clientRef: newRef } });
     }

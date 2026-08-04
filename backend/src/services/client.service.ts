@@ -122,11 +122,11 @@ export const createClient = async (data: {
   // client to a group later via group.service.addMembers.
   let clientRef = data.clientRef?.trim();
   if (!clientRef && data.groupId) {
-    const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
+    const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
     if (group) {
-      const groupNumber = await backfillGroupMembers(data.groupId, group.name);
+      const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
       const memberIndex = await nextMemberIndex(data.groupId);
-      clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
+      clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
     }
   }
   if (!clientRef) clientRef = await generateClientRef();
@@ -339,11 +339,11 @@ export const updateClient = async (
   if (Object.prototype.hasOwnProperty.call(data, 'groupId')) {
     const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true } });
     if (data.groupId && data.groupId !== current?.groupId) {
-      const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
+      const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
       if (group) {
-        const groupNumber = await backfillGroupMembers(data.groupId, group.name);
+        const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
         const memberIndex = await nextMemberIndex(data.groupId);
-        d.clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
+        d.clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
       }
     } else if (data.groupId === null && current?.groupId) {
       d.clientRef = await generateClientRef();

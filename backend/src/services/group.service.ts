@@ -61,14 +61,12 @@ export const createGroup = async (data: { name: string; relation?: string; notes
 };
 
 export const updateGroup = async (id: string, data: { name?: string; relation?: string; notes?: string }) => {
-  const updated = await prisma.clientGroup.update({ where: { id }, data, select: { id: true, name: true } });
+  const updated = await prisma.clientGroup.update({ where: { id }, data, select: { id: true, groupRef: true } });
 
-  // Renaming the group re-stamps every member's clientRef with the new name, keeping
-  // their existing shared number and position — backfillGroupMembers also catches up
-  // any legacy plain-ref members onto the group's number while it's here.
-  if (data.name !== undefined) {
-    await backfillGroupMembers(id, updated.name);
-  }
+  // clientRefs key off the group's immutable groupRef, not its (editable) name, so a
+  // rename never needs to touch members — but editing the group is still a convenient
+  // moment to opportunistically catch up any legacy plain-ref members.
+  await backfillGroupMembers(id, updated.groupRef);
 
   return getGroupById(id);
 };
@@ -85,19 +83,19 @@ export const deleteGroup = async (id: string) => {
 };
 
 export const addMembers = async (groupId: string, clientIds: string[]) => {
-  const group = await prisma.clientGroup.findUnique({ where: { id: groupId }, select: { id: true, name: true } });
+  const group = await prisma.clientGroup.findUnique({ where: { id: groupId }, select: { id: true, groupRef: true } });
   if (!group) { const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e; }
 
   // Backfill first — any legacy plain-ref members get folded onto the group's shared
   // number before the new members are stamped, so everyone ends up on the same number.
-  const groupNumber = await backfillGroupMembers(groupId, group.name);
+  const groupNumber = await backfillGroupMembers(groupId, group.groupRef);
   const startIndex = await nextMemberIndex(groupId);
 
   for (let i = 0; i < clientIds.length; i++) {
     const memberIndex = startIndex + i;
     await prisma.client.update({
       where: { id: clientIds[i] },
-      data: { groupId, clientRef: buildGroupRef(groupNumber, group.name, memberIndex) },
+      data: { groupId, clientRef: buildGroupRef(groupNumber, group.groupRef, memberIndex) },
     });
   }
   return getGroupById(groupId);
