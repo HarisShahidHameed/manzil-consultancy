@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
-import { generateClientRef, resolveGroupNumber, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
+import { generateClientRef, backfillGroupMembers, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
 import { appendHrComment, formatHrCommentEntry } from '../utils/hrComments';
 
 export { generateClientRef };
@@ -124,7 +124,7 @@ export const createClient = async (data: {
   if (!clientRef && data.groupId) {
     const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
     if (group) {
-      const groupNumber = await resolveGroupNumber(data.groupId, '');
+      const groupNumber = await backfillGroupMembers(data.groupId, group.name);
       const memberIndex = await nextMemberIndex(data.groupId);
       clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
     }
@@ -341,7 +341,7 @@ export const updateClient = async (
     if (data.groupId && data.groupId !== current?.groupId) {
       const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { name: true } });
       if (group) {
-        const groupNumber = await resolveGroupNumber(data.groupId, id);
+        const groupNumber = await backfillGroupMembers(data.groupId, group.name);
         const memberIndex = await nextMemberIndex(data.groupId);
         d.clientRef = buildGroupRef(groupNumber, group.name, memberIndex);
       }

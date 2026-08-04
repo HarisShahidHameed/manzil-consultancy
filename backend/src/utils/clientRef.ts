@@ -27,24 +27,67 @@ export const sanitizeGroupName = (name: string) => name.trim().replace(/[^a-zA-Z
 export const buildGroupRef = (number: number, groupName: string, memberIndex: number) =>
   `CL-${number}-${sanitizeGroupName(groupName)}-${memberIndex}`;
 
-// The whole group shares one number. If the group already has members, reuse the
-// number embedded in one of their refs; otherwise the given anchor client (the one
-// triggering this group assignment) lends the group its existing plain CL-### number.
-// If that client doesn't have a clean plain ref (already grouped elsewhere, or an odd
-// imported format), a fresh number is minted instead of guessing.
-export const resolveGroupNumber = async (groupId: string, anchorClientId: string): Promise<number> => {
-  const existingMembers = await prisma.client.findMany({
-    where: { groupId }, select: { clientRef: true },
+// The whole group shares one number. Reconciles two situations that both show up on
+// groups formed before this ref format existed: members still carrying a plain CL-###
+// (never touched since), and members already grouped under a number. Called whenever a
+// group is touched (adding members, renaming) so legacy plain refs get backfilled to the
+// group format instead of new members picking up a mismatched number of their own — see
+// the CL-110-Anewgroup-4 vs CL-111/112/113 split this was fixing.
+// Returns the settled group number; existing members are updated in place as needed.
+export const backfillGroupMembers = async (groupId: string, groupName: string): Promise<number> => {
+  const members = await prisma.client.findMany({
+    where: { groupId }, select: { id: true, clientRef: true }, orderBy: { createdAt: 'asc' },
   });
-  for (const m of existingMembers) {
-    const match = m.clientRef.match(GROUPED_REF_RE);
-    if (match) return parseInt(match[1], 10);
+
+  // Prefer a number already embedded in a grouped ref; otherwise the lowest plain
+  // number among current members (stable regardless of join order); otherwise mint one.
+  let groupNumber: number | null = null;
+  for (const m of members) {
+    const grouped = m.clientRef.match(GROUPED_REF_RE);
+    if (grouped) { groupNumber = parseInt(grouped[1], 10); break; }
   }
-  const anchor = await prisma.client.findUnique({ where: { id: anchorClientId }, select: { clientRef: true } });
-  const plain = anchor?.clientRef.match(PLAIN_REF_RE);
-  if (plain) return parseInt(plain[1], 10);
-  const fresh = await generateClientRef();
-  return parseInt(fresh.replace('CL-', ''), 10);
+  if (groupNumber == null) {
+    const plainNumbers = members
+      .map((m) => m.clientRef.match(PLAIN_REF_RE))
+      .filter((match): match is RegExpMatchArray => !!match)
+      .map((match) => parseInt(match[1], 10));
+    if (plainNumbers.length) groupNumber = Math.min(...plainNumbers);
+  }
+  if (groupNumber == null) {
+    const fresh = await generateClientRef();
+    groupNumber = parseInt(fresh.replace('CL-', ''), 10);
+  }
+
+  // Members already on the settled number keep their existing (append-only) position;
+  // everyone else — plain refs, or a stale number from a prior group — claims the next
+  // free position in join order.
+  const takenPositions = new Set<number>();
+  for (const m of members) {
+    const grouped = m.clientRef.match(GROUPED_REF_RE);
+    if (grouped && parseInt(grouped[1], 10) === groupNumber) takenPositions.add(parseInt(grouped[2], 10));
+  }
+  let cursor = 1;
+  const nextFreePosition = () => {
+    while (takenPositions.has(cursor)) cursor++;
+    takenPositions.add(cursor);
+    return cursor;
+  };
+
+  for (const m of members) {
+    const grouped = m.clientRef.match(GROUPED_REF_RE);
+    // Position is append-only: reuse it when this member is already on the settled
+    // number, otherwise claim the next free slot. The ref is always rebuilt (even for
+    // members already on the right number/position) so a rename picks up every member.
+    const position = grouped && parseInt(grouped[1], 10) === groupNumber
+      ? parseInt(grouped[2], 10)
+      : nextFreePosition();
+    const newRef = buildGroupRef(groupNumber, groupName, position);
+    if (newRef !== m.clientRef) {
+      await prisma.client.update({ where: { id: m.id }, data: { clientRef: newRef } });
+    }
+  }
+
+  return groupNumber;
 };
 
 // Next append-only member position for a group.

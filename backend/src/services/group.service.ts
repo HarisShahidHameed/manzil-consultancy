@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { generateClientRef, resolveGroupNumber, nextMemberIndex, buildGroupRef, GROUPED_REF_RE } from '../utils/clientRef';
+import { generateClientRef, backfillGroupMembers, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
 
 const GROUP_SELECT = {
   id: true, groupRef: true, name: true, relation: true, notes: true,
@@ -64,17 +64,10 @@ export const updateGroup = async (id: string, data: { name?: string; relation?: 
   const updated = await prisma.clientGroup.update({ where: { id }, data, select: { id: true, name: true } });
 
   // Renaming the group re-stamps every member's clientRef with the new name, keeping
-  // their existing shared number and position.
+  // their existing shared number and position — backfillGroupMembers also catches up
+  // any legacy plain-ref members onto the group's number while it's here.
   if (data.name !== undefined) {
-    const members = await prisma.client.findMany({ where: { groupId: id }, select: { id: true, clientRef: true } });
-    for (const m of members) {
-      const match = m.clientRef.match(GROUPED_REF_RE);
-      if (!match) continue;
-      const newRef = buildGroupRef(parseInt(match[1], 10), updated.name, parseInt(match[2], 10));
-      if (newRef !== m.clientRef) {
-        await prisma.client.update({ where: { id: m.id }, data: { clientRef: newRef } });
-      }
-    }
+    await backfillGroupMembers(id, updated.name);
   }
 
   return getGroupById(id);
@@ -95,8 +88,10 @@ export const addMembers = async (groupId: string, clientIds: string[]) => {
   const group = await prisma.clientGroup.findUnique({ where: { id: groupId }, select: { id: true, name: true } });
   if (!group) { const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e; }
 
+  // Backfill first — any legacy plain-ref members get folded onto the group's shared
+  // number before the new members are stamped, so everyone ends up on the same number.
+  const groupNumber = await backfillGroupMembers(groupId, group.name);
   const startIndex = await nextMemberIndex(groupId);
-  const groupNumber = await resolveGroupNumber(groupId, clientIds[0]);
 
   for (let i = 0; i < clientIds.length; i++) {
     const memberIndex = startIndex + i;
