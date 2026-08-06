@@ -288,7 +288,7 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
   }
 
   const [clients, total] = await Promise.all([
-    prisma.client.findMany({ where, skip, take: limit, select: CLIENT_SELECT, orderBy: { createdAt: 'desc' } }),
+    prisma.client.findMany({ where, skip, take: limit, select: CLIENT_SELECT, orderBy: { receivedDate: 'desc' } }),
     prisma.client.count({ where }),
   ]);
 

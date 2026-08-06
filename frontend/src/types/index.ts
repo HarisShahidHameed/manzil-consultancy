@@ -232,7 +232,7 @@ export interface VisaCase {
   docSelfEmploymentClientPaid?: number | string | null;
   paymentReceived?: number | string;
   client?: {
-    id: string; clientRef: string; firstName: string; lastName: string; gender?: Gender;
+    id: string; clientRef: string; receivedDate?: string; firstName: string; lastName: string; gender?: Gender;
     phone: string; email?: string; whatsapp?: string; nationality: string; passportNumber: string;
     dob?: string | null; passportIssue?: string | null; passportExpiry?: string | null; birthCity?: string;
     addressStreet?: string; addressCity?: string; addressShire?: string; addressPostalCode?: string; addressCountry?: string;

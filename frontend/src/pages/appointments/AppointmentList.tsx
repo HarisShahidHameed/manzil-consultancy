@@ -3,12 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
 import { getCases } from '../../api/cases';
-import type { CaseStage, DocumentStatus, Priority, VisaCase } from '../../types';
+import { getAssignableUsers } from '../../api/users';
+import type { AssignableUser, CaseStage, DocumentStatus, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
+
+// Same file-team role set CaseDetail uses for the fileAssignedToId dropdown, so the
+// File Processing tab bar lists exactly the people a case could be assigned to.
+const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 
 const PRI_COLORS: Record<Priority, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
@@ -64,9 +69,14 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const [search, setSearch] = useState('');
   const [destination, setDestination] = useState('');
   const [city, setCity] = useState('');
+  const [fileAssignedToId, setFileAssignedToId] = useState('');
   const [advancePaid, setAdvancePaid] = useState<'' | 'true' | 'false'>('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
+
+  // File Processing already shows this client/status info on the case detail page itself —
+  // dropped from the list table here per request, to keep it focused on file-processing work.
+  const isFileProcessing = stage === 'FILE_PROCESSING';
 
   // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
   const params: Record<string, string> = { page: String(page), limit: String(limit) };
@@ -80,18 +90,25 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
-  if (city) params.city = city;
+  if (isFileProcessing) { if (fileAssignedToId) params.fileAssignedToId = fileAssignedToId; }
+  else if (city) params.city = city;
   if (advancePaid) params.advancePaid = advancePaid;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, advancePaid, page, limit],
+    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, fileAssignedToId, advancePaid, page, limit],
     queryFn:  () => getCases(params),
   });
 
+  // File team tabs, fetched from real users rather than a hardcoded name list so the
+  // bar stays correct as staff change.
+  const { data: usersData } = useQuery({
+    queryKey: ['users', 'assignable'],
+    queryFn:  () => getAssignableUsers(),
+    enabled:  isFileProcessing,
+  });
+  const fileUsers: AssignableUser[] = (usersData?.data ?? []).filter(u => u.roles.some(r => FILE_ROLES.includes(r)));
+
   const changeLimit = (l: number) => { setLimit(l); setPage(1); };
-  // File Processing already shows this client/status info on the case detail page itself —
-  // dropped from the list table here per request, to keep it focused on file-processing work.
-  const isFileProcessing = stage === 'FILE_PROCESSING';
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
@@ -117,25 +134,51 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
-            <button
-              onClick={() => { setCity(''); setPage(1); }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                city === '' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              All
-            </button>
-            {APPOINTMENT_CITY_OPTIONS.map(c => (
-              <button
-                key={c}
-                onClick={() => { setCity(c); setPage(1); }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  city === c ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
+            {isFileProcessing ? (
+              <>
+                <button
+                  onClick={() => { setFileAssignedToId(''); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    fileAssignedToId === '' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All
+                </button>
+                {fileUsers.map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setFileAssignedToId(u.id); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      fileAssignedToId === u.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {u.firstName}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { setCity(''); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    city === '' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All
+                </button>
+                {APPOINTMENT_CITY_OPTIONS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => { setCity(c); setPage(1); }}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      city === c ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Input
@@ -171,9 +214,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               <option value="true">Paid</option>
               <option value="false">Unpaid</option>
             </select>
-            {(search || destination || city || advancePaid || tab !== 'ALL') && (
+            {(search || destination || city || fileAssignedToId || advancePaid || tab !== 'ALL') && (
               <button
-                onClick={() => { setSearch(''); setDestination(''); setCity(''); setAdvancePaid(''); setTab('ALL'); setPage(1); }}
+                onClick={() => { setSearch(''); setDestination(''); setCity(''); setFileAssignedToId(''); setAdvancePaid(''); setTab('ALL'); setPage(1); }}
                 className="text-xs text-indigo-600 hover:underline"
               >
                 Clear filters
@@ -197,15 +240,14 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>}
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>}
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>}
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Issuance Date</th>}
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Expiry Date</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Received Date</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>}
+                  {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>}
                   {isFileProcessing && DOC_KEYS.map(key => (
                     <th key={key} className="text-center px-2 py-3 font-medium text-gray-500" title={DOC_LABELS[key]}>
@@ -214,11 +256,17 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   ))}
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
-                  {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Issuance Date</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Expiry Date</th>}
+                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Assigned To</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
@@ -231,34 +279,45 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
                     <td className="px-4 py-3 text-xs font-bold text-indigo-600">{c.client?.clientRef}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{c.client?.firstName}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-medium text-gray-900">{c.client?.lastName}</p>
-                        {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
-                          <span
-                            title={[
-                              isExpiringSoon(c.client?.passportExpiry) && 'Passport expiring within 6 months',
-                              isExpiringSoon(c.ukVisaExpiry) && 'Visa expiring within 6 months',
-                            ].filter(Boolean).join(' · ')}
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
-                          >
-                            <AlertTriangle className="w-2.5 h-2.5" /> Expiring
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>}
-                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>}
-                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>}
-                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>}
-                    {!isFileProcessing && (
-                      <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                        {fmtDate(c.client?.passportExpiry ?? undefined)}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.receivedDate)}</td>}
+                    {isFileProcessing && <td className="px-4 py-3 font-medium text-gray-900">{c.client?.firstName}</td>}
+                    {isFileProcessing && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-gray-900">{c.client?.lastName}</p>
+                          {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
+                            <span
+                              title={[
+                                isExpiringSoon(c.client?.passportExpiry) && 'Passport expiring within 6 months',
+                                isExpiringSoon(c.ukVisaExpiry) && 'Visa expiring within 6 months',
+                              ].filter(Boolean).join(' · ')}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5" /> Expiring
+                            </span>
+                          )}
+                        </div>
                       </td>
+                    )}
+                    {pausedOnly && (
+                      <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
+                    {isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>}
+                    {isFileProcessing && (
+                      <td className="px-4 py-3">
+                        {c.stage === 'CANCELLED' ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : c.advancePaid ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Pending
+                          </span>
+                        )}
+                      </td>
+                    )}
                     {!isFileProcessing && (
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
@@ -289,9 +348,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         {c.client?.hrComments || '—'}
                       </td>
                     )}
-                    {pausedOnly && (
-                      <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
-                    )}
                     {!isFileProcessing && (
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
@@ -316,18 +372,48 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.onHoldReason || '—'}</td>
                     )}
-                    <td className="px-4 py-3">
-                      {c.stage === 'CANCELLED' ? (
-                        <span className="text-xs text-gray-400">—</span>
-                      ) : c.advancePaid ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
-                          <AlertTriangle className="w-2.5 h-2.5" /> Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>
+                    {!isFileProcessing && (
+                      <td className="px-4 py-3">
+                        {c.stage === 'CANCELLED' ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : c.advancePaid ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                            <AlertTriangle className="w-2.5 h-2.5" /> Pending
+                          </span>
+                        )}
+                      </td>
+                    )}
+                    {!isFileProcessing && <td className="px-4 py-3 font-medium text-gray-900">{c.client?.firstName}</td>}
+                    {!isFileProcessing && (
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-medium text-gray-900">{c.client?.lastName}</p>
+                          {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
+                            <span
+                              title={[
+                                isExpiringSoon(c.client?.passportExpiry) && 'Passport expiring within 6 months',
+                                isExpiringSoon(c.ukVisaExpiry) && 'Visa expiring within 6 months',
+                              ].filter(Boolean).join(' · ')}
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5" /> Expiring
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>}
+                    {!isFileProcessing && (
+                      <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
+                        {fmtDate(c.client?.passportExpiry ?? undefined)}
+                      </td>
+                    )}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.appointmentDate)}</td>}
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {(() => {
                         const assignee = c.stage === 'FILE_PROCESSING' ? c.fileAssigned : c.appointmentAssigned;

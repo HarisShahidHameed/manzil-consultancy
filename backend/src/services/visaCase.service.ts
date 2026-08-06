@@ -43,7 +43,7 @@ const CASE_SELECT = {
   createdAt: true, updatedAt: true,
   client: {
     select: {
-      id: true, clientRef: true, firstName: true, lastName: true, gender: true,
+      id: true, clientRef: true, receivedDate: true, firstName: true, lastName: true, gender: true,
       phone: true, email: true, whatsapp: true, nationality: true, passportNumber: true,
       dob: true, passportIssue: true, passportExpiry: true, birthCity: true,
       addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
@@ -168,6 +168,7 @@ const decorateCase = <T extends { stage: string; destination: string | null; des
 export const listCases = async (
   page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
   destination?: string, city?: string, advancePaid?: boolean, onHold?: boolean, serviceType?: string,
+  fileAssignedToId?: string,
 ) => {
   const skip = (page - 1) * limit;
   // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
@@ -181,6 +182,7 @@ export const listCases = async (
   if (advancePaid !== undefined) where.advancePaid = advancePaid;
   if (onHold !== undefined) where.onHold = onHold;
   if (serviceType) where.client = { serviceType: serviceType as any };
+  if (fileAssignedToId) where.fileAssignedToId = fileAssignedToId;
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },
@@ -190,7 +192,7 @@ export const listCases = async (
     ];
   }
   const [cases, total] = await Promise.all([
-    prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy: { updatedAt: 'desc' } }),
+    prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy: { client: { receivedDate: 'desc' } } }),
     prisma.visaCase.count({ where }),
   ]);
   return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
