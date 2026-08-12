@@ -42,6 +42,9 @@ const PERMISSIONS = [
   { name: 'apikeys:read',   resource: 'apikeys', action: 'read',   description: 'View API keys' },
   { name: 'apikeys:write',  resource: 'apikeys', action: 'write',  description: 'Create/revoke API keys' },
   { name: 'apikeys:delete', resource: 'apikeys', action: 'delete', description: 'Delete API keys' },
+  // Hotel bookings
+  { name: 'hotels:read',  resource: 'hotels', action: 'read',  description: 'Search hotels and view bookings' },
+  { name: 'hotels:write', resource: 'hotels', action: 'write', description: 'Book/cancel hotel reservations' },
 ];
 
 const ALL_PERM_NAMES = PERMISSIONS.map(p => p.name);
@@ -69,6 +72,7 @@ const ROLES = [
       'files:read', 'files:write',
       'invoices:read', 'invoices:write', 'invoices:delete',
       'apikeys:read', 'apikeys:write', 'apikeys:delete',
+      'hotels:read', 'hotels:write',
     ],
   },
   {
@@ -81,6 +85,7 @@ const ROLES = [
       'appointments:read', 'appointments:write', 'appointments:delete',
       'files:read', 'files:write',
       'invoices:read', 'invoices:write', 'invoices:delete',
+      'hotels:read', 'hotels:write',
     ],
   },
   {
@@ -93,7 +98,7 @@ const ROLES = [
     name: 'FILE_TEAM',
     description: 'Manages file processing',
     isSystem: true,
-    permissions: ['dashboard:read', 'clients:read', 'files:read', 'files:write'],
+    permissions: ['dashboard:read', 'clients:read', 'files:read', 'files:write', 'hotels:read', 'hotels:write'],
   },
   {
     name: 'ACCOUNTANT',

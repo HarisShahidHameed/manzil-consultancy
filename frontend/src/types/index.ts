@@ -245,6 +245,52 @@ export interface VisaCase {
   appointmentAssigned?: { id: string; firstName: string; lastName: string };
   fileAssigned?: { id: string; firstName: string; lastName: string };
   invoices?: Invoice[];
+  hotelBookings?: HotelBooking[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HotelOffer {
+  offerId: string;
+  provider: string;
+  hotelName: string;
+  address: string;
+  city: string;
+  country: string;
+  starRating: number;
+  roomType: string;
+  currency: string;
+  pricePerNight: number;
+  totalPrice: number;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  imageUrl: string;
+}
+
+export type HotelBookingStatus = 'HELD' | 'CONFIRMED' | 'CANCELLED';
+
+export interface HotelBooking {
+  id: string;
+  caseId: string;
+  provider: string;
+  providerOfferId: string;
+  providerBookingRef?: string;
+  hotelName: string;
+  hotelAddress?: string;
+  city?: string;
+  country?: string;
+  roomType?: string;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  currency: string;
+  pricePerNight: number | string;
+  totalPrice: number | string;
+  status: HotelBookingStatus;
+  guestName?: string;
+  notes?: string;
+  bookedBy?: { id: string; firstName: string; lastName: string };
   createdAt: string;
   updatedAt: string;
 }

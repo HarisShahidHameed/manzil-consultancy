@@ -77,6 +77,12 @@ enum ClientProcessingStatus {
   COMPLETED
 }
 
+enum HotelBookingStatus {
+  HELD
+  CONFIRMED
+  CANCELLED
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -102,6 +108,7 @@ model User {
   casesFileAssigned VisaCase[] @relation("CaseFileAssignedTo")
   invoicesCreated   Invoice[]  @relation("InvoiceCreatedBy")
   apiKeysCreated    ApiKey[]   @relation("ApiKeyCreatedBy")
+  hotelBookingsMade HotelBooking[] @relation("HotelBookingBookedBy")
 
   @@map("users")
 }
@@ -321,8 +328,44 @@ model VisaCase {
   appointmentAssigned User?    @relation("CaseAssignedTo",     fields: [appointmentAssignedToId], references: [id], onDelete: SetNull)
   fileAssigned        User?    @relation("CaseFileAssignedTo", fields: [fileAssignedToId],         references: [id], onDelete: SetNull)
   invoices            Invoice[]
+  hotelBookings       HotelBooking[]
 
   @@map("visa_cases")
+}
+
+// A confirmed/held hotel reservation for a case's travel dates, booked through a pluggable
+// HotelProvider (see backend/src/services/hotelProviders) — currently backed by a mock
+// provider since no live Booking.com/Expedia/broker API credentials exist yet. `provider` +
+// `providerOfferId`/`providerBookingRef` keep the record traceable back to whichever
+// provider fulfilled it once real credentials are wired in.
+model HotelBooking {
+  id                 String             @id @default(uuid())
+  caseId             String
+  provider           String
+  providerOfferId    String
+  providerBookingRef String?
+  hotelName          String
+  hotelAddress       String?
+  city               String?
+  country            String?
+  roomType           String?
+  checkIn            DateTime
+  checkOut           DateTime
+  guests             Int                @default(1)
+  currency           String             @default("USD")
+  pricePerNight      Decimal            @db.Decimal(10, 2)
+  totalPrice         Decimal            @db.Decimal(10, 2)
+  status             HotelBookingStatus @default(HELD)
+  guestName          String?
+  notes              String?
+  bookedById         String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  case     VisaCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  bookedBy User?    @relation("HotelBookingBookedBy", fields: [bookedById], references: [id], onDelete: SetNull)
+
+  @@map("hotel_bookings")
 }
 
 // Long-lived credential for machine-to-machine access (third-party integrations) —

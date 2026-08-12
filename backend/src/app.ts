@@ -18,6 +18,7 @@ import invoiceRoutes from './routes/invoice.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import apiKeyRoutes from './routes/apiKey.routes';
 import publicRoutes from './routes/public.routes';
+import hotelRoutes from './routes/hotel.routes';
 
 // Safety net for exactly the crash this comment is here because of: an Express 4 route
 // handler is `async`, and a validation error (or anything else) thrown after an `await`
@@ -80,6 +81,7 @@ app.use('/api/cases', visaCaseRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
+app.use('/api', hotelRoutes);
 // Third-party integration surface — API key auth, not user JWT/cookies. See docs/PUBLIC_API.md.
 app.use('/api/public/v1', publicRoutes);
 

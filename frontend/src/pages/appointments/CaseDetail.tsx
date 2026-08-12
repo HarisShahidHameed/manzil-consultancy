@@ -14,6 +14,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
+import { HotelBookingPanel } from './HotelBookingPanel';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
@@ -1144,6 +1145,15 @@ const CaseDetail: React.FC = () => {
           stage doesn't change. Generate it as many times as you like.
         </p>
       </Modal>
+
+      {/* Hotel Bookings — relevant from File Processing onward, once travel dates are known */}
+      {activeSection !== 'APPOINTMENT' && (
+        <HotelBookingPanel
+          caseId={vc.id}
+          defaultCity={vc.city ?? vc.destination ?? undefined}
+          defaultCheckIn={vc.hotelDate?.split('T')[0]}
+        />
+      )}
 
       {/* Invoices — not applicable while a case is still in File Processing */}
       {activeSection !== 'FILE_PROCESSING' && (
