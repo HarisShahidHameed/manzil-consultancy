@@ -25,6 +25,7 @@ const Groups       = lazy(() => import('./pages/groups/Groups'));
 const AppointmentList = lazy(() => import('./pages/appointments/AppointmentList'));
 const CaseDetail   = lazy(() => import('./pages/appointments/CaseDetail'));
 const InvoiceList  = lazy(() => import('./pages/invoices/InvoiceList'));
+const FinancialReports = lazy(() => import('./pages/reports/FinancialReports'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +110,11 @@ const App: React.FC = () => (
                 {/* Invoices */}
                 <Route element={<RoleGuard permissions={['invoices:read']} />}>
                   <Route path="/invoices" element={<InvoiceList />} />
+                </Route>
+
+                {/* Financial Reports */}
+                <Route element={<RoleGuard permissions={['invoices:read', 'reports:read']} requireAll={false} />}>
+                  <Route path="/reports/financial" element={<FinancialReports />} />
                 </Route>
 
                 {/* Admin */}

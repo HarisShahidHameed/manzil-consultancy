@@ -16,6 +16,7 @@ import groupRoutes from './routes/group.routes';
 import visaCaseRoutes from './routes/visaCase.routes';
 import invoiceRoutes from './routes/invoice.routes';
 import dashboardRoutes from './routes/dashboard.routes';
+import financialReportsRoutes from './routes/financialReports.routes';
 import apiKeyRoutes from './routes/apiKey.routes';
 import publicRoutes from './routes/public.routes';
 
@@ -79,6 +80,7 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/cases', visaCaseRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/financial-reports', financialReportsRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 // Third-party integration surface — API key auth, not user JWT/cookies. See docs/PUBLIC_API.md.
 app.use('/api/public/v1', publicRoutes);

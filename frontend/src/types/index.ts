@@ -318,6 +318,51 @@ export interface DashboardStats {
   }>;
 }
 
+export interface FinancialReportsFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  destination?: string;
+  city?: string;
+  serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
+  stage?: CaseStage;
+  priority?: Priority;
+  status?: InvoiceStatus;
+  /** Cases this user was booker, appointment handler, or file handler on — i.e. appointed to or closed. */
+  assignedToId?: string;
+  /** Who actually issued the invoice. */
+  createdById?: string;
+  outstandingOnly?: 'true';
+  minAmount?: string;
+  maxAmount?: string;
+  search?: string;
+}
+
+export interface FinancialReportsData {
+  summary: {
+    invoiceCount: number;
+    charges: number;
+    discount: number;
+    advance: number;
+    totalAmount: number;
+    paidAmount: number;
+    outstanding: number;
+    collectionRate: number;
+  };
+  revenueTrend: Array<{
+    month: string; charges: number; discount: number; advance: number; paid: number; outstanding: number; count: number;
+  }>;
+  invoicesByStatus: Array<{ status: InvoiceStatus; count: number; totalAmount: number; paidAmount: number; outstanding: number }>;
+  revenueByDestination: Array<{ destination: string; count: number; totalAmount: number; paidAmount: number; outstanding: number }>;
+  revenueByServiceType: Array<{ serviceType: string; count: number; totalAmount: number; paidAmount: number; outstanding: number }>;
+  revenueByStaff: Array<{ userId: string; name: string; count: number; totalAmount: number; paidAmount: number }>;
+  topClients: Array<{ clientId: string; clientRef: string; name: string; count: number; totalAmount: number; outstanding: number }>;
+  agingBuckets: Array<{ bucket: string; amount: number }>;
+  overdueInvoices: Array<{
+    id: string; invoiceRef: string; clientRef: string; clientName: string;
+    dueDate: string | null; outstanding: number; daysOverdue: number;
+  }>;
+}
+
 export interface AuditLog {
   id: string;
   userId?: string;
