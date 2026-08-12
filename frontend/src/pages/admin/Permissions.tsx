@@ -12,6 +12,7 @@ import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
+import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 
 // ── extended type that includes role count ────────────────────
@@ -46,7 +47,7 @@ const Permissions: React.FC = () => {
   const [search, setSearch] = useState('');
   const [resourceFilter, setResourceFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = usePersistedPageSize('admin-permissions', 20);
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<PermissionWithCount | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PermissionWithCount | null>(null);

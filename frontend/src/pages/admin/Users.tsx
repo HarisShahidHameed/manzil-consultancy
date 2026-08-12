@@ -12,6 +12,7 @@ import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
+import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 
 // ── schemas ────────────────────────────────────────────────
@@ -39,7 +40,7 @@ const errMsg = (e: unknown, fallback: string) => {
 const Users: React.FC = () => {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = usePersistedPageSize('admin-users', 20);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -176,7 +177,7 @@ const Users: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">User</th>

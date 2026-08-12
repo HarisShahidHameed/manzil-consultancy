@@ -12,6 +12,7 @@ import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
+import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 
 // ── schemas ────────────────────────────────────────────────
@@ -31,7 +32,7 @@ const errMsg = (e: unknown, fallback: string) => {
 const Roles: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = usePersistedPageSize('admin-roles', 20);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);

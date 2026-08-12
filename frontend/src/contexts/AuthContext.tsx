@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef } from 'react';
 import api, { setAccessToken } from '../api/axios';
 import type { AuthState, AuthUser, LoginResponse } from '../types';
+import { clearPersistedPageSizes } from '../hooks/usePersistedPageSize';
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
@@ -136,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try { await api.post('/auth/logout'); } catch { /* ignore */ }
     setAccessToken(null);
     dispatch({ type: 'CLEAR_AUTH' });
+    clearPersistedPageSizes();
   }, []);
 
   const hasPermission = useCallback((...perms: string[]) =>

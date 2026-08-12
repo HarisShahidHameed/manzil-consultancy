@@ -21,7 +21,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   onPageChange,
   limit,
   onLimitChange,
-  limitOptions = [10, 20, 50, 100],
+  limitOptions = [10, 20, 50, 100, 150],
 }) => {
   if (!meta || !meta.total) return null;
   const page = meta.page ?? 1;

@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Pagination } from '../../components/ui/Pagination';
+import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 import ImportClientsModal from './ImportClientsModal';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
@@ -54,7 +55,7 @@ const ClientList: React.FC = () => {
   const [search, setSearch] = useState('');
   const [stage, setStage] = useState<CaseStage | ''>('');
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [limit, setLimit] = usePersistedPageSize('clients', 20);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -140,7 +141,7 @@ const ClientList: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
@@ -178,14 +179,6 @@ const ClientList: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      {c.group && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
-                            {c.group.groupRef} — {c.group.name}
-                            {c.group._count ? ` (${c.group._count.clients} members)` : ''}
-                          </span>
-                        </div>
-                      )}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-900">{c.firstName}</td>
                     <td className="px-4 py-3">

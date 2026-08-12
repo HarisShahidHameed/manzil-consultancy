@@ -4,10 +4,11 @@ import { FileText, CheckCircle, XCircle } from 'lucide-react';
 import api from '../../api/axios';
 import type { AuditLog, ApiResponse } from '../../types';
 import { Pagination } from '../../components/ui/Pagination';
+import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 
 const AuditLogs: React.FC = () => {
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = usePersistedPageSize('admin-audit-logs', 50);
 
   const { data, isLoading } = useQuery({
     queryKey: ['audit-logs', page, limit],
@@ -40,7 +41,7 @@ const AuditLogs: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Time</th>
@@ -94,7 +95,7 @@ const AuditLogs: React.FC = () => {
           </div>
         )}
 
-        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} limitOptions={[25, 50, 100]} />
+        <Pagination meta={meta} onPageChange={setPage} limit={limit} onLimitChange={changeLimit} limitOptions={[25, 50, 100, 150]} />
       </div>
     </div>
   );
