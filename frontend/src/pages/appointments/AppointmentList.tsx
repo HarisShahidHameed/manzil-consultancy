@@ -78,6 +78,10 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   // File Processing already shows this client/status info on the case detail page itself —
   // dropped from the list table here per request, to keep it focused on file-processing work.
   const isFileProcessing = stage === 'FILE_PROCESSING';
+  // Completed cases finished the same file-processing pipeline, so they're filtered by
+  // who processed the file too, rather than by appointment city like Appointments/Paused.
+  const isCompleted = stage === 'COMPLETED';
+  const showUserTabs = isFileProcessing || isCompleted;
 
   // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
   const params: Record<string, string> = { page: String(page), limit: String(limit) };
@@ -91,7 +95,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (showStatusTabs && tab !== 'ALL') params.appointmentStatus = tab;
   if (search) params.search = search;
   if (destination) params.destination = destination;
-  if (isFileProcessing) { if (fileAssignedToId) params.fileAssignedToId = fileAssignedToId; }
+  if (showUserTabs) { if (fileAssignedToId) params.fileAssignedToId = fileAssignedToId; }
   else if (city) params.city = city;
   if (advancePaid) params.advancePaid = advancePaid;
 
@@ -105,7 +109,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const { data: usersData } = useQuery({
     queryKey: ['users', 'assignable'],
     queryFn:  () => getAssignableUsers(),
-    enabled:  isFileProcessing,
+    enabled:  showUserTabs,
   });
   const fileUsers: AssignableUser[] = (usersData?.data ?? []).filter(u => u.roles.some(r => FILE_ROLES.includes(r)));
 
@@ -135,7 +139,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1 flex-wrap">
-            {isFileProcessing ? (
+            {showUserTabs ? (
               <>
                 <button
                   onClick={() => { setFileAssignedToId(''); setPage(1); }}
