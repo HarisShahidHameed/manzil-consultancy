@@ -17,7 +17,7 @@ import { isExpiringSoon } from '../../utils/dates';
 const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 
 const PRI_COLORS: Record<Priority, string> = {
-  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
+  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
 };
 
@@ -32,7 +32,7 @@ const cityLabel = (c: { city?: string; cityOptions?: string[] }) =>
   c.city ?? (c.cityOptions?.length ? `${formatShortlist(c.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : undefined);
 
 const APPT_STATUS_COLORS: Record<string, string> = {
-  WAITING:    'bg-amber-100 text-amber-700',
+  WAITING:    'text-gray-700',
   ASSIGNED:   'bg-blue-100 text-blue-700',
   REGISTERED: 'bg-green-100 text-green-700',
   COMPLETED:  'bg-green-100 text-green-700',

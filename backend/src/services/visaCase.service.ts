@@ -192,7 +192,12 @@ export const listCases = async (
     ];
   }
   const [cases, total] = await Promise.all([
-    prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy: { client: { receivedDate: 'desc' } } }),
+    prisma.visaCase.findMany({
+      where, skip, take: limit, select: CASE_SELECT,
+      // Cases with a booked appointment are sorted soonest-first; those without one
+      // (no appointment date yet) fall to the end, ordered by received date as before.
+      orderBy: [{ appointmentDate: { sort: 'asc', nulls: 'last' } }, { client: { receivedDate: 'desc' } }],
+    }),
     prisma.visaCase.count({ where }),
   ]);
   return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
