@@ -250,6 +250,7 @@ export const updateCaseSchema = z.object({
   fraNo:           z.string().max(100).optional(),
   tlsAccount:      z.string().max(100).optional(),
   appointmentNotes: z.string().optional(),
+  whatsappGroupCreated: z.boolean().optional(),
   // Stage 3
   travelDate:    optionalDate(),
   hotelDate:     optionalDate(),

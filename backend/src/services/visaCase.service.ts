@@ -31,7 +31,7 @@ const CASE_SELECT = {
   advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
   appointmentStatus: true,
   appointmentDate: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
-  fraNo: true, tlsAccount: true, appointmentNotes: true,
+  fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
   travelDate: true, hotelDate: true, salamComments: true,
   docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
   docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,

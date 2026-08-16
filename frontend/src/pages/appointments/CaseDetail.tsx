@@ -805,6 +805,23 @@ const CaseDetail: React.FC = () => {
         <p className="text-xs text-gray-400">
           Automatically marked paid once a non-zero advance amount is saved. Use the toggle only to correct it manually.
         </p>
+
+        {/* WhatsApp group status — flagged on the client ref in listings until this is checked on */}
+        <div className="flex items-center gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
+          <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+            <button
+              type="button"
+              disabled={patchMut.isPending}
+              onClick={() => patchMut.mutate({ patch: { whatsappGroupCreated: !vc.whatsappGroupCreated }, msg: vc.whatsappGroupCreated ? 'WhatsApp group marked not created' : 'WhatsApp group marked created' })}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.whatsappGroupCreated ? 'bg-green-500' : 'bg-gray-300'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.whatsappGroupCreated ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </Can>
+          <p className="text-sm font-medium text-gray-800">
+            WhatsApp Group: <span className={vc.whatsappGroupCreated ? 'text-green-600' : 'text-red-600'}>{vc.whatsappGroupCreated ? 'Created' : 'Not Created'}</span>
+          </p>
+        </div>
         </fieldset>
       </div>
       )}

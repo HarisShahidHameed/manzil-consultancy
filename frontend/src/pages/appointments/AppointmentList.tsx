@@ -279,7 +279,12 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
-                    <td className="px-4 py-3 text-xs font-bold text-indigo-600">{c.client?.clientRef}</td>
+                    <td
+                      className={`px-4 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
+                      title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
+                    >
+                      {c.client?.clientRef}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900">{c.client?.firstName}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">

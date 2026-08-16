@@ -286,6 +286,9 @@ model VisaCase {
   fraNo                   String?
   tlsAccount              String?
   appointmentNotes        String?
+  // Tracks whether the client has been added to the appointment's WhatsApp group —
+  // surfaced as a red flag on the client ref in listings when still false.
+  whatsappGroupCreated    Boolean        @default(false)
   travelDate              DateTime?
   hotelDate               DateTime?
   salamComments           String?

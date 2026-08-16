@@ -206,6 +206,7 @@ export interface VisaCase {
   fraNo?: string;
   tlsAccount?: string;
   appointmentNotes?: string;
+  whatsappGroupCreated?: boolean;
   travelDate?: string;
   hotelDate?: string;
   salamComments?: string;
