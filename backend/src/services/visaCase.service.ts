@@ -191,8 +191,13 @@ export const listCases = async (
       { client: { clientRef: { contains: search, mode: 'insensitive' } } },
     ];
   }
+  // File Processing works appointments in the order they're due, soonest first —
+  // every other listing (Appointments, Paused, Completed, ...) stays newest-received-first.
+  const orderBy: Prisma.VisaCaseFindManyArgs['orderBy'] = stage === 'FILE_PROCESSING'
+    ? { appointmentDate: { sort: 'asc', nulls: 'last' } }
+    : { client: { receivedDate: 'desc' } };
   const [cases, total] = await Promise.all([
-    prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy: { client: { receivedDate: 'desc' } } }),
+    prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy }),
     prisma.visaCase.count({ where }),
   ]);
   return { cases: cases.map(decorateCase), total, page, limit, totalPages: Math.ceil(total / limit) };
