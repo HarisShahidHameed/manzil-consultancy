@@ -38,6 +38,21 @@ const StageBadge: React.FC<{ stage: CaseStage }> = ({ stage }) => (
   </span>
 );
 
+// Same plain-text treatment as the Appointments listing — no colored pill for these two.
+const PRI_COLORS: Record<string, string> = {
+  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
+  HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
+};
+const APPT_STATUS_COLORS: Record<string, string> = {
+  WAITING:    'text-gray-700',
+  ASSIGNED:   'bg-blue-100 text-blue-700',
+  REGISTERED: 'bg-green-100 text-green-700',
+  COMPLETED:  'bg-green-100 text-green-700',
+  HOLD:       'bg-orange-100 text-orange-700',
+  DROPPED:    'bg-red-100 text-red-700',
+  BACK_UP:    'bg-purple-100 text-purple-700',
+};
+
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');
 const fmtDateOrDash = (d?: string | null) => (d ? fmtDate(d) : '—');
 
@@ -145,6 +160,13 @@ const ClientList: React.FC = () => {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Received</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
@@ -153,10 +175,7 @@ const ClientList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue / Expiry</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Phone</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Availability</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Cases</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Received</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
@@ -180,6 +199,37 @@ const ClientList: React.FC = () => {
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(c.receivedDate)}</td>
+                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c.visaCases[0])}</td>
+                    <td className="px-4 py-3 text-gray-700">{cityLabel(c.visaCases[0])}</td>
+                    <td className="px-4 py-3">
+                      {!c.visaCases[0] || c.visaCases[0].stage === 'CANCELLED' ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : c.visaCases[0].advancePaid ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                          <AlertTriangle className="w-2.5 h-2.5" /> Pending
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.visaCases[0] ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.visaCases[0].priority]}`}>
+                          {c.visaCases[0].priority}
+                        </span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {c.visaCases[0]?.stage === 'APPOINTMENT' && c.visaCases[0].appointmentStatus ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.visaCases[0].appointmentStatus]}`}>
+                          {c.visaCases[0].appointmentStatus.charAt(0) + c.visaCases[0].appointmentStatus.slice(1).toLowerCase()}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-xs">{fmtDateOrDash(c.visaCases[0]?.appointmentDate)}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{c.firstName}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -208,8 +258,6 @@ const ClientList: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-gray-700">{c.phone}</td>
                     <td className="px-4 py-3 text-gray-700">{c.availability ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c.visaCases[0])}</td>
-                    <td className="px-4 py-3 text-gray-700">{cityLabel(c.visaCases[0])}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {c.visaCases.slice(0, 2).map(vc => (
@@ -225,7 +273,6 @@ const ClientList: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(c.receivedDate)}</td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
                         <Button

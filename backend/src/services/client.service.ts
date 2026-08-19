@@ -21,7 +21,7 @@ const CLIENT_SELECT = {
   visaCases: {
     select: {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, stage: true, priority: true,
-      appointmentDate: true, advance: true, charges: true, discount: true,
+      appointmentStatus: true, appointmentDate: true, advance: true, charges: true, discount: true, advancePaid: true,
       createdAt: true, updatedAt: true,
     },
     orderBy: { createdAt: 'desc' as const },
