@@ -244,11 +244,13 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
             <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Client Ref</th>
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Received Date</th>}
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
+                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
@@ -261,8 +263,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       {DOC_LABELS[key]}
                     </th>
                   ))}
-                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
-                  {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>}
@@ -279,6 +279,8 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
+                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
+                    <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     <td
                       className={`px-4 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
                       title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
@@ -289,8 +291,16 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.receivedDate)}</td>}
-                    <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
-                    <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
+                    {isFileProcessing && (
+                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.salamComments ?? ''}>
+                        {c.salamComments || '—'}
+                      </td>
+                    )}
+                    {isFileProcessing && (
+                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.client?.hrComments ?? ''}>
+                        {c.client?.hrComments || '—'}
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>
@@ -311,23 +321,13 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     )}
                     {!isFileProcessing && (
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
-                              {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                          {(c.missingRequiredFields?.length ?? 0) > 0 && (
-                            <span
-                              title="Missing required client info"
-                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
-                            >
-                              <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
-                            </span>
-                          )}
-                        </div>
+                        {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.appointmentStatus]}`}>
+                            {c.appointmentStatus.charAt(0) + c.appointmentStatus.slice(1).toLowerCase()}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                     )}
                     {pausedOnly && (
@@ -349,6 +349,14 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                             <AlertTriangle className="w-2.5 h-2.5" /> Expiring
                           </span>
                         )}
+                        {(c.missingRequiredFields?.length ?? 0) > 0 && (
+                          <span
+                            title="Missing required client info"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Incomplete
+                          </span>
+                        )}
                       </div>
                     </td>
                     {isFileProcessing && DOC_KEYS.map(key => {
@@ -364,16 +372,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         </td>
                       );
                     })}
-                    {isFileProcessing && (
-                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.salamComments ?? ''}>
-                        {c.salamComments || '—'}
-                      </td>
-                    )}
-                    {isFileProcessing && (
-                      <td className="px-4 py-3 text-gray-700 max-w-[160px] truncate" title={c.client?.hrComments ?? ''}>
-                        {c.client?.hrComments || '—'}
-                      </td>
-                    )}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>}
