@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 
 // Same file-team role set CaseDetail uses for the fileAssignedToId dropdown, so the
@@ -20,16 +20,18 @@ const PRI_COLORS: Record<Priority, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
 };
+// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
+const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (c: { destination: string | null; destinationOptions?: string[] }) =>
-  c.destination ?? (c.destinationOptions?.length ? `${formatShortlist(c.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
+  c.destination ?? (c.destinationOptions?.length ? formatShortlist(c.destinationOptions, DESTINATION_OPTIONS) : '—');
 
 // Same shortlist-then-finalize pattern as destinationLabel, for the appointment city.
 const cityLabel = (c: { city?: string; cityOptions?: string[] }) =>
-  c.city ?? (c.cityOptions?.length ? `${formatShortlist(c.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : undefined);
+  (c.city ? shortCity(c.city) : undefined) ?? (c.cityOptions?.length ? formatCityShortlist(c.cityOptions, APPOINTMENT_CITY_OPTIONS) : undefined);
 
 const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'text-gray-700',
@@ -315,7 +317,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     {!isFileProcessing && (
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
-                          {c.priority}
+                          {PRI_LABELS[c.priority]}
                         </span>
                       </td>
                     )}

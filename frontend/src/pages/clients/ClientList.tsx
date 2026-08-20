@@ -13,7 +13,7 @@ import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 import ImportClientsModal from './ImportClientsModal';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
 
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
@@ -43,6 +43,8 @@ const PRI_COLORS: Record<string, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
 };
+// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
+const PRI_LABELS: Record<string, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
 const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'text-gray-700',
   ASSIGNED:   'bg-blue-100 text-blue-700',
@@ -60,9 +62,9 @@ const fmtDateOrDash = (d?: string | null) => (d ? fmtDate(d) : '—');
 // client's primary (most recent) case so Destination/City are visible from the Clients
 // list too, not just buried inside the Cases column.
 const destinationLabel = (vc?: { destination: string | null; destinationOptions?: string[] }) =>
-  !vc ? '—' : vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
+  !vc ? '—' : vc.destination ?? (vc.destinationOptions?.length ? formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS) : '—');
 const cityLabel = (vc?: { city?: string | null; cityOptions?: string[] }) =>
-  !vc ? '—' : vc.city ?? (vc.cityOptions?.length ? `${formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : '—');
+  !vc ? '—' : (vc.city ? shortCity(vc.city) : undefined) ?? (vc.cityOptions?.length ? formatCityShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS) : '—');
 
 const ClientList: React.FC = () => {
   const navigate = useNavigate();
@@ -216,7 +218,7 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3">
                       {c.visaCases[0] ? (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.visaCases[0].priority]}`}>
-                          {c.visaCases[0].priority}
+                          {PRI_LABELS[c.visaCases[0].priority]}
                         </span>
                       ) : <span className="text-xs text-gray-400">—</span>}
                     </td>

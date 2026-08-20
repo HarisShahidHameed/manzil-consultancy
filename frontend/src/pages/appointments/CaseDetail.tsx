@@ -56,11 +56,11 @@ const toNum = (v?: number | string | null) => (v !== '' && v != null ? parseFloa
 // A case's destination is either decided (`destination`) or still a shortlist
 // (`destinationOptions`) awaiting finalization in File Processing.
 const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
-  vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
+  vc.destination ?? (vc.destinationOptions?.length ? formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS) : '—');
 
 // Same shortlist-then-finalize pattern as destinationLabel, for the appointment city.
 const cityLabel = (vc: { city?: string | null; cityOptions?: string[] }) =>
-  vc.city ?? (vc.cityOptions?.length ? `${formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS)} (undecided)` : undefined);
+  vc.city ?? (vc.cityOptions?.length ? formatShortlist(vc.cityOptions, APPOINTMENT_CITY_OPTIONS) : undefined);
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500';
 

@@ -22,12 +22,14 @@ const PRI_COLORS: Record<Priority, string> = {
   LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
   HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
 };
+// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
+const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
 
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (vc: { destination: string | null; destinationOptions?: string[] }) =>
-  vc.destination ?? (vc.destinationOptions?.length ? `${formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS)} (undecided)` : '—');
+  vc.destination ?? (vc.destinationOptions?.length ? formatShortlist(vc.destinationOptions, DESTINATION_OPTIONS) : '—');
 
 const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({ label, value }) => (
   <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
@@ -207,7 +209,7 @@ const ClientDetail: React.FC = () => {
                 )}
                 <div className="flex items-center justify-between">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[vc.priority]}`}>
-                    {vc.priority}
+                    {PRI_LABELS[vc.priority]}
                   </span>
                   <Button size="sm" variant="outline" leftIcon={<Eye className="w-3 h-3" />} onClick={() => navigate(`/cases/${vc.id}`)}>
                     Manage

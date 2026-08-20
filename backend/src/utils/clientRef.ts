@@ -16,28 +16,32 @@ export const generateClientRef = async (): Promise<string> => {
   return `CL-${num}`;
 };
 
-// Group members are id'd like CL-105-GRP-001-1, CL-105-GRP-001-2 — same shared number
-// for every member of the group, the group's own immutable groupRef (so renaming the
-// group never touches member refs), and a 1-based position that's assigned once and
-// never renumbered (append-only), mirroring the legacy system.
-// groupRef always looks like "GRP-<digits>" (see group.service's generateGroupRef), so
-// the pattern anchors on that literal prefix — otherwise the hyphen inside "GRP-001"
-// would be ambiguous against the trailing "-<position>".
-export const GROUPED_REF_RE = /^CL-(\d+)-GRP-\d+-(\d+)$/;
-// Refs written by the ref format's first cut, before it switched from a sanitized group
-// name to the immutable groupRef — e.g. CL-105-Khan-1. Still recognized on read so a
-// group touched again after the switch keeps its original number/positions instead of
-// minting a fresh one; buildGroupRef only ever writes the current format, so these
+// Group members are id'd like CL-105-G1-01, CL-105-G1-02 — same shared number for every
+// member of the group, a short form of the group's own immutable groupRef ("GRP-001" ->
+// "G1", so renaming the group never touches member refs), and a 1-based position
+// (zero-padded to 2 digits) that's assigned once and never renumbered (append-only),
+// mirroring the legacy system.
+export const GROUPED_REF_RE = /^CL-(\d+)-G\d+-(\d+)$/;
+// Refs written by earlier ref-format cuts: the original sanitized-group-name format
+// (e.g. CL-105-Khan-1) and the first numbered-group format that spelled out the full
+// "GRP-<digits>" segment (e.g. CL-105-GRP-001-1). Both are still recognized on read so a
+// group touched again after a format switch keeps its original number/positions instead
+// of minting fresh ones; buildGroupRef only ever writes the current format, so these
 // upgrade in place the next time backfillGroupMembers runs on their group.
+const LEGACY_GRP_REF_RE = /^CL-(\d+)-GRP-\d+-(\d+)$/;
 const LEGACY_NAME_GROUPED_REF_RE = /^CL-(\d+)-[A-Za-z0-9]+-(\d+)$/;
 export const PLAIN_REF_RE = /^CL-(\d+)$/;
 
-export const buildGroupRef = (number: number, groupRef: string, memberIndex: number) =>
-  `CL-${number}-${groupRef}-${memberIndex}`;
+export const buildGroupRef = (number: number, groupRef: string, memberIndex: number) => {
+  const groupSeq = parseInt(groupRef.replace(/^GRP-/, ''), 10);
+  return `CL-${number}-G${groupSeq}-${String(memberIndex).padStart(2, '0')}`;
+};
 
 const matchGroupedRef = (ref: string): { number: number; position: number } | null => {
   const current = ref.match(GROUPED_REF_RE);
   if (current) return { number: parseInt(current[1], 10), position: parseInt(current[2], 10) };
+  const legacyGrp = ref.match(LEGACY_GRP_REF_RE);
+  if (legacyGrp) return { number: parseInt(legacyGrp[1], 10), position: parseInt(legacyGrp[2], 10) };
   const legacy = ref.match(LEGACY_NAME_GROUPED_REF_RE);
   if (legacy) return { number: parseInt(legacy[1], 10), position: parseInt(legacy[2], 10) };
   return null;

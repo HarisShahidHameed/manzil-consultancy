@@ -11,6 +11,13 @@ export const APPOINTMENT_CITY_OPTIONS = [
   'London', 'Manchester', 'Birmingham', 'Edinburgh',
 ];
 
+// Short forms used only in listing-table cells (single city or shortlist chips) so long
+// city names don't blow up column width — filter tabs and dropdowns keep the full name.
+export const CITY_SHORT: Record<string, string> = {
+  London: 'Lon', Manchester: 'Man', Birmingham: 'Bir', Edinburgh: 'Edi',
+};
+export const shortCity = (city: string): string => CITY_SHORT[city] ?? city;
+
 export const VISA_TYPE_OPTIONS = ['Tourist', 'Work', 'Study'];
 
 export const EVISA_TYPE_OPTIONS = [
@@ -40,3 +47,10 @@ export const formatShortlist = (selected: string[], allOptions: string[]): strin
   selected.length > 0 && allOptions.length > 0 && allOptions.every(o => selected.includes(o))
     ? 'Any'
     : selected.join(', ');
+
+// Same collapse-to-"Any" behavior as formatShortlist, but abbreviates each city (see
+// CITY_SHORT) — for table/shortlist cells specifically, not filter tabs or dropdowns.
+export const formatCityShortlist = (selected: string[], allOptions: string[]): string =>
+  selected.length > 0 && allOptions.length > 0 && allOptions.every(o => selected.includes(o))
+    ? 'Any'
+    : selected.map(shortCity).join(', ');
