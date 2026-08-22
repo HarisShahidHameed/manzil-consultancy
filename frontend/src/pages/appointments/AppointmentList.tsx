@@ -25,6 +25,12 @@ const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIG
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
+// Short column headers for the doc-status table; DOC_LABELS keeps the full wording for tooltips/other pages.
+const DOC_SHORT_LABELS: Partial<Record<keyof typeof DOC_LABELS, string>> = {
+  docAppointment: 'App Letter',
+  docSelfEmployment: 'Self Emp',
+};
+
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (c: { destination: string | null; destinationOptions?: string[] }) =>
   c.destination ?? (c.destinationOptions?.length ? formatShortlist(c.destinationOptions, DESTINATION_OPTIONS) : '—');
@@ -262,7 +268,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Last Name</th>
                   {isFileProcessing && DOC_KEYS.map(key => (
                     <th key={key} className="text-center px-2 py-3 font-medium text-gray-500" title={DOC_LABELS[key]}>
-                      {DOC_LABELS[key]}
+                      {DOC_SHORT_LABELS[key] ?? DOC_LABELS[key]}
                     </th>
                   ))}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No.</th>}

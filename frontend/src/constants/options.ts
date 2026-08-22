@@ -16,7 +16,25 @@ export const APPOINTMENT_CITY_OPTIONS = [
 export const CITY_SHORT: Record<string, string> = {
   London: 'Lon', Manchester: 'Man', Birmingham: 'Bir', Edinburgh: 'Edi',
 };
-export const shortCity = (city: string): string => CITY_SHORT[city] ?? city;
+
+// Known misspellings seen in imported client sheets, mapped to the canonical option name
+// so they still shorten correctly instead of showing the raw typo in listings.
+const CITY_ALIASES: Record<string, string> = {
+  manxhester: 'Manchester',
+};
+
+// Case/whitespace-insensitive lookup so "manchester", "Manchester ", etc. all shorten,
+// not just an exact match of the canonical spelling.
+const CITY_SHORT_NORMALIZED: Record<string, string> = Object.fromEntries(
+  Object.entries(CITY_SHORT).map(([name, short]) => [name.trim().toLowerCase(), short])
+);
+
+export const shortCity = (city: string): string => {
+  const key = city.trim().toLowerCase();
+  const canonical = CITY_ALIASES[key];
+  if (canonical) return CITY_SHORT[canonical];
+  return CITY_SHORT_NORMALIZED[key] ?? city;
+};
 
 export const VISA_TYPE_OPTIONS = ['Tourist', 'Work', 'Study'];
 
