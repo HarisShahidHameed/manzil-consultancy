@@ -392,7 +392,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     )}
                     <td className="px-4 py-3 text-gray-500 text-xs">
                       {(() => {
-                        const assignee = c.stage === 'FILE_PROCESSING' ? c.fileAssigned : c.appointmentAssigned;
+                        const assignee = isFileProcessing || isCompleted ? c.fileAssigned : c.appointmentAssigned;
                         return assignee ? `${assignee.firstName} ${assignee.lastName}` : '—';
                       })()}
                     </td>
