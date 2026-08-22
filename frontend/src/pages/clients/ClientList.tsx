@@ -174,7 +174,7 @@ const ClientList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">DOB</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Nationality</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Passport No</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue / Expiry</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-500">Passport Issue | Expiry</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Phone</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Availability</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Cases</th>
@@ -253,7 +253,7 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3 text-gray-700">{c.nationality ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-700">{c.passportNumber ?? '—'}</td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="text-gray-700">{fmtDateOrDash(c.passportIssue)} / </span>
+                      <span className="text-gray-700">{fmtDateOrDash(c.passportIssue)} | </span>
                       <span className={isExpiringSoon(c.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-700'}>
                         {fmtDateOrDash(c.passportExpiry)}
                       </span>
