@@ -29,12 +29,17 @@ const CITY_SHORT_NORMALIZED: Record<string, string> = Object.fromEntries(
   Object.entries(CITY_SHORT).map(([name, short]) => [name.trim().toLowerCase(), short])
 );
 
-export const shortCity = (city: string): string => {
+const shortenSingleCity = (city: string): string => {
   const key = city.trim().toLowerCase();
   const canonical = CITY_ALIASES[key];
   if (canonical) return CITY_SHORT[canonical];
-  return CITY_SHORT_NORMALIZED[key] ?? city;
+  return CITY_SHORT_NORMALIZED[key] ?? city.trim();
 };
+
+// Imported rows sometimes pack multiple cities into one string, e.g. "Birmingham/London/Manchester"
+// (or comma-separated) instead of the cityOptions array — shorten each part so the cell stays compact.
+export const shortCity = (city: string): string =>
+  /[/,]/.test(city) ? city.split(/[/,]/).map(shortenSingleCity).join('/') : shortenSingleCity(city);
 
 export const VISA_TYPE_OPTIONS = ['Tourist', 'Work', 'Study'];
 
