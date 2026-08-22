@@ -246,9 +246,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
             <table className="w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-2 py-3 font-medium text-gray-500">Client Ref</th>
+                  <th className="text-left px-2 py-3 font-medium text-gray-500 w-px">Client Ref</th>
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Stage</th>}
-                  {!isFileProcessing && <th className="text-left px-2 py-3 font-medium text-gray-500">Received</th>}
+                  {!isFileProcessing && <th className="text-left pl-1 pr-4 py-3 font-medium text-gray-500 w-px">Received</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
@@ -282,7 +282,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
                     <td
-                      className={`px-2 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
+                      className={`px-2 py-3 text-xs font-bold w-px ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
                       title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
                     >
                       {c.client?.clientRef}
@@ -290,7 +290,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
-                    {!isFileProcessing && <td className="px-2 py-3 text-gray-500 text-xs">{fmtDate(c.client?.receivedDate)}</td>}
+                    {!isFileProcessing && <td className="pl-1 pr-4 py-3 text-gray-500 text-xs w-px">{fmtDate(c.client?.receivedDate)}</td>}
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     {isFileProcessing && (
