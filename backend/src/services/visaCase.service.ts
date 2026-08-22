@@ -168,14 +168,17 @@ const decorateCase = <T extends { stage: string; destination: string | null; des
 export const listCases = async (
   page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
   destination?: string, city?: string, advancePaid?: boolean, onHold?: boolean, serviceType?: string,
-  fileAssignedToId?: string,
+  fileAssignedToId?: string, hasAppointmentDate?: boolean,
 ) => {
   const skip = (page - 1) * limit;
   // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
   // destination, city, advance-paid, on-hold, service-type and free-text search can all
   // narrow the result set at once.
   const where: Prisma.VisaCaseWhereInput = {};
-  if (stage) where.stage = stage as any;
+  // "stage" also accepts a comma-separated list (e.g. the appointment→file-processing
+  // conversion card wants FILE_PROCESSING,INVOICED,COMPLETED in one query) alongside the
+  // normal single-stage filter every other listing uses.
+  if (stage) where.stage = stage.includes(',') ? { in: stage.split(',') as any } : (stage as any);
   if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
   if (destination) where.destination = { contains: destination, mode: 'insensitive' };
   if (city) where.city = { contains: city, mode: 'insensitive' };
@@ -183,6 +186,7 @@ export const listCases = async (
   if (onHold !== undefined) where.onHold = onHold;
   if (serviceType) where.client = { serviceType: serviceType as any };
   if (fileAssignedToId) where.fileAssignedToId = fileAssignedToId;
+  if (hasAppointmentDate !== undefined) where.appointmentDate = hasAppointmentDate ? { not: null } : null;
   if (search) {
     where.OR = [
       { destination:    { contains: search, mode: 'insensitive' } },

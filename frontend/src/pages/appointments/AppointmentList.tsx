@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CalendarDays, AlertTriangle } from 'lucide-react';
+import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck } from 'lucide-react';
 import { getCases } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import type { AssignableUser, CaseStage, DocumentStatus, Priority, VisaCase } from '../../types';
@@ -11,6 +11,7 @@ import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
+import { CaseCountCard } from '../../components/cases/CaseCountCard';
 
 // Same file-team role set CaseDetail uses for the fileAssignedToId dropdown, so the
 // File Processing tab bar lists exactly the people a case could be assigned to.
@@ -70,9 +71,11 @@ interface CaseListProps {
    * that leads into File Processing; APPOINTMENT_ONLY powers their own dedicated page.
    */
   serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
+  /** Shows the "Moved to File Processing" / "Appointment Date Allotted" stat cards next to the title (Appointments & File Processing pages only). */
+  showFunnelCards?: boolean;
 }
 
-const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly, serviceType }) => {
+const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly, serviceType, showFunnelCards }) => {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('ALL');
   const [search, setSearch] = useState('');
@@ -139,9 +142,29 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
-        <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} cases</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} cases</p>
+        </div>
+        {showFunnelCards && (
+          <div className="flex gap-3">
+            <CaseCountCard
+              icon={ArrowRightCircle}
+              label="Moved to File Processing"
+              modalTitle="Moved to File Processing"
+              modalSubtitle="Cases that advanced from the Appointment stage into File Processing"
+              params={{ stage: 'FILE_PROCESSING,INVOICED,COMPLETED', serviceType: 'FULL_SERVICE' }}
+            />
+            <CaseCountCard
+              icon={CalendarCheck}
+              label="Appointment Date Allotted"
+              modalTitle="Appointment Date Allotted"
+              modalSubtitle="Appointment-stage cases that already have an appointment date booked"
+              params={{ stage: 'APPOINTMENT', serviceType: 'FULL_SERVICE', hasAppointmentDate: 'true' }}
+            />
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
