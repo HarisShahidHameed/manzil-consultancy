@@ -7,6 +7,7 @@ import {
 import { RefreshCw } from 'lucide-react';
 import { getFinancialReports } from '../../api/financialReports';
 import { getAssignableUsers } from '../../api/users';
+import { useAuth } from '../../hooks/useAuth';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ChartCard, ChartEmpty, CHART_COLORS } from '../../components/charts/ChartCard';
@@ -51,6 +52,11 @@ const STATUS_OPTIONS: { value: FinancialReportsFilters['status'] | ''; label: st
 
 const emptyFilters: FinancialReportsFilters = {};
 
+// Mirrors backend's FULL_ACCESS_EMAILS (financialReports.controller.ts) — the server is the
+// actual enforcement point, this only decides whether to show the now-pointless "Appointed/
+// Closed By" filter (the server overrides assignedToId to the caller for everyone else anyway).
+const FULL_ACCESS_EMAILS = new Set(['admin@manzilconsultancy.com', 'admin@manzil.com']);
+
 const selectCls = 'rounded-lg border border-gray-300 text-sm py-2.5 px-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500';
 
 const StatCard: React.FC<{ label: string; value: string; tone?: 'default' | 'good' | 'bad' }> = ({ label, value, tone = 'default' }) => (
@@ -63,6 +69,8 @@ const StatCard: React.FC<{ label: string; value: string; tone?: 'default' | 'goo
 );
 
 const FinancialReports: React.FC = () => {
+  const { user } = useAuth();
+  const hasFullAccess = !!user?.email && FULL_ACCESS_EMAILS.has(user.email.toLowerCase());
   const [draft, setDraft] = useState<FinancialReportsFilters>(emptyFilters);
   const [filters, setFilters] = useState<FinancialReportsFilters>(emptyFilters);
 
@@ -90,7 +98,10 @@ const FinancialReports: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Financial Reports</h1>
-          <p className="text-gray-500 text-sm mt-1">Revenue, collections and outstanding balances — defaults to the last 12 months.</p>
+          <p className="text-gray-500 text-sm mt-1">
+            Revenue, collections and outstanding balances — defaults to the last 12 months.
+            {!hasFullAccess && ' Scoped to cases assigned to you.'}
+          </p>
         </div>
         {isFetching && <RefreshCw className="w-4 h-4 text-indigo-500 animate-spin" />}
       </div>
@@ -167,17 +178,19 @@ const FinancialReports: React.FC = () => {
             {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <label htmlFor="fr-assigned" className="text-sm font-medium text-gray-700">Case Appointed/Closed By</label>
-          <select
-            id="fr-assigned" className={selectCls}
-            value={draft.assignedToId ?? ''}
-            onChange={e => setDraft(d => ({ ...d, assignedToId: e.target.value || undefined }))}
-          >
-            <option value="">Anyone</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
-          </select>
-        </div>
+        {hasFullAccess && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="fr-assigned" className="text-sm font-medium text-gray-700">Case Appointed/Closed By</label>
+            <select
+              id="fr-assigned" className={selectCls}
+              value={draft.assignedToId ?? ''}
+              onChange={e => setDraft(d => ({ ...d, assignedToId: e.target.value || undefined }))}
+            >
+              <option value="">Anyone</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+            </select>
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <label htmlFor="fr-created-by" className="text-sm font-medium text-gray-700">Invoice Issued By</label>
           <select
