@@ -24,6 +24,7 @@ const PRI_COLORS: Record<Priority, string> = {
 const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+const fmtDateBar = (d?: string) => fmtDate(d).replace(/\//g, '|');
 
 // A case's destination is either decided or, before File Processing finalizes it, a shortlist.
 const destinationLabel = (c: { destination: string | null; destinationOptions?: string[] }) =>
@@ -377,10 +378,10 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.passportNumber ?? '—'}</td>}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.dob ?? undefined)}</td>}
                     {!isFileProcessing && <td className="px-4 py-3 text-gray-700">{c.client?.nationality ?? '—'}</td>}
-                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.passportIssue ?? undefined)}</td>}
+                    {!isFileProcessing && <td className="px-4 py-3 text-gray-500 text-xs">{fmtDateBar(c.client?.passportIssue ?? undefined)}</td>}
                     {!isFileProcessing && (
                       <td className={`px-4 py-3 text-xs ${isExpiringSoon(c.client?.passportExpiry) ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
-                        {fmtDate(c.client?.passportExpiry ?? undefined)}
+                        {fmtDateBar(c.client?.passportExpiry ?? undefined)}
                       </td>
                     )}
                     <td className="px-4 py-3 text-gray-500 text-xs">
