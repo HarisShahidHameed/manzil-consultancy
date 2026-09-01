@@ -26,6 +26,7 @@ const AppointmentList = lazy(() => import('./pages/appointments/AppointmentList'
 const CaseDetail   = lazy(() => import('./pages/appointments/CaseDetail'));
 const InvoiceList  = lazy(() => import('./pages/invoices/InvoiceList'));
 const FinancialReports = lazy(() => import('./pages/reports/FinancialReports'));
+const CaseGuide     = lazy(() => import('./pages/help/CaseGuide'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ const App: React.FC = () => (
               <Route element={<Layout />}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/guide" element={<CaseGuide />} />
 
                 {/* Clients */}
                 <Route element={<RoleGuard permissions={['clients:read']} />}>

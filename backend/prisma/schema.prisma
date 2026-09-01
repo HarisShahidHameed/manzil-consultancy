@@ -280,6 +280,13 @@ model VisaCase {
   onHoldReason            String?
   appointmentStatus       AppointmentStatus? @default(WAITING)
   appointmentDate         DateTime?
+  // Stamped the moment appointmentDate is first set (null → a date) — powers the
+  // "Appointment Date Allotted" conversion card's last-24h filter. Not touched on
+  // later reschedules, since the original allotment already happened.
+  appointmentDateSetAt    DateTime?
+  // Stamped the moment this case's stage first advances from Appointment into File
+  // Processing — powers the "Moved to File Processing" conversion card's last-24h filter.
+  fileProcessingStartedAt DateTime?
   bookedById              String?
   appointmentAssignedToId String?
   fileAssignedToId        String?

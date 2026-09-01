@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard, Users, Shield, Key, FileText, LogOut,
-  UserCheck, CalendarDays, CalendarCheck, FolderOpen, Receipt, Layers, CheckCircle2, KeyRound, PauseCircle, LineChart,
+  UserCheck, CalendarDays, CalendarCheck, FolderOpen, Receipt, Layers, CheckCircle2, KeyRound, PauseCircle, LineChart, BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { Can } from '../../routes/RoleGuard';
@@ -50,6 +50,7 @@ export const Sidebar: React.FC<{ collapsed: boolean }> = ({ collapsed }) => {
       {/* Nav */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
         <NavItem to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" collapsed={collapsed} />
+        <NavItem to="/guide" icon={<BookOpen className="w-5 h-5" />} label="Case Guide" collapsed={collapsed} />
 
         {/* Clients */}
         <Can permissions={['clients:read']}>
