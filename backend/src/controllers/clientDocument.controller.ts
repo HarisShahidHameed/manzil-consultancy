@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import * as documentService from '../services/clientDocument.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
+import { logger } from '../config/logger';
 import { presignFilesSchema, completeUploadSchema, abortUploadSchema } from '../validators/clientDocument.validators';
 
 export const requestUploads = async (req: Request, res: Response): Promise<void> => {
@@ -12,6 +13,10 @@ export const requestUploads = async (req: Request, res: Response): Promise<void>
   } catch (error: any) {
     if (error?.name === 'ZodError') { sendError(res, 'Validation failed', 422, error.flatten().fieldErrors); return; }
     if (error?.name === 'DocumentValidationError') { sendError(res, error.message, 422); return; }
+    // Every other failure here is unexpected (bad S3 credentials, missing bucket, a
+    // schema drift like a missing table) — log it, since the generic 500 sent to the
+    // client on its own gives no way to tell those apart later.
+    logger.error('Failed to prepare document upload', { message: error?.message, stack: error?.stack, clientId: req.params.id });
     sendError(res, 'Failed to prepare upload', 500);
   }
 };
@@ -32,6 +37,7 @@ export const completeUpload = async (req: Request, res: Response): Promise<void>
   } catch (error: any) {
     if (error?.name === 'ZodError') { sendError(res, 'Validation failed', 422, error.flatten().fieldErrors); return; }
     if (error?.name === 'DocumentValidationError') { sendError(res, error.message, 422); return; }
+    logger.error('Failed to complete document upload', { message: error?.message, stack: error?.stack, clientId: req.params.id, body: req.body });
     sendError(res, 'Failed to complete upload', 500);
   }
 };
@@ -44,6 +50,7 @@ export const abortUpload = async (req: Request, res: Response): Promise<void> =>
     sendSuccess(res, 'Upload aborted');
   } catch (error: any) {
     if (error?.name === 'ZodError') { sendError(res, 'Validation failed', 422, error.flatten().fieldErrors); return; }
+    logger.error('Failed to abort document upload', { message: error?.message, stack: error?.stack, clientId: req.params.id });
     sendError(res, 'Failed to abort upload', 500);
   }
 };
@@ -67,6 +74,7 @@ export const deleteDocument = async (req: Request, res: Response): Promise<void>
     sendSuccess(res, 'Document deleted');
   } catch (error: any) {
     if (error?.message === 'DOCUMENT_NOT_FOUND') { sendError(res, 'Document not found', 404); return; }
+    logger.error('Failed to delete document', { message: error?.message, stack: error?.stack, clientId: req.params.id, documentId: req.params.documentId });
     sendError(res, 'Failed to delete document', 500);
   }
 };
