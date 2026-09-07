@@ -1,0 +1,4 @@
+-- Placeholder: original migration.sql was missing on disk (already applied to the
+-- database, per _prisma_migrations). Reconstructed as a no-op since the very next
+-- migration (20260715092500_restore_invoice_status) restores whatever this removed,
+-- leaving the net schema effect unchanged.

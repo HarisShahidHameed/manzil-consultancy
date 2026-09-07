@@ -1,4 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import 'yet-another-react-lightbox/styles.css';
+@import 'yet-another-react-lightbox/plugins/thumbnails.css';
+@import 'yet-another-react-lightbox/plugins/counter.css';
 
 @tailwind base;
 @tailwind components;
@@ -28,4 +31,29 @@
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
+
+  /* Document gallery cards: staggered entrance (see DocumentThumb's animationDelay) and
+     a brief success flash after upload, both driven by transform/opacity only. */
+  .doc-card {
+    animation: doc-card-in 260ms cubic-bezier(0.23, 1, 0.32, 1) backwards;
+  }
+  @keyframes doc-card-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .doc-flash {
+    animation: doc-flash-out 900ms ease-out forwards;
+  }
+  @keyframes doc-flash-out {
+    0%   { opacity: 1; }
+    60%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}
+
+/* yet-another-react-lightbox theming to match the app's palette instead of its defaults */
+.yarl__root {
+  --yarl__color_backdrop: rgba(17, 24, 39, 0.92);
+  --yarl__toolbar_width: 56px;
 }

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Edit, Eye, Download, Lock } from 'lucide-react';
 import { getClient } from '../../api/clients';
 import { downloadClientPdf } from '../../api/pdf';
-import type { CaseStage, Priority, VisaCase } from '../../types';
+import { getDocuments } from '../../api/documents';
+import type { CaseStage, ClientDocument, Priority, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Can } from '../../routes/RoleGuard';
 import { DESTINATION_OPTIONS, formatShortlist } from '../../constants/options';
+import { DocumentUploader } from '../../components/clients/DocumentUploader';
+import { DocumentList } from '../../components/clients/DocumentList';
 
 const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT:     'bg-blue-100 text-blue-700',
@@ -43,9 +46,14 @@ const InfoRow: React.FC<{ label: string; value?: string | boolean | null }> = ({
 const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // Set by ClientForm when a just-created client had staged documents that didn't all
+  // upload successfully — surfaced once here, on the page the user lands on next.
+  const [docWarning, setDocWarning] = useState<string | null>((location.state as { docWarning?: string } | null)?.docWarning ?? null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['client', id],
@@ -54,6 +62,13 @@ const ClientDetail: React.FC = () => {
   });
 
   const client = data?.data;
+
+  const { data: documents = [] } = useQuery({
+    queryKey: ['clientDocuments', id],
+    queryFn:  () => getDocuments(id!),
+    enabled:  !!id,
+  });
+  const setDocuments = (docs: ClientDocument[]) => queryClient.setQueryData(['clientDocuments', id], docs);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -112,8 +127,9 @@ const ClientDetail: React.FC = () => {
         </div>
       </div>
 
-      {error   && <Alert variant="error"   message={error}   onClose={() => setError(null)} />}
-      {success && <Alert variant="success" message={success} onClose={() => setSuccess(null)} />}
+      {error      && <Alert variant="error"   message={error}      onClose={() => setError(null)} />}
+      {success    && <Alert variant="success" message={success}    onClose={() => setSuccess(null)} />}
+      {docWarning && <Alert variant="warning" message={docWarning} onClose={() => setDocWarning(null)} />}
       {isLocked && (
         <Alert variant="warning" message="This client is locked — all cases are completed and information can no longer be changed." />
       )}
@@ -163,14 +179,24 @@ const ClientDetail: React.FC = () => {
             <InfoRow label="Previous Schengen Visa" value={client.previousSchengenVisa} />
             <InfoRow label="Source"    value={client.source} />
             <InfoRow label="Referred By" value={client.referredBy} />
-            {client.folderUrl && (
-              <div className="flex justify-between py-1.5 border-b border-gray-50">
-                <span className="text-sm text-gray-500">Folder</span>
-                <a href={client.folderUrl} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:underline">Open folder</a>
-              </div>
-            )}
           </div>
         </div>
+      </div>
+
+      {/* Documents — passport scans, photos, supporting files. Stored in S3 behind
+          presigned URLs (never a public bucket), uploaded straight from the browser. */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+          Documents ({documents.length})
+        </h3>
+        <Can permissions={['clients:write']}>
+          {!isLocked && (
+            <div className="mb-5">
+              <DocumentUploader clientId={client.id} onUploaded={uploaded => setDocuments([...uploaded, ...documents])} />
+            </div>
+          )}
+        </Can>
+        <DocumentList clientId={client.id} documents={documents} onChange={setDocuments} />
       </div>
 
       {/* HR Comments — one running log spanning the client's whole lifecycle, each line

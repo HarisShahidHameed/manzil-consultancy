@@ -131,6 +131,16 @@ export interface AssignableUser {
   roles: string[];
 }
 
+export interface ClientDocument {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  uploadedBy: string | null;
+  viewUrl: string;
+}
+
 export interface Client {
   id: string;
   clientRef: string;

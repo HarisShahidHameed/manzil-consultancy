@@ -141,13 +141,24 @@ COOKIE_SECRET=<openssl rand -base64 48>
 CLIENT_URL=https://your-domain.example
 SEED_ADMIN_EMAIL=admin@your-domain.example
 SEED_ADMIN_PASSWORD=<strong, unique password — change immediately after first login>
+
+# Client document storage (S3) — see docs/AWS_S3_SETUP.md to create these.
+AWS_REGION=eu-west-2
+AWS_ACCESS_KEY_ID=<from the manzil-app-s3 IAM user's access key>
+AWS_SECRET_ACCESS_KEY=<from the same access key — shown once at creation, save it now>
+S3_BUCKET_NAME=<the bucket you created>
 ```
 
 Generate secrets with `openssl rand -base64 48` (repeat per secret — don't reuse).
 This file lives only on the server and is symlinked into every release by
 `scripts/remote-deploy.sh`. **This is the design on purpose**: application secrets
-(DB credentials, JWT signing keys) never pass through GitHub Actions at all — only
-the SSH login itself does (§3). One less place secrets can leak from.
+(DB credentials, JWT signing keys, and now the AWS keys above) never pass through
+GitHub Actions at all — only the SSH login itself does (§3). One less place secrets
+can leak from.
+
+After editing this file on an already-running server, reload with
+`pm2 reload manzil-backend --update-env` so the new values actually take effect —
+PM2 otherwise keeps the environment the process was first started with.
 
 ### 1.7 Nginx
 
@@ -221,9 +232,10 @@ Paste the full output (all lines) as the secret value. This pins the host key so
 deploy step fails closed on a MITM instead of silently trusting whatever key shows up
 (`StrictHostKeyChecking` is left at its default — the workflow does *not* disable it).
 
-Notice **DATABASE_URL, JWT secrets, etc. are not GitHub Secrets** — they live only in
-`/opt/manzil/shared/backend/.env` on the server (§1.6). GitHub Actions only ever gets
-enough to SSH in; the app's own secrets never transit through CI.
+Notice **DATABASE_URL, JWT secrets, the S3 keys, etc. are not GitHub Secrets** — they
+live only in `/opt/manzil/shared/backend/.env` on the server (§1.6). GitHub Actions
+only ever gets enough to SSH in; the app's own secrets never transit through CI. See
+`docs/AWS_S3_SETUP.md` for how to obtain the four `AWS_*`/`S3_BUCKET_NAME` values.
 
 ### 3.2 What the pipelines do
 

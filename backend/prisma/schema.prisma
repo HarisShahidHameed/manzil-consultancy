@@ -102,6 +102,7 @@ model User {
   casesFileAssigned VisaCase[] @relation("CaseFileAssignedTo")
   invoicesCreated   Invoice[]  @relation("InvoiceCreatedBy")
   apiKeysCreated    ApiKey[]   @relation("ApiKeyCreatedBy")
+  documentsUploaded ClientDocument[] @relation("DocumentUploadedBy")
 
   @@map("users")
 }
@@ -251,6 +252,7 @@ model Client {
   createdBy  User?      @relation("ClientCreatedBy",  fields: [createdById],  references: [id], onDelete: SetNull)
   group      ClientGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   visaCases  VisaCase[]
+  documents  ClientDocument[]
 
   @@map("clients")
 }
@@ -337,6 +339,26 @@ model VisaCase {
 
 // Long-lived credential for machine-to-machine access (third-party integrations) —
 // no user login involved. Only a salted hash of the raw key is stored; the raw value
+// A file attached to a client — passport scan, photo, supporting document — stored in S3.
+// `key` is the S3 object key (private bucket; access only ever via short-lived presigned
+// URLs, never a public bucket URL). See utils/s3.ts and services/clientDocument.service.ts.
+model ClientDocument {
+  id           String   @id @default(uuid())
+  clientId     String
+  key          String   @unique
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy User?  @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@map("client_documents")
+}
+
 // is shown to the creator exactly once, at creation time (see apiKey.service.ts).
 model ApiKey {
   id          String    @id @default(uuid())

@@ -6,9 +6,11 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { createClient, getClient, updateClient, appendHrComment } from '../../api/clients';
 import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
+import { uploadClientDocuments } from '../../api/documents';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
+import { PendingDocumentGallery, type PendingUploadProgress } from '../../components/clients/PendingDocumentGallery';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 
@@ -44,7 +46,7 @@ const emptyForm = {
   birthCity: '', nationality: '', maritalStatus: '' as '' | 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED',
   previousSchengenVisa: '', registeredEmail: '',
   eVisa: false,
-  visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '', folderUrl: '',
+  visaAndTravelHistory: '', source: '', referredBy: '', hrComments: '',
   destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', eVisaType: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
@@ -59,6 +61,11 @@ const ClientForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Staged, not-yet-uploaded documents picked before the client exists — there's no id
+  // to namespace S3 keys under until createClient() resolves, so these are held as plain
+  // File objects and only actually uploaded once the new client's id comes back.
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, PendingUploadProgress>>({});
 
   const { data: groupsData } = useQuery({ queryKey: ['groups'], queryFn: () => getGroups() });
   const groups = groupsData?.data ?? [];
@@ -101,7 +108,7 @@ const ClientForm: React.FC = () => {
       // hrComments deliberately NOT pre-filled from client.hrComments — that field is the
       // full accumulated history (shown read-only below), while this input is only ever
       // the new note being added right now, appended server-side rather than overwriting.
-      hrComments: '', folderUrl: client.folderUrl ?? '',
+      hrComments: '',
       destinations: targetCase?.destinationOptions?.length
         ? targetCase.destinationOptions
         : (targetCase?.destination ? [targetCase.destination] : []),
@@ -131,7 +138,6 @@ const ClientForm: React.FC = () => {
         email:          form.email          || undefined,
         whatsapp:       form.whatsapp       || undefined,
         registeredEmail:form.registeredEmail|| undefined,
-        folderUrl:      form.folderUrl      || undefined,
         birthCity:      form.birthCity      || undefined,
         source:         form.source         || undefined,
         referredBy:     form.referredBy     || undefined,
@@ -165,7 +171,7 @@ const ClientForm: React.FC = () => {
       if (!isEdit) {
         // First entry in the client's HR Comments log — the backend tags it "Client
         // Intake" automatically. Later phases only ever append to this, never overwrite it.
-        return createClient({
+        const resp = await createClient({
           ...clientPayload,
           hrComments: form.hrComments || undefined,
           ...destinationFields,
@@ -178,6 +184,28 @@ const ClientForm: React.FC = () => {
           charges:  form.charges  ? parseFloat(form.charges)  : undefined,
           discount: form.discount ? parseFloat(form.discount) : undefined,
         });
+
+        // The client now has an id — any documents staged in the form above can finally
+        // be uploaded against it. Failures here shouldn't undo the client that was just
+        // created; surface them as a warning on the page we land on instead.
+        let docWarning: string | undefined;
+        if (stagedFiles.length > 0 && resp.data?.id) {
+          const uploaded = await uploadClientDocuments(resp.data.id, stagedFiles, progress => {
+            setUploadProgress(prev => ({
+              ...prev,
+              [progress.fileName]: {
+                status: progress.status,
+                pct: progress.total ? (progress.loaded / progress.total) * 100 : 0,
+                error: progress.error,
+              },
+            }));
+          });
+          if (uploaded.length < stagedFiles.length) {
+            const failed = stagedFiles.length - uploaded.length;
+            docWarning = `Client created, but ${failed} of ${stagedFiles.length} document${stagedFiles.length > 1 ? 's' : ''} failed to upload. You can retry from the client's profile page.`;
+          }
+        }
+        return { resp, docWarning };
       }
 
       const clientResp = await updateClient(id!, clientPayload);
@@ -199,16 +227,16 @@ const ClientForm: React.FC = () => {
           discount: form.discount ? parseFloat(form.discount) : undefined,
         });
       }
-      return clientResp;
+      return { resp: clientResp, docWarning: undefined as string | undefined };
     },
-    onSuccess: (resp) => {
+    onSuccess: ({ resp, docWarning }) => {
       qc.invalidateQueries({ queryKey: ['clients'] });
       if (isEdit) {
         qc.invalidateQueries({ queryKey: ['client', id] });
         if (targetCase) qc.invalidateQueries({ queryKey: ['case', targetCase.id] });
         qc.invalidateQueries({ queryKey: ['cases'] });
       }
-      navigate(`/clients/${resp.data!.id}`);
+      navigate(`/clients/${resp.data!.id}`, docWarning ? { state: { docWarning } } : undefined);
     },
     onError: (e: AxiosError<{ message: string; errors?: Record<string, string[]> }>) => {
       const resp = e.response?.data;
@@ -358,6 +386,17 @@ const ClientForm: React.FC = () => {
         </Field>
       </Section>
 
+      {!isEdit && (
+        <Section title="Documents">
+          <PendingDocumentGallery
+            files={stagedFiles}
+            onChange={setStagedFiles}
+            progress={uploadProgress}
+            disabled={save.isPending}
+          />
+        </Section>
+      )}
+
       {(!isEdit || targetCase) && (
         <Section title="Visa Application">
           <div className="grid grid-cols-2 gap-4">
@@ -477,9 +516,6 @@ const ClientForm: React.FC = () => {
             <option value="FULL_SERVICE">Full Service (Appointment + File Processing)</option>
             <option value="APPOINTMENT_ONLY">Appointment Only</option>
           </select>
-        </Field>
-        <Field label="Folder URL">
-          <input type="url" className={inputCls} value={form.folderUrl} onChange={set('folderUrl')} placeholder="https://drive.google.com/..." />
         </Field>
         <Field label="HR Comments">
           {/* One running log spanning the client's whole lifecycle — shown read-only here,
