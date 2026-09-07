@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { UploadCloud, AlertCircle } from 'lucide-react';
 import { uploadClientDocuments, type UploadProgress } from '../../api/documents';
 import { ACCEPTED_FILE_INPUT, MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
@@ -71,11 +72,13 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
 
   return (
     <div>
-      <div
+      <motion.div
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
+        animate={{ scale: dragOver ? 1.01 : 1 }}
+        transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
         className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg py-8 px-4 cursor-pointer transition-colors duration-150 ease-out ${
           dragOver ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 hover:border-gray-400 bg-gray-50'
         }`}
@@ -93,7 +96,7 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
           className="hidden"
           onChange={e => { if (e.target.files?.length) startUpload(e.target.files); e.target.value = ''; }}
         />
-      </div>
+      </motion.div>
 
       {rejected.length > 0 && (
         <div className="mt-3 text-xs text-red-600 flex items-start gap-1.5">
@@ -103,18 +106,20 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
       )}
 
       {entries.length > 0 && (
-        <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-          {entries.map(item => (
-            <DocumentThumb
-              key={item.fileName}
-              fileName={item.fileName}
-              mimeType={item.mimeType}
-              previewUrl={item.previewUrl}
-              status={item.status}
-              progressPct={item.total ? (item.loaded / item.total) * 100 : 0}
-              errorMessage={item.error}
-            />
-          ))}
+        <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+          <AnimatePresence>
+            {entries.map(item => (
+              <DocumentThumb
+                key={item.fileName}
+                fileName={item.fileName}
+                mimeType={item.mimeType}
+                previewUrl={item.previewUrl}
+                status={item.status}
+                progressPct={item.total ? (item.loaded / item.total) * 100 : 0}
+                errorMessage={item.error}
+              />
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </div>

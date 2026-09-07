@@ -1,13 +1,11 @@
 import React, { useMemo, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { FolderOpen } from 'lucide-react';
-import Lightbox from 'yet-another-react-lightbox';
-import Zoom from 'yet-another-react-lightbox/plugins/zoom';
-import Counter from 'yet-another-react-lightbox/plugins/counter';
-import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails';
 import type { ClientDocument } from '../../types';
 import { deleteDocument, getDocuments } from '../../api/documents';
 import { isImageMime, formatBytes } from '../../constants/documents';
 import { DocumentThumb } from './DocumentThumb';
+import { MobileDocumentViewer, type ViewerItem } from './MobileDocumentViewer';
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -23,6 +21,17 @@ export const DocumentList: React.FC<Props> = ({ clientId, documents, onChange })
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const imageDocs = useMemo(() => documents.filter(d => isImageMime(d.mimeType)), [documents]);
+  // Motion's layoutId matching is global to the page, not scoped to this component
+  // instance — and React Router doesn't remount ClientDetail on a route-param change
+  // alone, so a `useId()`-based prefix can collide with a previous client's gallery still
+  // registered from before navigation. doc.id is already a globally-unique server UUID,
+  // so it's used directly as the layoutId with no prefix needed.
+  const layoutIdFor = (doc: { id: string }) => `doc-${doc.id}`;
+
+  const viewerItems: ViewerItem[] = imageDocs.map(d => ({
+    id: d.id, src: d.viewUrl, fileName: d.fileName,
+    subtitle: `${formatBytes(d.sizeBytes)} · ${fmtDate(d.createdAt)}${d.uploadedBy ? ` · ${d.uploadedBy}` : ''}`,
+  }));
 
   const handleDelete = async (doc: ClientDocument) => {
     if (!confirm(`Delete "${doc.fileName}"? This can't be undone.`)) return;
@@ -30,6 +39,7 @@ export const DocumentList: React.FC<Props> = ({ clientId, documents, onChange })
     try {
       await deleteDocument(clientId, doc.id);
       onChange(documents.filter(d => d.id !== doc.id));
+      setLightboxIndex(null);
     } finally {
       setDeletingId(null);
     }
@@ -65,31 +75,36 @@ export const DocumentList: React.FC<Props> = ({ clientId, documents, onChange })
 
   return (
     <>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-        {documents.map((doc, i) => (
-          <DocumentThumb
-            key={doc.id}
-            index={i}
-            fileName={doc.fileName}
-            mimeType={doc.mimeType}
-            previewUrl={isImageMime(doc.mimeType) ? doc.viewUrl : undefined}
-            subtitle={`${formatBytes(doc.sizeBytes)} · ${fmtDate(doc.createdAt)}${doc.uploadedBy ? ` · ${doc.uploadedBy}` : ''}`}
-            busy={deletingId === doc.id || openingId === doc.id}
-            onView={() => handleView(doc)}
-            onDelete={() => handleDelete(doc)}
-          />
-        ))}
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+        <AnimatePresence>
+          {documents.map((doc, i) => (
+            <DocumentThumb
+              key={doc.id}
+              index={i}
+              layoutId={isImageMime(doc.mimeType) ? layoutIdFor(doc) : undefined}
+              fileName={doc.fileName}
+              mimeType={doc.mimeType}
+              previewUrl={isImageMime(doc.mimeType) ? doc.viewUrl : undefined}
+              subtitle={`${formatBytes(doc.sizeBytes)} · ${fmtDate(doc.createdAt)}${doc.uploadedBy ? ` · ${doc.uploadedBy}` : ''}`}
+              busy={deletingId === doc.id || openingId === doc.id}
+              onView={() => handleView(doc)}
+              onDelete={() => handleDelete(doc)}
+            />
+          ))}
+        </AnimatePresence>
       </div>
 
-      <Lightbox
-        open={lightboxIndex !== null}
-        index={lightboxIndex ?? 0}
-        close={() => setLightboxIndex(null)}
-        slides={imageDocs.map(d => ({ src: d.viewUrl, alt: d.fileName }))}
-        plugins={[Zoom, Counter, Thumbnails]}
-        zoom={{ maxZoomPixelRatio: 3, scrollToZoom: true }}
-        thumbnails={{ border: 0, padding: 4, gap: 8, showToggle: false }}
-        animation={{ swipe: 200, fade: 200 }}
+      <MobileDocumentViewer
+        items={viewerItems}
+        index={lightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+        onIndexChange={setLightboxIndex}
+        layoutIdFor={item => `doc-${item.id}`}
+        deleteBusy={!!deletingId}
+        onDelete={item => {
+          const doc = documents.find(d => d.id === item.id);
+          if (doc) handleDelete(doc);
+        }}
       />
     </>
   );
