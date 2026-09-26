@@ -642,16 +642,7 @@ const CaseDetail: React.FC = () => {
       {/* Appointment Section — the case lands here as soon as client info is filled */}
       {activeSection === 'APPOINTMENT' && (
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
-          {!locked && (
-            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
-                Save
-              </Button>
-            </Can>
-          )}
-        </div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
         {/* Client info captured at onboarding, read-only here — corrected via Edit Client Info */}
         <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
           <h4 className="text-xs font-semibold text-gray-500 mb-3">Client & Appointment Summary</h4>
@@ -881,22 +872,26 @@ const CaseDetail: React.FC = () => {
           </p>
         </div>
         </fieldset>
+
+        {/* Save lives at the bottom of every section, after its last field — same position,
+            size and icon in Appointment, File Processing and any stage added later. It sits
+            outside the fieldset because it's an action on the form, not a field in it. */}
+        {!locked && (
+          <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+            <div className="flex justify-end border-t border-gray-100 pt-4">
+              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+                Save
+              </Button>
+            </div>
+          </Can>
+        )}
       </div>
       )}
 
       {/* File Processing Section */}
       {activeSection === 'FILE_PROCESSING' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
-            {!locked && (
-              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
-                  Save
-                </Button>
-              </Can>
-            )}
-          </div>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
 
           {/* Everything captured earlier in the workflow, read-only for the file processor */}
           <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
@@ -1182,6 +1177,8 @@ const CaseDetail: React.FC = () => {
                 {fmtMoney(caseDue)}
               </span>
             </div>
+            {/* Preview Receipt stays with the Payment figures it renders — it's a read-only
+                view of this block, not a form-level action competing with Save. */}
             <div className="mt-3 flex justify-end">
               <Button variant="outline" size="sm" leftIcon={<Receipt className="w-3.5 h-3.5" />} onClick={() => setPreviewOpen(true)}>
                 Preview Receipt
@@ -1189,6 +1186,17 @@ const CaseDetail: React.FC = () => {
             </div>
           </div>
           </fieldset>
+
+          {/* Same bottom-of-section Save as the Appointment form above. */}
+          {!locked && (
+            <Can permissions={['files:write', 'clients:write']} requireAll={false}>
+              <div className="flex justify-end border-t border-gray-100 pt-4">
+                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
+                  Save
+                </Button>
+              </div>
+            </Can>
+          )}
         </div>
       )}
 
