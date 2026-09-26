@@ -82,6 +82,78 @@ const APPOINTMENT_ONLY_STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'COMPLETED
 export const getStageOrder = (clientServiceType?: string): CaseStageName[] =>
   clientServiceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
 
+// Stages a case is still actively being worked in. Family-group propagation stops here on
+// purpose: a COMPLETED or CANCELLED case is a closed book and must never be retro-flipped
+// by something that happens to a sibling afterwards.
+const ACTIVE_STAGES: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED'];
+
+/**
+ * The family-booking rule, in one place.
+ *
+ * A family applies as a unit: one member pays the advance for everybody (or we waive it
+ * for the family), and we only ever create ONE WhatsApp group for the whole family however
+ * many members it has. So recording either of those on one member's case has to apply to
+ * every other member of the same ClientGroup — otherwise the rest of the family sits there
+ * flagged as unpaid / missing-group forever, for money that was already taken and a group
+ * that already exists.
+ *
+ * Only the flags travel. The advance/charges/discount amounts stay on the paying member's
+ * case, because the money was only handed over once and belongs to that case's books.
+ *
+ * Un-marking propagates identically, so staff can correct a mistake from any member rather
+ * than having to remember which one they ticked first.
+ *
+ * `groupId` is null for a lone client — the common path — and then this costs nothing at
+ * all beyond the single cheap lookup the caller already did to read it.
+ */
+const propagateGroupFlags = async (
+  tx: Prisma.TransactionClient,
+  sourceCaseId: string,
+  groupId: string | null,
+  flags: Prisma.VisaCaseUpdateManyMutationInput,
+): Promise<void> => {
+  if (!groupId || Object.keys(flags).length === 0) return;
+  await tx.visaCase.updateMany({
+    where: {
+      id: { not: sourceCaseId },
+      client: { groupId },
+      stage: { in: ACTIVE_STAGES as any },
+    },
+    data: flags,
+  });
+};
+
+// What the family has already settled between them, read off their active cases in one
+// query: the advance (paid by whichever member handed the money over, or waived for all of
+// them) and the one shared WhatsApp group. The flags are unioned — any single member
+// carrying one means the family as a whole has it.
+const readGroupSettlement = async (
+  tx: Prisma.TransactionClient,
+  groupId: string,
+): Promise<{
+  advancePaid: boolean; advancePaidDate: Date | null;
+  advanceWaived: boolean; advanceWaiverReason: string | null;
+  whatsappGroupCreated: boolean;
+}> => {
+  const siblings = await tx.visaCase.findMany({
+    where: { client: { groupId }, stage: { in: ACTIVE_STAGES as any } },
+    select: {
+      advancePaid: true, advancePaidDate: true,
+      advanceWaived: true, advanceWaiverReason: true,
+      whatsappGroupCreated: true,
+    },
+  });
+  const payer  = siblings.find(c => c.advancePaid);
+  const waived = siblings.find(c => c.advanceWaived);
+  return {
+    advancePaid:          !!payer,
+    advancePaidDate:      payer?.advancePaidDate ?? null,
+    advanceWaived:        !!waived,
+    advanceWaiverReason:  waived?.advanceWaiverReason ?? null,
+    whatsappGroupCreated: siblings.some(c => c.whatsappGroupCreated),
+  };
+};
+
 // Permission required to perform a given stage transition (team-scoped separation of duties).
 // There is no Intake stage: a case enters the appointment queue as soon as the client's
 // information is filled in, and the appointment team hands it over to file processing.
@@ -233,27 +305,51 @@ export const createCase = async (
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
-  const advancePaid = (data.advance ?? 0) > 0;
+  const paidNow = (data.advance ?? 0) > 0;
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
-  return prisma.visaCase.create({
-    data: {
-      clientId,
-      appointmentStatus: 'WAITING',
-      destination, destinationOptions,
-      city, cityOptions,
-      visaType:    data.visaType,
-      ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
-      eVisaType:   data.eVisaType,
-      priority: data.priority ?? 'MEDIUM',
-      advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
-      charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
-      discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
-      advancePaid,
-      advancePaidDate: advancePaid ? new Date() : undefined,
-    },
-    select: CASE_SELECT,
+  return prisma.$transaction(async (tx) => {
+    // One cheap indexed lookup to find out whether this client belongs to a family group.
+    // For a lone client groupId is null and nothing below runs — the common path pays for
+    // this single read and no more.
+    const client = await tx.client.findUnique({ where: { id: clientId }, select: { groupId: true } });
+    const groupId = client?.groupId ?? null;
+    // A case opened for someone whose family already settled the advance (or already has
+    // the shared WhatsApp group) starts out settled — see propagateGroupFlags.
+    const family = groupId ? await readGroupSettlement(tx, groupId) : null;
+    const advancePaid = paidNow || (family?.advancePaid ?? false);
+
+    const created = await tx.visaCase.create({
+      data: {
+        clientId,
+        appointmentStatus: 'WAITING',
+        destination, destinationOptions,
+        city, cityOptions,
+        visaType:    data.visaType,
+        ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
+        eVisaType:   data.eVisaType,
+        priority: data.priority ?? 'MEDIUM',
+        advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
+        charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
+        discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
+        advancePaid,
+        advancePaidDate: paidNow ? new Date() : (family?.advancePaidDate ?? undefined),
+        advanceWaived:       family?.advanceWaived ?? false,
+        advanceWaiverReason: family?.advanceWaived ? family.advanceWaiverReason : undefined,
+        whatsappGroupCreated: family?.whatsappGroupCreated ?? false,
+      },
+      select: CASE_SELECT,
+    });
+
+    // The other direction: this member handing over the advance settles it for the family.
+    if (paidNow && family && !family.advancePaid) {
+      await propagateGroupFlags(tx, created.id, groupId, {
+        advancePaid: true,
+        advancePaidDate: created.advancePaidDate,
+      });
+    }
+    return created;
   });
 };
 

@@ -313,11 +313,23 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
-                    <td
-                      className={`px-2 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
-                      title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
-                    >
-                      {c.client?.clientRef}
+                    <td className="px-2 py-3 text-xs font-bold">
+                      <div className="flex items-center gap-1">
+                        {/* Red ref = money still outstanding, the signal the desk chases on. */}
+                        <span
+                          className={isAdvanceSettled(c) ? 'text-indigo-600' : 'text-red-600'}
+                          title={isAdvanceSettled(c) ? undefined : 'Advance outstanding — not paid and not waived'}
+                        >
+                          {c.client?.clientRef}
+                        </span>
+                        {/* The WhatsApp-group warning used to own this cell's colour; it keeps
+                            its own signal (and its wording) as an icon beside the ref instead. */}
+                        {!c.whatsappGroupCreated && (
+                          <span title="WhatsApp group not created for this appointment" className="inline-flex text-gray-400">
+                            <MessageCircleOff className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
