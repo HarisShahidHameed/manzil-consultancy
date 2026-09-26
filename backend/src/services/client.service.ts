@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
-import { generateClientRef, backfillGroupMembers, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
+import { generateClientRef, backfillGroupMembers, nextMemberIndex, groupRefForMember, ungroupedRef } from '../utils/clientRef';
 import { appendHrComment, formatHrCommentEntry } from '../utils/hrComments';
 
 export { generateClientRef };
@@ -124,9 +124,12 @@ export const createClient = async (data: {
   if (!clientRef && data.groupId) {
     const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
     if (group) {
-      const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
+      // Backfill first so any legacy-format members are upgraded before this one is
+      // stamped; its return value is deliberately ignored — a brand-new client has no
+      // number to preserve, so groupRefForMember mints one for it.
+      await backfillGroupMembers(data.groupId, group.groupRef);
       const memberIndex = await nextMemberIndex(data.groupId);
-      clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
+      clientRef = await groupRefForMember(null, group.groupRef, memberIndex);
     }
   }
   if (!clientRef) clientRef = await generateClientRef();
@@ -333,20 +336,22 @@ export const updateClient = async (
   if (data.passportExpiry) d.passportExpiry = new Date(data.passportExpiry);
 
   // groupId changing re-derives the clientRef, same rules as group.service's
-  // addMembers/removeMember — joining (or switching to) a group formats it as
-  // CL-number-GroupName-position; clearing it reverts to a fresh plain CL-###.
+  // addMembers/removeMember — a client always KEEPS its own number and only gains or loses
+  // the -G<n>-<position> suffix (CL-945 <-> CL-945-G1-02). Reassigning the number here is
+  // what stranded numbers and made the sequence look like it skipped, so both branches go
+  // through the number-preserving helpers rather than minting a fresh ref.
   // Re-saving the same groupId is a no-op here so repeat saves don't inflate positions.
   if (Object.prototype.hasOwnProperty.call(data, 'groupId')) {
-    const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true } });
+    const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true, clientRef: true } });
     if (data.groupId && data.groupId !== current?.groupId) {
       const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
       if (group) {
-        const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
+        await backfillGroupMembers(data.groupId, group.groupRef);
         const memberIndex = await nextMemberIndex(data.groupId);
-        d.clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
+        d.clientRef = await groupRefForMember(current?.clientRef ?? null, group.groupRef, memberIndex);
       }
     } else if (data.groupId === null && current?.groupId) {
-      d.clientRef = await generateClientRef();
+      d.clientRef = await ungroupedRef(current.clientRef);
     }
   }
 
