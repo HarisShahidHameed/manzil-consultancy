@@ -266,6 +266,30 @@ export const bulkImportClients = async (
   return results;
 };
 
+// The list's filters, expressed as raw SQL for the ordered-id query below. Must stay in
+// step with the Prisma `where` listClients builds for the count — same predicates, said
+// twice, because only one of the two forms can express the ORDER BY we need.
+const buildListFilterSql = (search?: string, stage?: string, destination?: string) => {
+  const conditions: Prisma.Sql[] = [];
+
+  if (search) {
+    const like = `%${search}%`;
+    conditions.push(Prisma.sql`(
+      c."firstName" ILIKE ${like} OR c."lastName" ILIKE ${like} OR c."clientRef" ILIKE ${like}
+      OR c."passportNumber" ILIKE ${like} OR c."phone" ILIKE ${like} OR c."email" ILIKE ${like}
+    )`);
+  }
+
+  if (stage || destination) {
+    const caseConditions: Prisma.Sql[] = [Prisma.sql`vc."clientId" = c."id"`];
+    if (stage)       caseConditions.push(Prisma.sql`vc."stage" = ${stage}::"CaseStage"`);
+    if (destination) caseConditions.push(Prisma.sql`vc."destination" ILIKE ${`%${destination}%`}`);
+    conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "visa_cases" vc WHERE ${Prisma.join(caseConditions, ' AND ')})`);
+  }
+
+  return conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
+};
+
 export const listClients = async (page = 1, limit = 20, search?: string, stage?: string, destination?: string) => {
   const skip = (page - 1) * limit;
   const where: Prisma.ClientWhereInput = {};
@@ -290,10 +314,37 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
     };
   }
 
-  const [clients, total] = await Promise.all([
-    prisma.client.findMany({ where, skip, take: limit, select: CLIENT_SELECT, orderBy: { receivedDate: 'desc' } }),
+  // Ordering has to happen in SQL. Within one receivedDate the rows must come back in
+  // ascending *numeric* client id, and Prisma can only order by a stored column — a
+  // plain `clientRef: 'asc'` is lexicographic, which files CL-1000 above CL-953 (and was
+  // the reported "CL-953 listed above CL-951" bug). Since the sort has to be applied
+  // before LIMIT/OFFSET, the page of ids is selected raw and re-hydrated below.
+  // Refs with no CL-### number (hand-entered or imported oddities) sort last rather than
+  // first. The trailing clientRef tiebreak is only a determinism guard — group members each
+  // keep their OWN number now, so they're already separated by the numeric sort above and
+  // no longer collide on a shared one (see group.service's orderMembers).
+  const [orderedIds, total] = await Promise.all([
+    prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT c."id"
+      FROM "clients" c
+      ${buildListFilterSql(search, stage, destination)}
+      ORDER BY c."receivedDate" DESC,
+               COALESCE(CAST(SUBSTRING(c."clientRef" FROM '^CL-(\\d+)') AS INTEGER), 2147483647) ASC,
+               c."clientRef" ASC
+      LIMIT ${limit} OFFSET ${skip}
+    `),
     prisma.client.count({ where }),
   ]);
+
+  // `IN (...)` carries no ordering of its own, so the raw query's order is restored here.
+  const ids = orderedIds.map(r => r.id);
+  const rows = ids.length
+    ? await prisma.client.findMany({ where: { id: { in: ids } }, select: CLIENT_SELECT })
+    : [];
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const clients = ids
+    .map(id => byId.get(id))
+    .filter((c): c is NonNullable<typeof c> => !!c);
 
   return { clients: clients.map(decorateClient), total, page, limit, totalPages: Math.ceil(total / limit) };
 };
