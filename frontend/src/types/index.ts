@@ -391,3 +391,39 @@ export interface AuditLog {
   createdAt: string;
   user?: Pick<User, 'email' | 'firstName' | 'lastName'>;
 }
+
+// Today/Yesterday/Month-to-date counts behind one appointment funnel metric card.
+// Buckets are calendar-based in agency local time (Month = 1st of the current month → now).
+export interface MetricBreakdown {
+  today: number;
+  yesterday: number;
+  month: number;
+}
+
+// The half-open [from, to) instants the server used for each bucket. Returned rather than
+// recomputed in the browser so a drill-down lands on exactly the rows the count came from —
+// the browser's timezone is not necessarily the agency's.
+export interface MetricRange {
+  from: string;
+  to: string;
+}
+
+// One metric card: its three counts plus the exact `/api/cases` query params that reproduce
+// its subset. `filters` is supplied by the server (including `dateField`) so the drill-down
+// modal can never drift out of step with the number printed on the card — merge it with a
+// bucket's MetricRange and send it straight to the case listing.
+export interface MetricCard extends MetricBreakdown {
+  filters: Record<string, string>;
+}
+
+// The three cards shown above the Appointments and File Processing listings.
+export interface AppointmentMetrics {
+  ranges: { today: MetricRange; yesterday: MetricRange; month: MetricRange };
+  appointmentDateAllotted: MetricCard;
+  movedToFileProcessing: MetricCard;
+  appointmentOnly: MetricCard;
+}
+
+// How a case's advance stands. Three mutually exclusive states, not a paid/unpaid boolean:
+// a refusal / free-service case never owed an advance, so it is neither paid nor outstanding.
+export type AdvanceState = 'paid' | 'unpaid' | 'waived';
