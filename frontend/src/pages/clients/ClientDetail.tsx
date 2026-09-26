@@ -26,12 +26,16 @@ const STAGE_COLORS: Record<CaseStage, string> = {
   CANCELLED:       'bg-red-100 text-red-700',
 };
 
-const PRI_COLORS: Record<Priority, string> = {
-  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
-};
-// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
-const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
+// Priority is no longer a labelled field of its own: nearly every case is Normal, so only
+// the exception earns a pill, in the same treatment as the Expiring / Missing info tags.
+const UrgentBadge: React.FC = () => (
+  <span
+    title="Urgent case"
+    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+  >
+    <AlertTriangle className="w-2.5 h-2.5" /> Urgent
+  </span>
+);
 
 const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
@@ -306,9 +310,12 @@ const ClientDetail: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {client.visaCases.map((vc: VisaCase) => (
               <div key={vc.id} className="border border-gray-200 rounded-lg p-4 space-y-2 hover:border-indigo-300 transition-colors">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-900">{destinationLabel(vc)}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STAGE_COLORS[vc.stage]}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-semibold text-gray-900 truncate">{destinationLabel(vc)}</span>
+                    {vc.priority === 'URGENT' && <UrgentBadge />}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STAGE_COLORS[vc.stage]}`}>
                     {vc.stage.replace('_', ' ')}
                   </span>
                 </div>
@@ -316,10 +323,7 @@ const ClientDetail: React.FC = () => {
                 {vc.appointmentDate && (
                   <p className="text-xs text-gray-500">Appt: {fmtDate(vc.appointmentDate)}</p>
                 )}
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[vc.priority]}`}>
-                    {PRI_LABELS[vc.priority]}
-                  </span>
+                <div className="flex items-center justify-end">
                   <Button size="sm" variant="outline" leftIcon={<Eye className="w-3 h-3" />} onClick={() => navigate(`/cases/${vc.id}`)}>
                     Manage
                   </Button>

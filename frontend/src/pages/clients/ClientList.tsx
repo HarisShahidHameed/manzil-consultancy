@@ -38,13 +38,6 @@ const StageBadge: React.FC<{ stage: CaseStage }> = ({ stage }) => (
   </span>
 );
 
-// Same plain-text treatment as the Appointments listing — no colored pill for these two.
-const PRI_COLORS: Record<string, string> = {
-  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
-  HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
-};
-// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
-const PRI_LABELS: Record<string, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
 const APPT_STATUS_COLORS: Record<string, string> = {
   WAITING:    'text-gray-700',
   ASSIGNED:   'bg-blue-100 text-blue-700',
@@ -166,7 +159,6 @@ const ClientList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Destination</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">City</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
                   <th className="text-left px-4 py-3 font-medium text-gray-500">First Name</th>
@@ -216,13 +208,6 @@ const ClientList: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {c.visaCases[0] ? (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.visaCases[0].priority]}`}>
-                          {PRI_LABELS[c.visaCases[0].priority]}
-                        </span>
-                      ) : <span className="text-xs text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
                       {c.visaCases[0]?.stage === 'APPOINTMENT' && c.visaCases[0].appointmentStatus ? (
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${APPT_STATUS_COLORS[c.visaCases[0].appointmentStatus]}`}>
                           {c.visaCases[0].appointmentStatus.charAt(0) + c.visaCases[0].appointmentStatus.slice(1).toLowerCase()}
@@ -236,6 +221,17 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <p className="font-medium text-gray-900">{c.lastName ?? <span className="text-gray-400 italic">no last name</span>}</p>
+                        {/* Replaces the old Priority column: over 98% of cases are Normal, so only
+                            the exception is worth pixels — shown inline with the name, in the same
+                            pill treatment as Expiring / Missing info. Normal clients show nothing. */}
+                        {c.visaCases.some(vc => vc.priority === 'URGENT') && (
+                          <span
+                            title="Urgent case"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Urgent
+                          </span>
+                        )}
                         {(isExpiringSoon(c.passportExpiry) || c.visaCases.some(vc => isExpiringSoon(vc.ukVisaExpiry))) && (
                           <span
                             title={[

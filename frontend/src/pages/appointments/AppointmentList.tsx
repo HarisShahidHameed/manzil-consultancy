@@ -368,6 +368,17 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <p className="font-medium text-gray-900">{c.client?.lastName}</p>
+                        {/* Replaces the old Priority column: ~98% of cases are Normal, so only the
+                            exception is worth a pixel. Sits first in the badge cluster beside the
+                            name — the row's most urgent signal reads before the passport/info ones. */}
+                        {c.priority === 'URGENT' && (
+                          <span
+                            title="Urgent priority"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Urgent
+                          </span>
+                        )}
                         {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
                           <span
                             title={[
