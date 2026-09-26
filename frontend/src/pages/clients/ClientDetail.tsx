@@ -158,7 +158,7 @@ const ClientDetail: React.FC = () => {
   if (!client) return (
     <div className="text-center py-16">
       <p className="text-gray-500">Client not found.</p>
-      <Button variant="outline" className="mt-4" onClick={() => navigate('/clients')}>Back to Clients</Button>
+      <Button variant="outline" className="mt-4" onClick={() => navigate('/clients', { replace: true })}>Back to Clients</Button>
     </div>
   );
 
@@ -168,7 +168,9 @@ const ClientDetail: React.FC = () => {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/clients')} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+          {/* replace, not push — a Back affordance that pushes deepens the history stack, so
+              a later navigate(-1) elsewhere in the app skips past where the user expects. */}
+          <button onClick={() => navigate('/clients', { replace: true })} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
           <div>

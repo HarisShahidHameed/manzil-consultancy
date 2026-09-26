@@ -286,7 +286,10 @@ const ClientForm: React.FC = () => {
         if (targetCase) qc.invalidateQueries({ queryKey: ['case', targetCase.id] });
         qc.invalidateQueries({ queryKey: ['cases'] });
       }
-      navigate(`/clients/${resp.data!.id}`, docWarning ? { state: { docWarning } } : undefined);
+      // replace, not push: the form has been submitted, so leaving it on the history stack
+      // makes Back from the client page reopen an already-saved edit form — which is what
+      // made "Back" feel like it jumped several steps.
+      navigate(`/clients/${resp.data!.id}`, { replace: true, state: docWarning ? { docWarning } : undefined });
     },
     onError: (e: AxiosError<{ message: string; errors?: Record<string, string[]> }>) => {
       const resp = e.response?.data;
@@ -308,12 +311,16 @@ const ClientForm: React.FC = () => {
     </div>
   );
 
+  // Every exit from this form (back arrow, Cancel, post-save redirect) replaces rather
+  // than pushes. A form is a detour, not a destination: pushing it left stale entries on
+  // the stack so a later navigate(-1) — e.g. from CaseDetail — surfaced an already-saved
+  // form instead of the page the user actually came from.
   const backTo = isEdit ? `/clients/${id}` : '/clients';
 
   return (
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate(backTo)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <button onClick={() => navigate(backTo, { replace: true })} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
         <div>
@@ -597,7 +604,7 @@ const ClientForm: React.FC = () => {
       </fieldset>
 
       <div className="flex justify-end gap-3 pb-6">
-        <Button variant="outline" onClick={() => navigate(backTo)}>Cancel</Button>
+        <Button variant="outline" onClick={() => navigate(backTo, { replace: true })}>Cancel</Button>
         {!isLocked && (
           <Button
             leftIcon={<Save className="w-4 h-4" />}

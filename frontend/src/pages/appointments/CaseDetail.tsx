@@ -31,6 +31,13 @@ const STAGE_COLORS: Record<CaseStage, string> = {
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700', INVOICED: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-700',
 };
+// Where each stage's queue lives. Back falls through to this when there is no in-app
+// history entry to pop — a deep link, a fresh tab, or an entry pushed by something
+// outside the app — so Back never bounces the user out of the dashboard.
+const STAGE_QUEUE_PATH: Record<CaseStage, string> = {
+  APPOINTMENT: '/appointments', FILE_PROCESSING: '/file-processing',
+  INVOICED: '/invoices', COMPLETED: '/completed', CANCELLED: '/appointments',
+};
 
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
   passportNumber: 'Passport Number',
@@ -143,6 +150,7 @@ const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
 const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -410,6 +418,22 @@ const CaseDetail: React.FC = () => {
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to create invoice'),
   });
 
+  // Back has to land on the page the user actually came from, exactly one step. Two things
+  // break a bare navigate(-1): callers elsewhere push a brand-new entry instead of popping
+  // (ClientForm's Cancel/back and its post-save redirect both do), so the entry behind this
+  // page isn't always the one the user sees as "previous"; and a deep link or fresh tab has
+  // no in-app entry to pop at all. So: honour an explicit `from` when a caller passes one,
+  // otherwise pop exactly one entry but only when react-router says one exists (it keeps its
+  // position in the stack on window.history.state.idx), and otherwise fall back to this
+  // case's own queue rather than throwing the user out of the app.
+  const backTo = (location.state as { from?: string } | null)?.from;
+  const goBack = () => {
+    if (backTo) { navigate(backTo, { replace: true }); return; }
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === 'number' && idx > 0) { navigate(-1); return; }
+    navigate(vc ? STAGE_QUEUE_PATH[vc.stage] : '/appointments', { replace: true });
+  };
+
   const handleDownload = async (fn: () => Promise<void>) => {
     try { setDownloading(true); await fn(); } catch { setError('Failed to download PDF'); }
     finally { setDownloading(false); }
@@ -434,7 +458,7 @@ const CaseDetail: React.FC = () => {
   if (!vc) return (
     <div className="text-center py-16">
       <p className="text-gray-500">Case not found.</p>
-      <Button variant="outline" className="mt-4" onClick={() => navigate(-1)}>Back</Button>
+      <Button variant="outline" className="mt-4" onClick={goBack}>Back</Button>
     </div>
   );
 
@@ -519,7 +543,7 @@ const CaseDetail: React.FC = () => {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <button onClick={goBack} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
         <div className="flex-1">
