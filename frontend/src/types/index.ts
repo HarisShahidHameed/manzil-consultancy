@@ -206,6 +206,10 @@ export interface VisaCase {
   discount?: number | string;
   advancePaid?: boolean;
   advancePaidDate?: string;
+  // Staff-set override for refusal / free-service cases where no advance is collected.
+  // Treated as "settled" everywhere advancePaid is, so the case stops reading as unpaid.
+  advanceWaived?: boolean;
+  advanceWaiverReason?: string | null;
   onHold?: boolean;
   onHoldReason?: string;
   appointmentStatus?: AppointmentStatus | null;

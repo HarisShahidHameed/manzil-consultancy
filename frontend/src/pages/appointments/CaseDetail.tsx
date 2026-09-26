@@ -101,7 +101,11 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['TLS Account', vc.tlsAccount ?? '—'],
   ['FRA No.', vc.fraNo ?? '—'],
   ['Charges', fmtMoney(vc.charges)],
-  ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
+  // A waiver means nothing was ever collected, so the row must not print an amount that
+  // reads as a payment — it says exempt instead.
+  ['Advance', vc.advanceWaived
+    ? 'Waived (refusal / free service)'
+    : `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
 const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
@@ -168,6 +172,9 @@ const CaseDetail: React.FC = () => {
     docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency', docSelfEmployment: 'client',
   });
   const [hrCommentNote, setHrCommentNote] = useState('');
+  // null means "not edited here" — fall through to whatever the server has. Kept out of
+  // editFields on purpose: the waiver is patched immediately, it isn't part of a Save.
+  const [waiverReason, setWaiverReason] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['case', id],
@@ -528,8 +535,9 @@ const CaseDetail: React.FC = () => {
 
   // Advance payment is not a hard gate — it's a non-blocking warning that follows
   // the case through every stage until it's paid (auto-marked paid once a non-zero
-  // advance amount is on file).
-  const advancePending = !vc.advancePaid && vc.stage !== 'CANCELLED';
+  // advance amount is on file). An explicitly waived advance (refusal / free service) is
+  // settled, not outstanding, so it stops nagging too.
+  const advancePending = !vc.advancePaid && !vc.advanceWaived && vc.stage !== 'CANCELLED';
 
   const togglePause = () => {
     if (vc.onHold) {
@@ -840,27 +848,49 @@ const CaseDetail: React.FC = () => {
               <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.advance as string ?? ''} onChange={setEF('advance')} />
             </div>
           </div>
+          {/* The balance and the invoice preview both subtract the advance as money already
+              in hand, and both deliberately still mirror the backend's invoice math — so a
+              waived case that kept a non-zero advance would understate what's owed. We flag
+              it rather than quietly dropping the figure out of the arithmetic. */}
+          {vc.advanceWaived && num(editFields.advance ?? vc.advance) > 0 && (
+            <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              This advance is waived but still has an amount on it. Nothing was collected, so set it
+              to £0 — otherwise the balance and the invoice both credit the client for money they
+              never paid.
+            </p>
+          )}
         </div>
 
-        {/* Advance paid status + receipt */}
+        {/* Advance paid status + receipt. The paid toggle is inert while the advance is
+            waived — lift the waiver first if an advance is being collected after all. */}
         <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
               <button
                 type="button"
-                disabled={patchMut.isPending}
+                disabled={patchMut.isPending || !!vc.advanceWaived}
+                title={vc.advanceWaived ? 'Advance is waived - remove the waiver to record a payment' : undefined}
                 onClick={() => patchMut.mutate({ patch: { advancePaid: !vc.advancePaid }, msg: vc.advancePaid ? 'Advance marked unpaid' : 'Advance marked paid' })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advancePaid ? 'bg-green-500' : 'bg-gray-300'}`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${vc.advancePaid && !vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid ? 'translate-x-6' : 'translate-x-1'}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid && !vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </Can>
             <div>
               <p className="text-sm font-medium text-gray-800">
-                Advance Payment: <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
+                Advance Payment:{' '}
+                {/* A waiver outranks paid/unpaid — the whole point is that the case stops
+                    reading as outstanding when no advance was ever due. */}
+                {vc.advanceWaived ? (
+                  <span className="text-green-600">Waived</span>
+                ) : (
+                  <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
+                )}
               </p>
               <p className="text-xs text-gray-400">
-                {fmtMoney(vc.advance)}{vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}
+                {vc.advanceWaived
+                  ? `No advance required${vc.advanceWaiverReason ? ` — ${vc.advanceWaiverReason}` : ''}`
+                  : `${fmtMoney(vc.advance)}${vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}`}
               </p>
             </div>
           </div>
@@ -869,7 +899,7 @@ const CaseDetail: React.FC = () => {
             size="sm"
             leftIcon={<Download className="w-3.5 h-3.5" />}
             loading={downloading}
-            disabled={!vc.advancePaid}
+            disabled={!vc.advancePaid || !!vc.advanceWaived}
             onClick={() => handleDownload(() => downloadAdvanceReceipt(vc.id, vc.client!.clientRef))}
           >
             Advance Receipt
@@ -878,6 +908,70 @@ const CaseDetail: React.FC = () => {
         <p className="text-xs text-gray-400">
           Automatically marked paid once a non-zero advance amount is saved. Use the toggle only to correct it manually.
         </p>
+
+        {/* Advance waiver — prior-refusal and free-service cases never collect an advance, so
+            they need an explicit exemption. Without one they sit on "Unpaid" forever and keep
+            raising the pending-advance alert on a case where nothing is actually owed. */}
+        <div className="border border-gray-100 bg-gray-50/60 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+              <button
+                type="button"
+                disabled={patchMut.isPending}
+                onClick={() => {
+                  if (vc.advanceWaived) {
+                    setWaiverReason(null);
+                    patchMut.mutate({ patch: { advanceWaived: false }, msg: 'Advance waiver removed' });
+                    return;
+                  }
+                  patchMut.mutate({
+                    patch: { advanceWaived: true, advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null },
+                    msg: 'Advance waived',
+                  });
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </Can>
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                Advance Waived (refusal / free service):{' '}
+                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>{vc.advanceWaived ? 'Yes' : 'No'}</span>
+              </p>
+              <p className="text-xs text-gray-400">
+                Marks the advance as exempt rather than outstanding. No money is recorded as received.
+              </p>
+            </div>
+          </div>
+          {/* The reason only matters once the waiver is on, and it patches on its own so staff
+              can correct the wording without flipping the waiver off and back on. */}
+          {vc.advanceWaived && (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">Waiver Reason</label>
+                <input
+                  className={`${inputCls} mt-1`}
+                  placeholder="e.g. Previous refusal - free re-application"
+                  value={waiverReason ?? vc.advanceWaiverReason ?? ''}
+                  onChange={e => setWaiverReason(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={patchMut.isPending}
+                disabled={waiverReason === null || waiverReason.trim() === (vc.advanceWaiverReason ?? '')}
+                onClick={() => patchMut.mutate({
+                  patch: { advanceWaiverReason: (waiverReason ?? '').trim() || null },
+                  msg: 'Waiver reason saved',
+                })}
+              >
+                Save Reason
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* WhatsApp group status — flagged on the client ref in listings until this is checked on */}
         <div className="flex items-center gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">

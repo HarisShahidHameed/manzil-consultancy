@@ -241,18 +241,22 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                 {tabs.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             )}
+            {/* Waived is its own option, not a flavour of Paid or Unpaid — the desk chases
+                Unpaid, and folding waived cases in there would put refusal/free-service
+                clients back on the chase list. */}
             <select
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              value={advancePaid}
-              onChange={e => { setAdvancePaid(e.target.value as '' | 'true' | 'false'); setPage(1); }}
+              value={advanceState}
+              onChange={e => { setAdvanceState(e.target.value as '' | AdvanceState); setPage(1); }}
             >
-              <option value="">Any</option>
-              <option value="true">Paid</option>
-              <option value="false">Unpaid</option>
+              <option value="">Any advance</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="waived">Waived</option>
             </select>
-            {(search || destination || city || fileAssignedToId || advancePaid || tab !== 'ALL') && (
+            {hasActiveFilters && (
               <button
-                onClick={() => { setSearch(''); setDestination(''); setCity(''); setFileAssignedToId(''); setAdvancePaid(''); setTab('ALL'); setPage(1); }}
+                onClick={clearFilters}
                 className="text-xs text-indigo-600 hover:underline"
               >
                 Clear filters
@@ -336,6 +340,15 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         <span className="text-xs text-gray-400">—</span>
                       ) : c.advancePaid ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                      ) : c.advanceWaived ? (
+                        // Staff-set waiver (refusal / free service). Settled, so it must not
+                        // read as Pending while the Client Ref beside it reads as settled.
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600"
+                          title={c.advanceWaiverReason ?? 'Advance waived'}
+                        >
+                          Waived
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
                           <AlertTriangle className="w-2.5 h-2.5" /> Pending

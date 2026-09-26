@@ -14,6 +14,14 @@ const caseQuerySchema = z.object({
   appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
   destination: z.string().optional(),
   city:        z.string().optional(),
+  // Advance settlement is three states, not a boolean: a waived advance (prior refusal /
+  // free service) is settled without money, so it is neither Paid nor Unpaid and needs to
+  // be askable in its own right. See ADVANCE_STATE_WHERE in visaCase.service.
+  advanceState: z.enum(['paid', 'unpaid', 'waived']).optional(),
+  // Deprecated: the pre-waiver boolean, kept so the documented API surface and any
+  // third-party integration built against it keep working. The service folds it onto the
+  // same predicates as advanceState (true → paid, false → unpaid), and advanceState wins
+  // if both arrive.
   advancePaid: z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
   onHold:      z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
   serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).optional(),

@@ -28,7 +28,8 @@ const CASE_SELECT = {
   id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
-  advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
+  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true,
+  onHold: true, onHoldReason: true,
   appointmentStatus: true,
   appointmentDate: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
   fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
@@ -62,6 +63,16 @@ const CASE_SELECT = {
 
 export type CaseStageName = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
 
+/**
+ * "Has this case's advance been dealt with?" — the only question anything judging a case
+ * unpaid should ask. `advancePaid` means the money actually arrived; `advanceWaived` means
+ * staff explicitly signed off that none is due (prior refusal, or a free service we chose
+ * to give). Both settle the case, so a waived case never reads as "unpaid".
+ */
+export const isAdvanceSettled = (c: { advancePaid: boolean; advanceWaived: boolean }): boolean =>
+  c.advancePaid || c.advanceWaived;
+
+
 export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
 // APPOINTMENT_ONLY clients just want the appointment booked — their cases skip File
@@ -93,7 +104,8 @@ export const requiredPermsForTransition = (from: string, to: string): string[] =
  * dues-cleared gate before Completed. Throws typed errors. Advance payment is
  * not a hard gate — it's auto-derived from the advance amount (see
  * updateCase/createCase) and surfaced as a non-blocking "pending" warning in
- * the UI when unpaid.
+ * the UI when unpaid. Nothing here blocks on it, so a waived case (refusal /
+ * free service, see isAdvanceSettled) moves through the workflow untouched.
  */
 export const assertTransitionAllowed = (
   current: CaseStageName,
@@ -293,12 +305,17 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
   }
+  // The waiver as it will stand after this write — either what the caller is setting now,
+  // or what the case already carried.
+  const waived = has('advanceWaived') ? d.advanceWaived === true : (before?.advanceWaived ?? false);
   // Whenever the advance amount itself is set (and paid status isn't explicitly
   // being set in the same call), derive advancePaid from it — a filled advance
-  // is paid, so the manual toggle doesn't need to be revisited later.
-  if (Object.prototype.hasOwnProperty.call(data, 'advance') && !Object.prototype.hasOwnProperty.call(data, 'advancePaid')) {
+  // is paid, so the manual toggle doesn't need to be revisited later. A waived case
+  // (refusal / free service) is settled without money, so a zero advance must never
+  // drag it back to "unpaid" here — only a real payment can move the flag.
+  if (has('advance') && !has('advancePaid')) {
     const advanceNum = data.advance !== undefined && data.advance !== null && data.advance !== '' ? Number(data.advance) : 0;
-    d.advancePaid = advanceNum > 0;
+    if (advanceNum > 0 || !waived) d.advancePaid = advanceNum > 0;
   }
   // Auto-stamp the advance payment date when it is first marked paid
   if (d.advancePaid === true && !d.advancePaidDate) d.advancePaidDate = new Date();

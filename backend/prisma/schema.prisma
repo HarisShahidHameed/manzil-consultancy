@@ -278,6 +278,15 @@ model VisaCase {
   discount                Decimal?       @db.Decimal(10, 2)
   advancePaid             Boolean        @default(false)
   advancePaidDate         DateTime?
+  // The explicit staff override for refusal / free-service cases: we knowingly take no
+  // advance, so the case is settled without money ever changing hands. `advancePaid` stays
+  // the literal "money received" flag — everywhere a case is judged unpaid the question is
+  // `advancePaid || advanceWaived` (see isAdvanceSettled in visaCase.service.ts), so a
+  // waived case must never read as "unpaid" in a listing, a filter or on a receipt.
+  advanceWaived           Boolean        @default(false)
+  // Why the advance was waived, e.g. "Prior refusal" / "Free service" — free text, and
+  // cleared automatically whenever the waiver itself is turned back off.
+  advanceWaiverReason     String?
   onHold                  Boolean        @default(false)
   onHoldReason            String?
   appointmentStatus       AppointmentStatus? @default(WAITING)
