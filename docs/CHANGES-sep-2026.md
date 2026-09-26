@@ -28,8 +28,8 @@ git diff crm-sep-2026-baseline HEAD       # everything this round changed
 |---|---|---|---|
 | 1 | `sep2026/01-numbering` | 8 Sep #2 — client/group ID numbering | Yes |
 | 2 | `sep2026/02-sorting` | 8 Sep #1 — numeric sort by client ID | Yes |
-| 3 | `sep2026/03-duplicate-passport` | 8 Sep #3 — duplicate passport + new case | Yes |
-| 4 | `sep2026/04-priority-badge` | 8 Sep #4 — Priority column → Urgent badge | Yes |
+| 3 | `sep2026/03-duplicate-passport` | 8 Sep #3 — duplicate passport + new case | Yes¹ |
+| 4 | `sep2026/04-priority-badge` | 8 Sep #4 — Priority column → Urgent badge | Yes¹ |
 | 5 | `sep2026/05-payment-save-fix` | 17 Sep #3 — payment figures wiped on save | Yes¹ |
 | 6 | `sep2026/06-save-button-bottom` | 17 Sep #4 — Save button placement | Yes |
 | 7 | `sep2026/07-back-navigation` | 8 Sep #6 — Back jumps multiple steps | Yes¹ |
@@ -38,10 +38,18 @@ git diff crm-sep-2026-baseline HEAD       # everything this round changed
 | 10 | `sep2026/10-funnel-metrics` | 8 Sep #5 — metric cards + File Processing | Revert **last** |
 | 11 | `sep2026/11-stage-labels` | cleanup — one shared `STAGE_LABELS` | Yes |
 
-¹ Commits 5 and 7 share a single import line in `CaseDetail.tsx` (`useRef` for 5,
-`useLocation` for 7). Reverting one of them will leave the other's import in place, which
-fails the `noUnusedLocals` typecheck. Delete the stray import by hand — a one-line fix the
-compiler points straight at.
+¹ Four commits share an import line with a sibling, because a single `import` statement
+can only live in one commit. Reverting one of a pair leaves the other's import behind, and
+`noUnusedLocals` then fails the typecheck. It is always a one-line deletion and the compiler
+names it exactly — no detective work:
+
+| Revert this | Delete by hand |
+|---|---|
+| 3 or 4 | the unused name in `ClientDetail.tsx`'s lucide-react import (`AlertTriangle` after reverting 4, `Plus` after reverting 3) |
+| 5 or 7 | the unused `useRef` (after reverting 5) or `useLocation` (after reverting 7) in `CaseDetail.tsx` |
+
+Verified, not assumed: reverting commit 4 was tested and applies with **zero conflicts**,
+leaving exactly one `TS6133: 'AlertTriangle' is declared but its value is never read.`
 
 ## Where a revert needs a hand
 
