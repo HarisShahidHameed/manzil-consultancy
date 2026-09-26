@@ -13,15 +13,13 @@ import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
 import ImportClientsModal from './ImportClientsModal';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
 
+// Built off the shared STAGE_LABELS map (constants/options) so the filter can never list a
+// stage the rest of the UI spells differently — or miss one that gets added.
 const STAGE_OPTIONS: { value: CaseStage | ''; label: string }[] = [
   { value: '', label: 'All Stages' },
-  { value: 'APPOINTMENT', label: 'Appointment' },
-  { value: 'FILE_PROCESSING', label: 'File Processing' },
-  { value: 'INVOICED', label: 'Invoiced' },
-  { value: 'COMPLETED', label: 'Completed' },
-  { value: 'CANCELLED', label: 'Cancelled' },
+  ...(Object.keys(STAGE_LABELS) as CaseStage[]).map(s => ({ value: s, label: STAGE_LABELS[s] })),
 ];
 
 const STAGE_COLORS: Record<CaseStage, string> = {

@@ -14,7 +14,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 // APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
@@ -22,10 +22,6 @@ const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 
 const APPOINTMENT_ONLY_STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'COMPLETED'];
 const getStageOrder = (serviceType?: string): CaseStage[] =>
   serviceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
-const STAGE_LABELS: Record<CaseStage, string> = {
-  APPOINTMENT: 'Appointment', FILE_PROCESSING: 'File Processing',
-  INVOICED: 'Invoiced', COMPLETED: 'Completed', CANCELLED: 'Cancelled',
-};
 const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT: 'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700', INVOICED: 'bg-purple-100 text-purple-700',
