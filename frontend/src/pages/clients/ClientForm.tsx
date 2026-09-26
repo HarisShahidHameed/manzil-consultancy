@@ -2,16 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save } from 'lucide-react';
-import { createClient, getClient, updateClient, appendHrComment } from '../../api/clients';
+import { AlertTriangle, ArrowLeft, FilePlus, Save } from 'lucide-react';
+import { createClient, getClient, updateClient, appendHrComment, checkPassport } from '../../api/clients';
 import { updateCase } from '../../api/cases';
 import { getGroups } from '../../api/groups';
 import { uploadClientDocuments } from '../../api/documents';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
+import { Modal } from '../../components/ui/Modal';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
+import type { NewCasePrefill } from './ClientDetail';
 import { PendingDocumentGallery, type PendingUploadProgress } from '../../components/clients/PendingDocumentGallery';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS, STAGE_LABELS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -129,6 +131,54 @@ const ClientForm: React.FC = () => {
 
   const isLocked = isEdit && !!client && client.visaCases.length > 0 &&
     client.visaCases.every(vc => vc.stage === 'COMPLETED');
+
+  // ── Duplicate passport detection ──────────────────────────────────────────────
+  // A warning, never a block: an existing client legitimately applies for more visas, so
+  // staff can always carry on and create a separate profile. The point is that they see
+  // the existing one first and get a one-click route to attaching a case to it instead.
+  //
+  // The raw field is debounced before it reaches the query key, so a typed-out passport
+  // costs one request rather than one per keystroke. Because the debounced value *is* part
+  // of the key, react-query caches per passport and a slow answer for an earlier value can
+  // never land on top of a newer one — `passportCheck` always belongs to the current key.
+  const [debouncedPassport, setDebouncedPassport] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPassport(form.passportNumber.trim()), 400);
+    return () => clearTimeout(t);
+  }, [form.passportNumber]);
+
+  const { data: passportCheck } = useQuery({
+    queryKey: ['checkPassport', debouncedPassport, id ?? null],
+    // In edit mode the client being edited is excluded, so it never flags itself.
+    queryFn:  () => checkPassport(debouncedPassport, id),
+    enabled:  debouncedPassport.length > 0,
+    staleTime: 60_000,
+  });
+  const duplicate = passportCheck?.data?.exists ? passportCheck.data.client : null;
+
+  // Passport numbers the user has already been warned about and chose to continue past.
+  // Without this the modal would spring back open on the next keystroke or re-render.
+  const [dismissedPassports, setDismissedPassports] = useState<string[]>([]);
+  const duplicateOpen = !!duplicate && !dismissedPassports.includes(debouncedPassport);
+  const dismissDuplicate = () => setDismissedPassports(p => [...p, debouncedPassport]);
+
+  // Abandons this duplicate profile and takes the visa details entered so far over to the
+  // existing client, where ClientDetail opens its New Case form pre-filled with them.
+  const openNewCaseForExisting = () => {
+    if (!duplicate) return;
+    const prefill: NewCasePrefill = {
+      destinations: form.destinations,
+      cities: form.cities,
+      visaType: form.visaType,
+      ukVisaExpiry: form.ukVisaExpiry,
+      eVisaType: form.eVisaType,
+      priority: form.priority,
+      advance: form.advance, charges: form.charges, discount: form.discount,
+    };
+    // replace, not push: this abandons the duplicate profile the user was filling in, so
+    // that form must not stay on the history stack for Back to land on.
+    navigate(`/clients/${duplicate.id}`, { replace: true, state: { openNewCase: true, newCasePrefill: prefill } });
+  };
 
   const save = useMutation({
     mutationFn: async () => {
@@ -361,7 +411,23 @@ const ClientForm: React.FC = () => {
       <Section title="Passport Details">
         <div className="grid grid-cols-3 gap-4">
           <Field label="Passport Number" required error={fieldErrors.passportNumber}>
-            <input className={inputCls} value={form.passportNumber} onChange={set('passportNumber')} placeholder="AB1234567" />
+            <input
+              className={duplicate ? warnInputCls : inputCls}
+              value={form.passportNumber}
+              onChange={set('passportNumber')}
+              placeholder="AB1234567"
+            />
+            {/* Stays visible after the modal is dismissed so the match isn't silently
+                forgotten — clicking it brings the warning back with its actions. */}
+            {duplicate && !duplicateOpen && (
+              <button
+                type="button"
+                onClick={() => setDismissedPassports(p => p.filter(v => v !== debouncedPassport))}
+                className="text-xs text-amber-600 hover:text-amber-700 underline text-left mt-1"
+              >
+                Already on file as {duplicate.clientRef} — review
+              </button>
+            )}
           </Field>
           <Field label="Issue Date" required error={fieldErrors.passportIssue}>
             <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={form.passportIssue} onChange={set('passportIssue')} />
@@ -542,6 +608,45 @@ const ClientForm: React.FC = () => {
           </Button>
         )}
       </div>
+
+      {/* Duplicate passport warning. Dismissing it is always allowed — a second profile for
+          the same person is a supported (if discouraged) outcome, so nothing here blocks
+          the save. The primary action is the non-duplicating route instead. */}
+      <Modal
+        open={duplicateOpen}
+        onClose={dismissDuplicate}
+        title="Client already exists"
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={dismissDuplicate}>Continue as a new client</Button>
+            <Button leftIcon={<FilePlus className="w-4 h-4" />} onClick={openNewCaseForExisting}>
+              Open New Case for Existing Client
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex gap-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800">
+              Client already exists in the system under{' '}
+              <span className="font-semibold">
+                {duplicate?.firstName} {duplicate?.lastName} ({duplicate?.clientRef})
+              </span>{' '}
+              currently in{' '}
+              <span className="font-semibold">
+                {duplicate?.stage ? STAGE_LABELS[duplicate.stage] : 'no open case'}
+              </span>.
+            </p>
+          </div>
+          <p className="text-sm text-gray-600">
+            Opening a new case links this application to that existing client record, so their
+            passport, documents and history stay on one profile. Creating a separate client is
+            still possible — use it only when this genuinely is a different person.
+          </p>
+        </div>
+      </Modal>
     </div>
   );
 };

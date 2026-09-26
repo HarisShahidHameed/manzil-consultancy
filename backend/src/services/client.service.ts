@@ -349,6 +349,37 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
   return { clients: clients.map(decorateClient), total, page, limit, totalPages: Math.ceil(total / limit) };
 };
 
+// Backs the create/edit forms' async passport check: staff typing a passport number get
+// told it already belongs to an existing client, so they open a NEW CASE on that client
+// instead of starting a duplicate profile. Deliberately advisory only — duplicates stay
+// allowed, since an existing client applying for another country is the normal path, so
+// nothing here blocks a save.
+// Matched trimmed and case-insensitively because the same passport gets typed as
+// "ab123456", "AB123456 " and so on.
+export const findClientByPassport = async (passportNumber: string, excludeClientId?: string) => {
+  // Called on every debounced keystroke, including the empty field the form starts on —
+  // that's a plain "no match", not a validation error.
+  const trimmed = passportNumber.trim();
+  if (!trimmed) return { exists: false, client: null };
+
+  const match = await prisma.client.findFirst({
+    where: {
+      passportNumber: { equals: trimmed, mode: 'insensitive' },
+      // Set while editing an existing client, so the record doesn't flag itself.
+      ...(excludeClientId ? { id: { not: excludeClientId } } : {}),
+    },
+    select: {
+      id: true, clientRef: true, firstName: true, lastName: true,
+      // Just the newest case — the form only needs "where is this client up to".
+      visaCases: { select: { stage: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!match) return { exists: false, client: null };
+
+  const { visaCases, ...client } = match;
+  return { exists: true, client: { ...client, stage: visaCases[0]?.stage ?? null } };
+};
+
 export const getClientById = async (id: string) => {
   const client = await prisma.client.findFirst({
     where: { OR: [{ id }, { clientRef: id }] },
