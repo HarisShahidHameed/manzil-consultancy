@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
@@ -122,6 +122,24 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'BACK_UP', label: 'Back-Up' },
 ];
 
+// The editFields keys each Save actually persists. Once the server has them the server
+// record is authoritative again, so they drop out of the dirty set and go back to
+// re-syncing on every refetch (see the seeding effect).
+const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
+  'destination', 'city', 'charges', 'discount', 'advance', 'priority',
+  'appointmentDate', 'fraNo', 'tlsAccount', 'appointmentNotes',
+];
+const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
+  'travelDate', 'hotelDate', 'salamComments',
+  'docAppointment', 'docTicket', 'docInsurance', 'docHotel',
+  'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
+  'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
+  'docEVisaCost', 'docSopCost', 'docVisaFormCost', 'docSelfEmploymentCost',
+  'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid',
+  'docHotelClientPaid', 'docSelfEmploymentClientPaid',
+  'charges', 'discount', 'advance', 'paymentReceived',
+];
+
 const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -159,47 +177,76 @@ const CaseDetail: React.FC = () => {
 
   const vc = data?.data;
 
+  // Fields the user has typed into since the last seed. The immediate patches on this page
+  // (advance toggle, assignee, pause, destination finalize) PATCH the server mid-edit, and
+  // invalidateFinancials() then refetches — which bumps vc.updatedAt and re-runs the seeding
+  // effect below. Before this set existed that re-seed blew away every figure that had been
+  // typed but not yet saved, which is exactly the "Save clears my charges/discount the first
+  // time and only sticks on the second try" bug: the first Save was racing a refetch it had
+  // itself triggered by flipping the advance-paid toggle.
+  const dirtyFields = useRef<Set<keyof VisaCase>>(new Set());
+  // The case the dirty set belongs to — switching cases is always a clean slate.
+  const seededCaseId = useRef<string | null>(null);
+  const clearDirty = (keys: (keyof VisaCase)[]) => keys.forEach(k => dirtyFields.current.delete(k));
+
   useEffect(() => {
-    if (vc) {
-      setEditFields({
-        destination: vc.destination ?? '',
-        city: vc.city ?? '',
-        priority: vc.priority,
-        appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
-        fraNo: vc.fraNo ?? '',
-        tlsAccount: vc.tlsAccount ?? '',
-        appointmentNotes: vc.appointmentNotes ?? '',
-        travelDate: vc.travelDate?.split('T')[0] ?? '',
-        hotelDate: vc.hotelDate?.split('T')[0] ?? '',
-        salamComments: vc.salamComments ?? '',
-        docAppointment: vc.docAppointment,
-        docTicket: vc.docTicket,
-        docInsurance: vc.docInsurance,
-        docHotel: vc.docHotel,
-        docEVisa: vc.docEVisa,
-        docSop: vc.docSop,
-        docVisaForm: vc.docVisaForm,
-        docSelfEmployment: vc.docSelfEmployment,
-        docAppointmentClientPaid: vc.docAppointmentClientPaid,
-        docTicketClientPaid: vc.docTicketClientPaid,
-        docInsuranceClientPaid: vc.docInsuranceClientPaid,
-        docHotelClientPaid: vc.docHotelClientPaid,
-        docSelfEmploymentClientPaid: vc.docSelfEmploymentClientPaid,
-        charges: vc.charges,
-        discount: vc.discount,
-        advance: vc.advance,
-        paymentReceived: vc.paymentReceived,
-      });
-      setActiveSection(vc.stage === 'CANCELLED' ? 'APPOINTMENT' : vc.stage);
-      setDocPaidBy(prev => ({
-        ...prev,
-        docAppointment: (vc.docAppointmentCost != null && Number(vc.docAppointmentCost) > 0) ? 'agency' : 'client',
-        docTicket:      (vc.docTicketCost      != null && Number(vc.docTicketCost)      > 0) ? 'agency' : 'client',
-        docInsurance:   (vc.docInsuranceCost   != null && Number(vc.docInsuranceCost)   > 0) ? 'agency' : 'client',
-        docHotel:       (vc.docHotelCost       != null && Number(vc.docHotelCost)       > 0) ? 'agency' : 'client',
-        docSelfEmployment: (vc.docSelfEmploymentCost != null && Number(vc.docSelfEmploymentCost) > 0) ? 'agency' : 'client',
-      }));
+    if (!vc) return;
+    const caseChanged = seededCaseId.current !== vc.id;
+    if (caseChanged) {
+      dirtyFields.current.clear();
+      seededCaseId.current = vc.id;
     }
+    const fromServer: Partial<VisaCase> = {
+      destination: vc.destination ?? '',
+      city: vc.city ?? '',
+      priority: vc.priority,
+      appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
+      fraNo: vc.fraNo ?? '',
+      tlsAccount: vc.tlsAccount ?? '',
+      appointmentNotes: vc.appointmentNotes ?? '',
+      travelDate: vc.travelDate?.split('T')[0] ?? '',
+      hotelDate: vc.hotelDate?.split('T')[0] ?? '',
+      salamComments: vc.salamComments ?? '',
+      docAppointment: vc.docAppointment,
+      docTicket: vc.docTicket,
+      docInsurance: vc.docInsurance,
+      docHotel: vc.docHotel,
+      docEVisa: vc.docEVisa,
+      docSop: vc.docSop,
+      docVisaForm: vc.docVisaForm,
+      docSelfEmployment: vc.docSelfEmployment,
+      docAppointmentClientPaid: vc.docAppointmentClientPaid,
+      docTicketClientPaid: vc.docTicketClientPaid,
+      docInsuranceClientPaid: vc.docInsuranceClientPaid,
+      docHotelClientPaid: vc.docHotelClientPaid,
+      docSelfEmploymentClientPaid: vc.docSelfEmploymentClientPaid,
+      charges: vc.charges,
+      discount: vc.discount,
+      advance: vc.advance,
+      paymentReceived: vc.paymentReceived,
+    };
+    setEditFields(prev => {
+      const next: Record<string, unknown> = { ...fromServer };
+      // Untouched fields refresh from the server — that's the whole point of re-syncing on
+      // updatedAt, so a saved discount stops showing its pre-save value. Fields the user has
+      // edited but not yet saved keep what they typed.
+      dirtyFields.current.forEach(key => { next[key as string] = (prev as Record<string, unknown>)[key as string]; });
+      return next as Partial<VisaCase>;
+    });
+    setActiveSection(vc.stage === 'CANCELLED' ? 'APPOINTMENT' : vc.stage);
+    // Same dirty guard: a cost that's mid-edit must not have its Paid By radio snapped back
+    // to "client" by a refetch, because that swaps the cost input for a disabled £0 box and
+    // looks identical to the figure being wiped.
+    setDocPaidBy(prev => {
+      const next = { ...prev };
+      AGENCY_PAID_DOCS.forEach(key => {
+        const costKey = DOC_COST_KEY[key];
+        if (dirtyFields.current.has(costKey)) return;
+        const cost = vc[costKey] as number | string | null | undefined;
+        next[key] = (cost != null && Number(cost) > 0) ? 'agency' : 'client';
+      });
+      return next;
+    });
   // Re-syncs whenever the server record actually changes (save/refetch), not just when
   // switching cases — otherwise editFields keeps showing pre-save values (e.g. discount)
   // until a full page reload re-mounts the component.
@@ -248,6 +295,9 @@ const CaseDetail: React.FC = () => {
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
     }),
     onSuccess: () => {
+      // Persisted — these fields are the server's again, so the refetch below is free to
+      // re-seed them (rounded/normalised values included).
+      clearDirty(APPOINTMENT_SAVE_KEYS);
       invalidateFinancials();
       showSuccess('Appointment details saved');
     },
@@ -286,6 +336,7 @@ const CaseDetail: React.FC = () => {
       paymentReceived: toNum(editFields.paymentReceived),
     }),
     onSuccess: () => {
+      clearDirty(FILE_SAVE_KEYS);
       invalidateFinancials();
       showSuccess('File processing saved');
     },
@@ -364,8 +415,15 @@ const CaseDetail: React.FC = () => {
     finally { setDownloading(false); }
   };
 
+  // Single funnel for every write into editFields, so nothing can be edited without being
+  // recorded as dirty — that's what stops a mid-edit refetch overwriting it.
+  const updateEF = (k: keyof VisaCase, value: unknown) => {
+    dirtyFields.current.add(k);
+    setEditFields(f => ({ ...f, [k]: value }));
+  };
+
   const setEF = (k: keyof VisaCase) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setEditFields(f => ({ ...f, [k]: e.target.value }));
+    updateEF(k, e.target.value);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -1016,7 +1074,7 @@ const CaseDetail: React.FC = () => {
                         <select
                           className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           value={editFields[key] as DocumentStatus ?? vc[key]}
-                          onChange={e => setEditFields(f => ({ ...f, [key]: e.target.value as DocumentStatus }))}
+                          onChange={e => updateEF(key, e.target.value as DocumentStatus)}
                         >
                           <option value="PENDING">Pending</option>
                           <option value="IN_PROGRESS">In Progress</option>
@@ -1040,7 +1098,10 @@ const CaseDetail: React.FC = () => {
                                   checked={paidBy === opt}
                                   onChange={() => {
                                     setDocPaidBy(p => ({ ...p, [key]: opt }));
-                                    if (opt === 'client') setEditFields(f => ({ ...f, [costKey]: 0 }));
+                                    // Either direction is a deliberate edit of this doc's cost, so pin it
+                                    // against a mid-edit refetch. Client-paid means the agency fronted
+                                    // nothing, so the cost goes to zero.
+                                    updateEF(costKey, opt === 'client' ? 0 : (editFields[costKey] ?? vc?.[costKey] ?? ''));
                                   }}
                                   className="accent-indigo-600"
                                 />
@@ -1067,7 +1128,7 @@ const CaseDetail: React.FC = () => {
                               className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               placeholder="0.00"
                               value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
-                              onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
+                              onChange={e => updateEF(costKey, e.target.value)}
                             />
                           )
                         ) : (
@@ -1081,7 +1142,7 @@ const CaseDetail: React.FC = () => {
                             className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             placeholder="0.00"
                             value={String((editFields[clientPaidKey] as string | number | undefined) ?? vc[clientPaidKey] ?? '')}
-                            onChange={e => setEditFields(f => ({ ...f, [clientPaidKey]: e.target.value }))}
+                            onChange={e => updateEF(clientPaidKey, e.target.value)}
                           />
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
