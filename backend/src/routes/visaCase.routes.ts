@@ -11,6 +11,13 @@ router.get(
   requireAnyPermission('appointments:read', 'files:read', 'clients:read'),
   visaCaseController.listCases
 );
+// Must stay above '/:id' — Express would otherwise match "metrics" as a case id. Same
+// read guard as the listing, so the file team sees the cards on their own pages.
+router.get(
+  '/metrics/appointments',
+  requireAnyPermission('appointments:read', 'files:read', 'clients:read'),
+  visaCaseController.getAppointmentMetrics
+);
 router.get(
   '/:id',
   requireAnyPermission('appointments:read', 'files:read', 'clients:read'),

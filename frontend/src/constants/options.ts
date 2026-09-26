@@ -1,4 +1,16 @@
-import type { DocumentStatus } from '../types';
+import type { CaseStage, DocumentStatus } from '../types';
+
+// The one human-readable stage vocabulary for the whole app — the Clients stage filter, the
+// duplicate-passport warning on ClientForm and the case detail breadcrumb/advance button all
+// read off it, so a stage is never spelled two different ways in the UI. Lives here rather
+// than in any one page so consumers don't have to value-import from a route component.
+export const STAGE_LABELS: Record<CaseStage, string> = {
+  APPOINTMENT:     'Appointment',
+  FILE_PROCESSING: 'File Processing',
+  INVOICED:        'Invoiced',
+  COMPLETED:       'Completed',
+  CANCELLED:       'Cancelled',
+};
 
 export const DESTINATION_OPTIONS = [
   'Austria', 'Belgium', 'Croatia', 'Czech Republic', 'Cyprus', 'Denmark', 'Estonia',

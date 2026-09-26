@@ -28,7 +28,8 @@ const CASE_SELECT = {
   id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
-  advancePaid: true, advancePaidDate: true, onHold: true, onHoldReason: true,
+  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true,
+  onHold: true, onHoldReason: true,
   appointmentStatus: true,
   appointmentDate: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
   fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
@@ -62,6 +63,16 @@ const CASE_SELECT = {
 
 export type CaseStageName = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'COMPLETED' | 'CANCELLED';
 
+/**
+ * "Has this case's advance been dealt with?" — the only question anything judging a case
+ * unpaid should ask. `advancePaid` means the money actually arrived; `advanceWaived` means
+ * staff explicitly signed off that none is due (prior refusal, or a free service we chose
+ * to give). Both settle the case, so a waived case never reads as "unpaid".
+ */
+export const isAdvanceSettled = (c: { advancePaid: boolean; advanceWaived: boolean }): boolean =>
+  c.advancePaid || c.advanceWaived;
+
+
 export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
 // APPOINTMENT_ONLY clients just want the appointment booked — their cases skip File
@@ -70,6 +81,78 @@ const APPOINTMENT_ONLY_STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'COMPLETED
 
 export const getStageOrder = (clientServiceType?: string): CaseStageName[] =>
   clientServiceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
+
+// Stages a case is still actively being worked in. Family-group propagation stops here on
+// purpose: a COMPLETED or CANCELLED case is a closed book and must never be retro-flipped
+// by something that happens to a sibling afterwards.
+const ACTIVE_STAGES: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED'];
+
+/**
+ * The family-booking rule, in one place.
+ *
+ * A family applies as a unit: one member pays the advance for everybody (or we waive it
+ * for the family), and we only ever create ONE WhatsApp group for the whole family however
+ * many members it has. So recording either of those on one member's case has to apply to
+ * every other member of the same ClientGroup — otherwise the rest of the family sits there
+ * flagged as unpaid / missing-group forever, for money that was already taken and a group
+ * that already exists.
+ *
+ * Only the flags travel. The advance/charges/discount amounts stay on the paying member's
+ * case, because the money was only handed over once and belongs to that case's books.
+ *
+ * Un-marking propagates identically, so staff can correct a mistake from any member rather
+ * than having to remember which one they ticked first.
+ *
+ * `groupId` is null for a lone client — the common path — and then this costs nothing at
+ * all beyond the single cheap lookup the caller already did to read it.
+ */
+const propagateGroupFlags = async (
+  tx: Prisma.TransactionClient,
+  sourceCaseId: string,
+  groupId: string | null,
+  flags: Prisma.VisaCaseUpdateManyMutationInput,
+): Promise<void> => {
+  if (!groupId || Object.keys(flags).length === 0) return;
+  await tx.visaCase.updateMany({
+    where: {
+      id: { not: sourceCaseId },
+      client: { groupId },
+      stage: { in: ACTIVE_STAGES as any },
+    },
+    data: flags,
+  });
+};
+
+// What the family has already settled between them, read off their active cases in one
+// query: the advance (paid by whichever member handed the money over, or waived for all of
+// them) and the one shared WhatsApp group. The flags are unioned — any single member
+// carrying one means the family as a whole has it.
+const readGroupSettlement = async (
+  tx: Prisma.TransactionClient,
+  groupId: string,
+): Promise<{
+  advancePaid: boolean; advancePaidDate: Date | null;
+  advanceWaived: boolean; advanceWaiverReason: string | null;
+  whatsappGroupCreated: boolean;
+}> => {
+  const siblings = await tx.visaCase.findMany({
+    where: { client: { groupId }, stage: { in: ACTIVE_STAGES as any } },
+    select: {
+      advancePaid: true, advancePaidDate: true,
+      advanceWaived: true, advanceWaiverReason: true,
+      whatsappGroupCreated: true,
+    },
+  });
+  const payer  = siblings.find(c => c.advancePaid);
+  const waived = siblings.find(c => c.advanceWaived);
+  return {
+    advancePaid:          !!payer,
+    advancePaidDate:      payer?.advancePaidDate ?? null,
+    advanceWaived:        !!waived,
+    advanceWaiverReason:  waived?.advanceWaiverReason ?? null,
+    whatsappGroupCreated: siblings.some(c => c.whatsappGroupCreated),
+  };
+};
 
 // Permission required to perform a given stage transition (team-scoped separation of duties).
 // There is no Intake stage: a case enters the appointment queue as soon as the client's
@@ -93,7 +176,8 @@ export const requiredPermsForTransition = (from: string, to: string): string[] =
  * dues-cleared gate before Completed. Throws typed errors. Advance payment is
  * not a hard gate — it's auto-derived from the advance amount (see
  * updateCase/createCase) and surfaced as a non-blocking "pending" warning in
- * the UI when unpaid.
+ * the UI when unpaid. Nothing here blocks on it, so a waived case (refusal /
+ * free service, see isAdvanceSettled) moves through the workflow untouched.
  */
 export const assertTransitionAllowed = (
   current: CaseStageName,
@@ -165,41 +249,166 @@ const decorateCase = <T extends { stage: string; destination: string | null; des
     ? { ...c, missingRequiredFields: getMissingRequiredFields(c.client, { destination: c.destination, destinationOptions: c.destinationOptions }) }
     : c;
 
-export const listCases = async (
-  page = 1, limit = 20, stage?: string, search?: string, appointmentStatus?: string,
-  destination?: string, city?: string, advancePaid?: boolean, onHold?: boolean, serviceType?: string,
-  fileAssignedToId?: string, hasAppointmentDate?: boolean,
-) => {
-  const skip = (page - 1) * limit;
-  // Each filter is ANDed together (Prisma's default for sibling where keys) so status,
-  // destination, city, advance-paid, on-hold, service-type and free-text search can all
-  // narrow the result set at once.
+export type CaseSortField = 'routedAt' | 'appointmentDate' | 'receivedDate' | 'createdAt';
+export type SortOrder = 'asc' | 'desc';
+
+/**
+ * The columns a listing is allowed to sort by. A whitelist rather than a pass-through, so
+ * a query param can never name an arbitrary Prisma field.
+ *
+ * `routedAt` orders by when a case was handed over into File Processing. Cases routed
+ * before that timestamp existed have no value for it, so they fall in behind on
+ * `nulls: 'last'` and keep their received-date order from the tiebreaker.
+ */
+const CASE_ORDER_BY: Record<CaseSortField, (order: SortOrder) => Prisma.VisaCaseOrderByWithRelationInput[]> = {
+  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { client: { receivedDate: 'desc' } }],
+  appointmentDate: (order) => [{ appointmentDate: { sort: order, nulls: 'last' } }],
+  receivedDate:    (order) => [{ client: { receivedDate: order } }],
+  createdAt:       (order) => [{ createdAt: order }],
+};
+
+/**
+ * Advance settlement as a three-state, not a boolean. "Waived" (prior refusal / free
+ * service) is a state of its own: the advance is settled without money ever arriving, so
+ * such a case is neither Paid nor Unpaid and there has to be a way to actually ask for it.
+ *
+ * The three predicates are mutually exclusive and jointly exhaustive over every row:
+ * `waived` is exactly `advanceWaived: true`, and `paid`/`unpaid` both pin
+ * `advanceWaived: false` and then partition that remainder on `advancePaid`. So every case
+ * answers exactly one of the three, whatever combination updateCase left behind — including
+ * the paid-then-waived case that carries both flags, which reads as `waived` because the
+ * waiver is the later and more specific fact about it.
+ */
+export type AdvanceState = 'paid' | 'unpaid' | 'waived';
+
+const ADVANCE_STATE_WHERE: Record<AdvanceState, Prisma.VisaCaseWhereInput> = {
+  paid:   { advancePaid: true,  advanceWaived: false },
+  unpaid: { advancePaid: false, advanceWaived: false },
+  waived: { advanceWaived: true },
+};
+
+/**
+ * The timestamp columns a listing is allowed to range-filter on. A whitelist rather than a
+ * pass-through, for the same reason CASE_ORDER_BY is one: the field name arrives from the
+ * query string, and an unchecked one would be interpolated straight into the Prisma
+ * `where` as an arbitrary column.
+ *
+ * These are the three the metric cards count by, so a card's drill-down always has a field
+ * to name — see METRIC_CARDS.
+ */
+export const CASE_DATE_FIELDS = ['appointmentDateSetAt', 'fileProcessingStartedAt', 'createdAt'] as const;
+export type CaseDateField = typeof CASE_DATE_FIELDS[number];
+
+/**
+ * Every way a case listing can be narrowed. One object rather than a positional tail, so a
+ * metric card can declare its own subset as a plain literal and feed that literal to the
+ * same buildCaseWhere that /api/cases feeds its parsed query string to.
+ */
+export interface CaseListFilters {
+  stage?: string;
+  search?: string;
+  appointmentStatus?: string;
+  destination?: string;
+  city?: string;
+  advanceState?: AdvanceState;
+  /**
+   * @deprecated Superseded by `advanceState`. Kept working because the documented API
+   * surface and any third-party integration built against it still send it. It maps onto
+   * the same ADVANCE_STATE_WHERE predicates (true → paid, false → unpaid) so the old and
+   * new spellings can never drift apart, and `advanceState` wins when both arrive.
+   */
+  advancePaid?: boolean;
+  onHold?: boolean;
+  serviceType?: string;
+  fileAssignedToId?: string;
+  hasAppointmentDate?: boolean;
+  /**
+   * Required whenever `from`/`to` are given — a range is meaningless without the column it
+   * ranges over, and quietly guessing one would count the wrong event.
+   */
+  dateField?: CaseDateField;
+  from?: Date;
+  to?: Date;
+}
+
+export interface CaseListOptions extends CaseListFilters {
+  page?: number;
+  limit?: number;
+  sort?: CaseSortField;
+  order?: SortOrder;
+}
+
+/** Thrown when `from`/`to` arrive without a `dateField`; the controller turns it into a 400. */
+export const DATE_RANGE_WITHOUT_FIELD = 'DATE_RANGE_WITHOUT_FIELD';
+
+/**
+ * Compiles listing filters into a Prisma `where`. Pulled out of listCases so that it is the
+ * single place a case-listing predicate is built — getAppointmentMetrics counts through
+ * this very function, which is what stops a metric card from reporting a number its
+ * drill-down cannot reproduce.
+ *
+ * Each filter is ANDed together (Prisma's default for sibling where keys) so status,
+ * destination, city, advance state, on-hold, service-type, date range and free-text search
+ * can all narrow the result set at once.
+ */
+export const buildCaseWhere = (f: CaseListFilters): Prisma.VisaCaseWhereInput => {
   const where: Prisma.VisaCaseWhereInput = {};
   // "stage" also accepts a comma-separated list (e.g. the appointment→file-processing
   // conversion card wants FILE_PROCESSING,INVOICED,COMPLETED in one query) alongside the
   // normal single-stage filter every other listing uses.
-  if (stage) where.stage = stage.includes(',') ? { in: stage.split(',') as any } : (stage as any);
-  if (appointmentStatus) where.appointmentStatus = appointmentStatus as any;
-  if (destination) where.destination = { contains: destination, mode: 'insensitive' };
-  if (city) where.city = { contains: city, mode: 'insensitive' };
-  if (advancePaid !== undefined) where.advancePaid = advancePaid;
-  if (onHold !== undefined) where.onHold = onHold;
-  if (serviceType) where.client = { serviceType: serviceType as any };
-  if (fileAssignedToId) where.fileAssignedToId = fileAssignedToId;
-  if (hasAppointmentDate !== undefined) where.appointmentDate = hasAppointmentDate ? { not: null } : null;
-  if (search) {
+  if (f.stage) where.stage = f.stage.includes(',') ? { in: f.stage.split(',') as any } : (f.stage as any);
+  if (f.appointmentStatus) where.appointmentStatus = f.appointmentStatus as any;
+  if (f.destination) where.destination = { contains: f.destination, mode: 'insensitive' };
+  if (f.city) where.city = { contains: f.city, mode: 'insensitive' };
+  // `advanceState` is the three-state filter the UI drives; `advancePaid` is the legacy
+  // boolean, folded onto the exact same predicates rather than re-implemented beside them.
+  const advanceState: AdvanceState | undefined = f.advanceState
+    ?? (f.advancePaid === undefined ? undefined : f.advancePaid ? 'paid' : 'unpaid');
+  if (advanceState) Object.assign(where, ADVANCE_STATE_WHERE[advanceState]);
+  if (f.onHold !== undefined) where.onHold = f.onHold;
+  if (f.serviceType) where.client = { serviceType: f.serviceType as any };
+  // 'none' is the "Unassigned" tab: a case that has just been routed into File Processing
+  // has nobody on it yet, and without this sentinel there is no way to ask for those rows
+  // — they would sit under no user tab at all. It cannot collide with a real handler id
+  // because every id is a uuid, and the query schema admits only a uuid or this literal.
+  if (f.fileAssignedToId) where.fileAssignedToId = f.fileAssignedToId === 'none' ? null : f.fileAssignedToId;
+  if (f.hasAppointmentDate !== undefined) where.appointmentDate = f.hasAppointmentDate ? { not: null } : null;
+  // Half-open [from, to): the upper bound is excluded, so two adjacent buckets
+  // (yesterday/today, one month and the next) share a boundary instant without the case
+  // sitting exactly on it being counted in both. `dateField` is whitelisted above, so a
+  // caller-supplied string never reaches the where as a column name.
+  if (f.from || f.to) {
+    if (!f.dateField) throw new Error(DATE_RANGE_WITHOUT_FIELD);
+    (where as Record<string, unknown>)[f.dateField] = {
+      ...(f.from ? { gte: f.from } : {}),
+      ...(f.to   ? { lt:  f.to   } : {}),
+    };
+  }
+  if (f.search) {
     where.OR = [
-      { destination:    { contains: search, mode: 'insensitive' } },
-      { client: { firstName: { contains: search, mode: 'insensitive' } } },
-      { client: { lastName:  { contains: search, mode: 'insensitive' } } },
-      { client: { clientRef: { contains: search, mode: 'insensitive' } } },
+      { destination:    { contains: f.search, mode: 'insensitive' } },
+      { client: { firstName: { contains: f.search, mode: 'insensitive' } } },
+      { client: { lastName:  { contains: f.search, mode: 'insensitive' } } },
+      { client: { clientRef: { contains: f.search, mode: 'insensitive' } } },
     ];
   }
-  // File Processing works appointments in the order they're due, soonest first —
-  // every other listing (Appointments, Paused, Completed, ...) stays newest-received-first.
-  const orderBy: Prisma.VisaCaseFindManyArgs['orderBy'] = stage === 'FILE_PROCESSING'
-    ? { appointmentDate: { sort: 'asc', nulls: 'last' } }
-    : { client: { receivedDate: 'desc' } };
+  return where;
+};
+
+export const listCases = async (opts: CaseListOptions = {}) => {
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const skip = (page - 1) * limit;
+  const where = buildCaseWhere(opts);
+  // File Processing defaults to newest-routed-first, because the cases staff most need to
+  // see are the ones they just handed over — ordering by soonest appointment instead put
+  // the day's intake (furthest-future dates) at the very end of the result set, so it fell
+  // onto page 2+ and looked to the file team like their new clients had disappeared.
+  // That "earliest appointment due first" view is still genuinely useful when working the
+  // queue by deadline, so it stays reachable as ?sort=appointmentDate&order=asc rather
+  // than being thrown away. Every other listing stays newest-received-first.
+  const defaultSort: CaseSortField = opts.stage === 'FILE_PROCESSING' ? 'routedAt' : 'receivedDate';
+  const orderBy = CASE_ORDER_BY[opts.sort ?? defaultSort](opts.order ?? 'desc');
   const [cases, total] = await Promise.all([
     prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy }),
     prisma.visaCase.count({ where }),
@@ -221,51 +430,88 @@ export const createCase = async (
     advance?: number; charges?: number; discount?: number;
   }
 ) => {
-  const advancePaid = (data.advance ?? 0) > 0;
+  const paidNow = (data.advance ?? 0) > 0;
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
-  return prisma.visaCase.create({
-    data: {
-      clientId,
-      appointmentStatus: 'WAITING',
-      destination, destinationOptions,
-      city, cityOptions,
-      visaType:    data.visaType,
-      ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
-      eVisaType:   data.eVisaType,
-      priority: data.priority ?? 'MEDIUM',
-      advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
-      charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
-      discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
-      advancePaid,
-      advancePaidDate: advancePaid ? new Date() : undefined,
-    },
-    select: CASE_SELECT,
+  return prisma.$transaction(async (tx) => {
+    // One cheap indexed lookup to find out whether this client belongs to a family group.
+    // For a lone client groupId is null and nothing below runs — the common path pays for
+    // this single read and no more.
+    const client = await tx.client.findUnique({ where: { id: clientId }, select: { groupId: true } });
+    const groupId = client?.groupId ?? null;
+    // A case opened for someone whose family already settled the advance (or already has
+    // the shared WhatsApp group) starts out settled — see propagateGroupFlags.
+    const family = groupId ? await readGroupSettlement(tx, groupId) : null;
+    const advancePaid = paidNow || (family?.advancePaid ?? false);
+
+    const created = await tx.visaCase.create({
+      data: {
+        clientId,
+        appointmentStatus: 'WAITING',
+        destination, destinationOptions,
+        city, cityOptions,
+        visaType:    data.visaType,
+        ukVisaExpiry: data.ukVisaExpiry ? new Date(data.ukVisaExpiry) : undefined,
+        eVisaType:   data.eVisaType,
+        priority: data.priority ?? 'MEDIUM',
+        advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
+        charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
+        discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
+        advancePaid,
+        advancePaidDate: paidNow ? new Date() : (family?.advancePaidDate ?? undefined),
+        advanceWaived:       family?.advanceWaived ?? false,
+        advanceWaiverReason: family?.advanceWaived ? family.advanceWaiverReason : undefined,
+        whatsappGroupCreated: family?.whatsappGroupCreated ?? false,
+      },
+      select: CASE_SELECT,
+    });
+
+    // The other direction: this member handing over the advance settles it for the family.
+    if (paidNow && family && !family.advancePaid) {
+      await propagateGroupFlags(tx, created.id, groupId, {
+        advancePaid: true,
+        advancePaidDate: created.advancePaidDate,
+      });
+    }
+    return created;
   });
 };
 
+// Everything updateCase needs to know about a case *before* it writes it: the workflow
+// gates, the stamp-once conversion timestamps, and the settlement/WhatsApp flags that are
+// shared across a family group (with the client's groupId, null for a lone client).
+const BEFORE_UPDATE_SELECT = {
+  stage: true, onHold: true,
+  advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
+  destination: true, destinationOptions: true, city: true, cityOptions: true,
+  appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
+  invoices: { select: { status: true } },
+  client: {
+    select: {
+      groupId: true,
+      passportNumber: true, nationality: true, dob: true,
+      passportIssue: true, passportExpiry: true, serviceType: true,
+    },
+  },
+} satisfies Prisma.VisaCaseSelect;
+
 export const updateCase = async (id: string, data: Record<string, any>) => {
+  const has = (f: string) => Object.prototype.hasOwnProperty.call(data, f);
+  // Read the pre-update case once and share it: the workflow rules, the conversion-card
+  // timestamps and the family-group propagation all ask about the same row, and an update
+  // that touches none of those (a note, a doc status) skips the read entirely.
+  const needsContext = has('stage') || has('destination') || has('city')
+    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate'].some(has);
+  const before = needsContext
+    ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
+    : null;
+  if (needsContext && !before) {
+    const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
+  }
+
   // If a stage change or destination/city finalization is requested, enforce workflow rules first.
-  if (data.stage || data.destination !== undefined || data.city !== undefined) {
-    const existing = await prisma.visaCase.findUnique({
-      where: { id },
-      select: {
-        stage: true, advancePaid: true, onHold: true,
-        destination: true, destinationOptions: true, city: true, cityOptions: true,
-        appointmentDate: true,
-        invoices: { select: { status: true } },
-        client: {
-          select: {
-            passportNumber: true, nationality: true, dob: true,
-            passportIssue: true, passportExpiry: true, serviceType: true,
-          },
-        },
-      },
-    });
-    if (!existing) {
-      const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e;
-    }
+  if (before && (data.stage || data.destination !== undefined || data.city !== undefined)) {
     // Finalizing the destination/city from an existing shortlist must land on one of the
     // shortlisted candidates — but only when this call is doing exactly that (sending just
     // `destination`, like the File Processing "finalize" dropdown does). When the caller is
@@ -273,17 +519,17 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     // replacing the whole shortlist), it's declaring a fresh shortlist+destination pair
     // together, not finalizing from the old one — so the old list shouldn't gate it.
     if (data.destination !== undefined && data.destinationOptions === undefined
-        && existing.destinationOptions.length > 0
-        && !existing.destinationOptions.includes(data.destination)) {
+        && before.destinationOptions.length > 0
+        && !before.destinationOptions.includes(data.destination)) {
       throw new Error('DESTINATION_NOT_SHORTLISTED');
     }
     if (data.city !== undefined && data.cityOptions === undefined
-        && existing.cityOptions.length > 0
-        && !existing.cityOptions.includes(data.city)) {
+        && before.cityOptions.length > 0
+        && !before.cityOptions.includes(data.city)) {
       throw new Error('CITY_NOT_SHORTLISTED');
     }
     if (data.stage) {
-      assertTransitionAllowed(existing.stage as CaseStageName, data.stage as CaseStageName, existing);
+      assertTransitionAllowed(before.stage as CaseStageName, data.stage as CaseStageName, before);
     }
   }
 
@@ -293,16 +539,29 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
   }
+  // The waiver as it will stand after this write — either what the caller is setting now,
+  // or what the case already carried.
+  const waived = has('advanceWaived') ? d.advanceWaived === true : (before?.advanceWaived ?? false);
   // Whenever the advance amount itself is set (and paid status isn't explicitly
   // being set in the same call), derive advancePaid from it — a filled advance
-  // is paid, so the manual toggle doesn't need to be revisited later.
-  if (Object.prototype.hasOwnProperty.call(data, 'advance') && !Object.prototype.hasOwnProperty.call(data, 'advancePaid')) {
+  // is paid, so the manual toggle doesn't need to be revisited later. A waived case
+  // (refusal / free service) is settled without money, so a zero advance must never
+  // drag it back to "unpaid" here — only a real payment can move the flag.
+  if (has('advance') && !has('advancePaid')) {
     const advanceNum = data.advance !== undefined && data.advance !== null && data.advance !== '' ? Number(data.advance) : 0;
-    d.advancePaid = advanceNum > 0;
+    if (advanceNum > 0 || !waived) d.advancePaid = advanceNum > 0;
   }
   // Auto-stamp the advance payment date when it is first marked paid
   if (d.advancePaid === true && !d.advancePaidDate) d.advancePaidDate = new Date();
   if (d.advancePaid === false) d.advancePaidDate = null;
+  // Lifting the waiver takes its reason with it — a stale "Prior refusal" left on a case
+  // that owes an advance again would keep reading as an exemption.
+  if (d.advanceWaived === false) d.advanceWaiverReason = null;
+  // Conversion-card timestamps: stamped the first time each event happens and never again.
+  // A reschedule isn't a second allotment, and a case bouncing back into File Processing
+  // isn't a second conversion — see the fields' comments in schema.prisma.
+  if (before && d.appointmentDate && !before.appointmentDateSetAt) d.appointmentDateSetAt = new Date();
+  if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [
     'advance', 'charges', 'discount', 'paymentReceived',
     'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
@@ -313,19 +572,48 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     if (d[f] !== undefined && d[f] !== null && d[f] !== '') d[f] = new Prisma.Decimal(d[f]);
     else if (d[f] === '' || d[f] === null) d[f] = null;
   }
-  const updated = await prisma.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
 
-  // A client is only meant to be actively working one case at a time. Once a case
-  // reaches File Processing, any other still-open case (Appointment stage) for the
-  // same client is a duplicate application and gets auto-cancelled.
-  if (d.stage === 'FILE_PROCESSING') {
-    await prisma.visaCase.updateMany({
-      where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
-      data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
-    });
+  // Which of the family-shared flags this particular call actually changed. Only genuine
+  // changes travel, so re-saving a form that happens to carry the same values doesn't reach
+  // across the group — and for a client with no group nothing is built here at all.
+  const groupId = before?.client.groupId ?? null;
+  const groupFlags: Prisma.VisaCaseUpdateManyMutationInput = {};
+  if (before && groupId) {
+    if (d.advancePaid !== undefined && d.advancePaid !== before.advancePaid) {
+      // The flag and its date only — the advance/charges/discount amounts stay on the
+      // paying member's case, since the money was only handed over once.
+      groupFlags.advancePaid = d.advancePaid;
+      groupFlags.advancePaidDate = d.advancePaid ? (d.advancePaidDate ?? new Date()) : null;
+    }
+    if (d.advanceWaived !== undefined && d.advanceWaived !== before.advanceWaived) {
+      groupFlags.advanceWaived = d.advanceWaived;
+      if (d.advanceWaived === false) groupFlags.advanceWaiverReason = null;
+      else if (d.advanceWaiverReason !== undefined) groupFlags.advanceWaiverReason = d.advanceWaiverReason;
+    }
+    if (d.whatsappGroupCreated !== undefined && d.whatsappGroupCreated !== before.whatsappGroupCreated) {
+      groupFlags.whatsappGroupCreated = d.whatsappGroupCreated;
+    }
   }
 
-  return updated;
+  // The case itself, the family propagation and the duplicate auto-cancel go together, so a
+  // half-applied propagation (one member settled, the rest still unpaid) can't be left behind.
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
+
+    await propagateGroupFlags(tx, id, groupId, groupFlags);
+
+    // A client is only meant to be actively working one case at a time. Once a case
+    // reaches File Processing, any other still-open case (Appointment stage) for the
+    // same client is a duplicate application and gets auto-cancelled.
+    if (d.stage === 'FILE_PROCESSING') {
+      await tx.visaCase.updateMany({
+        where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
+        data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
+      });
+    }
+
+    return updated;
+  });
 };
 
 // Combines the FILE_PROCESSING → INVOICED → COMPLETED transition into one step: an invoice
@@ -448,6 +736,138 @@ export const buildInvoicePreview = async (id: string) => {
     lineItems,
     notes: 'Preview only — not a final invoice. Figures may change until the case is moved to Invoiced.',
     case: { id: c.id, destination: c.destination, visaType: c.visaType, client: c.client },
+  };
+};
+
+// One metric card's three columns.
+export interface MetricBreakdown { today: number; yesterday: number; month: number }
+
+/**
+ * A card's three counts plus the exact /api/cases query params that reproduce its subset,
+ * so clicking a number can open the rows behind it. `filters` carries `dateField` but
+ * deliberately not `from`/`to` — the caller merges in whichever bucket was clicked, taken
+ * from `ranges` below.
+ */
+export interface MetricCard extends MetricBreakdown { filters: Record<string, string> }
+
+/** A half-open [from, to) window, serialized as ISO instants. */
+export interface MetricRange { from: string; to: string }
+
+export interface AppointmentMetrics {
+  ranges: { today: MetricRange; yesterday: MetricRange; month: MetricRange };
+  appointmentDateAllotted: MetricCard;
+  movedToFileProcessing: MetricCard;
+  appointmentOnly: MetricCard;
+}
+
+/**
+ * Calendar buckets in *server* local time, not rolling windows: Today is this calendar day,
+ * Yesterday the whole previous one, Month from the 1st. Staff read these cards as "what did
+ * we do today", so a count has to reset at midnight rather than drift with a trailing 24
+ * hours.
+ *
+ * Each bucket is half-open [from, to): the upper bound belongs to the next bucket, so the
+ * case stamped exactly at midnight lands in Today and not in both Today and Yesterday.
+ * Today and Month run to the start of tomorrow / of next month rather than to `now`, which
+ * counts the same rows (these three columns are all stamped by the server as events happen,
+ * so none of them is in the future) while keeping every bucket a clean day-aligned window
+ * that a drill-down can re-send verbatim.
+ */
+const calendarBuckets = (now = new Date()) => {
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return {
+    today:     { from: startOfToday,     to: startOfTomorrow },
+    yesterday: { from: startOfYesterday, to: startOfToday },
+    month:     { from: startOfMonth,     to: startOfNextMonth },
+  };
+};
+
+type BucketName = keyof ReturnType<typeof calendarBuckets>;
+const BUCKETS: BucketName[] = ['today', 'yesterday', 'month'];
+
+/**
+ * The three appointment funnel cards, each declared ONCE as a listing-filter literal.
+ *
+ * That single literal is used two ways: serialized to query params for the `filters` the
+ * API returns, and compiled by buildCaseWhere — the very function GET /api/cases runs — for
+ * the counts. There is no hand-written filter string sitting beside a hand-written `where`
+ * that could quietly disagree, which is the whole reason the params are returned at all: a
+ * drill-down has to land on exactly the rows the number came from.
+ *
+ * Each metric counts by the timestamp of the event it is about, not by the case's current
+ * state — a case that was allotted an appointment yesterday and moved on today still counts
+ * in yesterday's allotment column.
+ *
+ * Paused (on-hold) cases are excluded from all three, matching every listing — paused cases
+ * are pulled out of the pipeline pages and live on their own Paused page, and the listings'
+ * empty state now says so, so the cards have to count the same population.
+ *
+ * Appointment-only clients never reach File Processing, so they are counted on their own
+ * card by when the case was opened — booking the appointment is the whole job.
+ */
+const METRIC_CARDS = {
+  // `hasAppointmentDate` is part of the predicate, not decoration: appointmentDateSetAt is
+  // stamped once and never cleared, so a case whose appointment date was later removed
+  // would otherwise still be counted as allotted while showing no date in the drill-down.
+  appointmentDateAllotted: {
+    dateField: 'appointmentDateSetAt', serviceType: 'FULL_SERVICE', onHold: false, hasAppointmentDate: true,
+  },
+  movedToFileProcessing: {
+    dateField: 'fileProcessingStartedAt', serviceType: 'FULL_SERVICE', onHold: false,
+  },
+  appointmentOnly: {
+    dateField: 'createdAt', serviceType: 'APPOINTMENT_ONLY', onHold: false,
+  },
+} satisfies Record<keyof Omit<AppointmentMetrics, 'ranges'>, CaseListFilters & { dateField: CaseDateField }>;
+
+type MetricCardName = keyof typeof METRIC_CARDS;
+
+/**
+ * A card's filter literal flattened to the query string /api/cases accepts. `from`/`to` are
+ * dropped because a card has no single range — the caller picks the bucket.
+ */
+export const metricCardFilters = (name: MetricCardName): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(METRIC_CARDS[name])
+      .filter(([k, v]) => v !== undefined && k !== 'from' && k !== 'to')
+      .map(([k, v]) => [k, String(v)]),
+  );
+
+export const getAppointmentMetrics = async (): Promise<AppointmentMetrics> => {
+  const bucket = calendarBuckets();
+  const names = Object.keys(METRIC_CARDS) as MetricCardName[];
+
+  // Nine cheap indexed counts in one round of parallel queries rather than nine awaits.
+  const counts = await Promise.all(
+    names.flatMap(name =>
+      BUCKETS.map(b =>
+        prisma.visaCase.count({ where: buildCaseWhere({ ...METRIC_CARDS[name], ...bucket[b] }) }),
+      ),
+    ),
+  );
+
+  const iso = (r: { from: Date; to: Date }): MetricRange => ({ from: r.from.toISOString(), to: r.to.toISOString() });
+  const cards = Object.fromEntries(
+    names.map((name, i) => [name, {
+      today:     counts[i * 3],
+      yesterday: counts[i * 3 + 1],
+      month:     counts[i * 3 + 2],
+      filters:   metricCardFilters(name),
+    }]),
+  ) as Record<MetricCardName, MetricCard>;
+
+  return {
+    // Returned rather than recomputed in the browser: the agency's day is the server's day,
+    // and a viewer in another timezone recomputing "today" locally would drill down into a
+    // different window than the one that produced the number next to it.
+    ranges: { today: iso(bucket.today), yesterday: iso(bucket.yesterday), month: iso(bucket.month) },
+    ...cards,
   };
 };
 

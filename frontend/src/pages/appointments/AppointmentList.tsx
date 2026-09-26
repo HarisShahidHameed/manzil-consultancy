@@ -1,28 +1,32 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck } from 'lucide-react';
-import { getCases } from '../../api/cases';
+import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck, CalendarClock, MessageCircleOff } from 'lucide-react';
+import { getAppointmentMetrics, getCases } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
-import type { AssignableUser, CaseStage, DocumentStatus, Priority, VisaCase } from '../../types';
+import type { AdvanceState, AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
-import { CaseCountCard } from '../../components/cases/CaseCountCard';
+import { MetricBreakdownCard } from '../../components/cases/MetricBreakdownCard';
 
 // Same file-team role set CaseDetail uses for the fileAssignedToId dropdown, so the
 // File Processing tab bar lists exactly the people a case could be assigned to.
 const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 
-const PRI_COLORS: Record<Priority, string> = {
-  LOW: 'bg-gray-100 text-gray-600', MEDIUM: 'text-gray-700',
-  HIGH: 'bg-orange-100 text-orange-700', URGENT: 'bg-red-100 text-red-700',
-};
-// Matches the wording used in the priority <select> on the case form (Low/Normal/High/Urgent).
-const PRI_LABELS: Record<Priority, string> = { LOW: 'Low', MEDIUM: 'Normal', HIGH: 'High', URGENT: 'Urgent' };
+// Sentinel the backend maps to `fileAssignedToId IS NULL`. It doubles as the tab bar's
+// selected value, which is safe precisely because it isn't a valid uuid — it can never
+// match a real user's id when deciding which tab is highlighted.
+const UNASSIGNED_TAB = 'none';
+
+// The advance counts as settled once it's paid or explicitly waived (refusal / free-service
+// cases). A cancelled case is never chased for payment either, so it must not read as
+// outstanding — same carve-out the Advance column makes.
+const isAdvanceSettled = (c: Pick<VisaCase, 'stage' | 'advancePaid' | 'advanceWaived'>) =>
+  c.stage === 'CANCELLED' || !!c.advancePaid || !!c.advanceWaived;
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
@@ -71,20 +75,12 @@ interface CaseListProps {
    * that leads into File Processing; APPOINTMENT_ONLY powers their own dedicated page.
    */
   serviceType?: 'APPOINTMENT_ONLY' | 'FULL_SERVICE';
-  /** Shows the "Moved to File Processing" / "Appointment Date Allotted" stat cards next to the title (Appointments & File Processing pages only). */
+  /** Shows the three Today/Yesterday/Month funnel metric cards next to the title (Appointments & File Processing pages only). */
   showFunnelCards?: boolean;
 }
 
 const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs, pausedOnly, serviceType, showFunnelCards }) => {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<TabKey>('ALL');
-  const [search, setSearch] = useState('');
-  const [destination, setDestination] = useState('');
-  const [city, setCity] = useState('');
-  const [fileAssignedToId, setFileAssignedToId] = useState('');
-  const [advancePaid, setAdvancePaid] = useState<'' | 'true' | 'false'>('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = usePersistedPageSize(`listing:${title}`, 20);
 
   // File Processing already shows this client/status info on the case detail page itself —
   // dropped from the list table here per request, to keep it focused on file-processing work.
@@ -93,6 +89,26 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   // who processed the file too, rather than by appointment city like Appointments/Paused.
   const isCompleted = stage === 'COMPLETED';
   const showUserTabs = isFileProcessing || isCompleted;
+
+  const [tab, setTab] = useState<TabKey>('ALL');
+  const [search, setSearch] = useState('');
+  const [destination, setDestination] = useState('');
+  const [city, setCity] = useState('');
+  // '' = every assignee, UNASSIGNED_TAB = the fileAssignedToId IS NULL bucket, anything else
+  // is a real user id. Kept as one string (rather than id | null | undefined) so the tab bar
+  // can compare it directly; the sentinel is deliberately not a uuid so it can never collide.
+  const [fileAssignedToId, setFileAssignedToId] = useState('');
+  // Three mutually exclusive states, not a paid/unpaid boolean: a waived advance (refusal /
+  // free service) is settled without ever having been paid, so it needs its own filter value
+  // rather than being lumped in with the outstanding ones. '' means "any".
+  const [advanceState, setAdvanceState] = useState<'' | AdvanceState>('');
+  const [page, setPage] = useState(1);
+  // File Processing is ordered by appointment date ascending server-side, so the clients
+  // routed in today — whose appointments are the furthest out — sort to the END of the list.
+  // With a 20-row default a normal day's intake landed on page 2+, which is exactly the
+  // "daily clients disappear when moved to File Processing" report. 50 keeps a typical
+  // day's worth on the first page; the user's own choice still overrides this.
+  const [limit, setLimit] = usePersistedPageSize(`listing:${title}`, isFileProcessing ? 50 : 20);
 
   // All filters are ANDed together server-side, so status + destination + city + advance-paid + search narrow the list in sync.
   const params: Record<string, string> = { page: String(page), limit: String(limit) };
@@ -108,10 +124,10 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (destination) params.destination = destination;
   if (showUserTabs) { if (fileAssignedToId) params.fileAssignedToId = fileAssignedToId; }
   else if (city) params.city = city;
-  if (advancePaid) params.advancePaid = advancePaid;
+  if (advanceState) params.advanceState = advanceState;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, fileAssignedToId, advancePaid, page, limit],
+    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, fileAssignedToId, advanceState, page, limit],
     queryFn:  () => getCases(params),
   });
 
@@ -124,10 +140,32 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   });
   const fileUsers: AssignableUser[] = (usersData?.data ?? []).filter(u => u.roles.some(r => FILE_ROLES.includes(r)));
 
+  // One pre-aggregated payload feeds all three funnel cards — the Today/Yesterday/Month
+  // buckets are calendar-based and can't be derived from the paged listing above.
+  const { data: metricsData, isLoading: metricsLoading } = useQuery({
+    queryKey: ['cases', 'appointmentMetrics'],
+    queryFn:  () => getAppointmentMetrics(),
+    enabled:  !!showFunnelCards,
+  });
+  const metrics = metricsData?.data;
+
   const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
+
+  const hasActiveFilters = !!(search || destination || city || fileAssignedToId || advanceState || tab !== 'ALL');
+  const clearFilters = () => {
+    setSearch(''); setDestination(''); setCity(''); setFileAssignedToId(''); setAdvanceState(''); setTab('ALL'); setPage(1);
+  };
+
+  // Every filter change resets to page 1, but the result set can also shrink underneath an
+  // already-deep page (a case advanced a stage, got paused, or someone else edited it). Sitting
+  // on a page past the end renders the "No cases found" state, which is indistinguishable from
+  // the rows having vanished — snap back to the last real page instead.
+  useEffect(() => {
+    if (meta?.totalPages && page > meta.totalPages) setPage(meta.totalPages);
+  }, [meta?.totalPages, page]);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'ALL',        label: 'All' },
@@ -142,26 +180,35 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      {/* Three cards alongside the title only once there's room for them — below xl they drop
+          under the heading as their own row rather than squashing it. */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="shrink-0">
           <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
           <p className="text-gray-500 text-sm mt-1">{meta?.total ?? 0} cases</p>
         </div>
         {showFunnelCards && (
-          <div className="flex gap-3">
-            <CaseCountCard
-              icon={ArrowRightCircle}
-              label="Moved to File Processing"
-              modalTitle="Moved to File Processing"
-              modalSubtitle="Cases that advanced from the Appointment stage into File Processing"
-              params={{ stage: 'FILE_PROCESSING,INVOICED,COMPLETED', serviceType: 'FULL_SERVICE' }}
-            />
-            <CaseCountCard
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full xl:w-auto xl:min-w-[34rem]">
+            <MetricBreakdownCard
               icon={CalendarCheck}
               label="Appointment Date Allotted"
-              modalTitle="Appointment Date Allotted"
-              modalSubtitle="Appointment-stage cases that already have an appointment date booked"
-              params={{ stage: 'APPOINTMENT', serviceType: 'FULL_SERVICE', hasAppointmentDate: 'true' }}
+              card={metrics?.appointmentDateAllotted}
+              ranges={metrics?.ranges}
+              isLoading={metricsLoading}
+            />
+            <MetricBreakdownCard
+              icon={ArrowRightCircle}
+              label="Moved to File Processing"
+              card={metrics?.movedToFileProcessing}
+              ranges={metrics?.ranges}
+              isLoading={metricsLoading}
+            />
+            <MetricBreakdownCard
+              icon={CalendarClock}
+              label="Appointment Only"
+              card={metrics?.appointmentOnly}
+              ranges={metrics?.ranges}
+              isLoading={metricsLoading}
             />
           </div>
         )}
@@ -179,6 +226,18 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   }`}
                 >
                   All
+                </button>
+                {/* Freshly routed cases land here with no file owner yet, so without this tab
+                    they were only reachable from "All" — a named contributor to the "daily
+                    clients disappear from File Processing" report. `none` is a server-side
+                    sentinel for fileAssignedToId IS NULL. */}
+                <button
+                  onClick={() => { setFileAssignedToId(UNASSIGNED_TAB); setPage(1); }}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    fileAssignedToId === UNASSIGNED_TAB ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Unassigned
                 </button>
                 {fileUsers.map(u => (
                   <button
@@ -241,18 +300,22 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                 {tabs.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
               </select>
             )}
+            {/* Waived is its own option, not a flavour of Paid or Unpaid — the desk chases
+                Unpaid, and folding waived cases in there would put refusal/free-service
+                clients back on the chase list. */}
             <select
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              value={advancePaid}
-              onChange={e => { setAdvancePaid(e.target.value as '' | 'true' | 'false'); setPage(1); }}
+              value={advanceState}
+              onChange={e => { setAdvanceState(e.target.value as '' | AdvanceState); setPage(1); }}
             >
-              <option value="">Any</option>
-              <option value="true">Paid</option>
-              <option value="false">Unpaid</option>
+              <option value="">Any advance</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="waived">Waived</option>
             </select>
-            {(search || destination || city || fileAssignedToId || advancePaid || tab !== 'ALL') && (
+            {hasActiveFilters && (
               <button
-                onClick={() => { setSearch(''); setDestination(''); setCity(''); setFileAssignedToId(''); setAdvancePaid(''); setTab('ALL'); setPage(1); }}
+                onClick={clearFilters}
                 className="text-xs text-indigo-600 hover:underline"
               >
                 Clear filters
@@ -266,9 +329,20 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
             <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : cases.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48">
+          <div className="flex flex-col items-center justify-center h-48 px-6 text-center">
             <CalendarDays className="w-12 h-12 text-gray-300 mb-3" />
             <p className="text-gray-500">No cases found</p>
+            {/* "The clients I just moved here are gone" is almost always one of two things:
+                a filter that's still applied (a user or city tab is easy to leave selected),
+                or the case having been paused — paused cases are pulled out of every stage
+                listing and live on the Paused page. Say which, rather than just showing nothing. */}
+            {hasActiveFilters ? (
+              <button onClick={clearFilters} className="text-xs text-indigo-600 hover:underline mt-2">
+                Filters are still applied — clear them to see every case in this stage
+              </button>
+            ) : !pausedOnly ? (
+              <p className="text-xs text-gray-400 mt-2">Paused cases are excluded from this list — check the Paused page.</p>
+            ) : null}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -283,7 +357,6 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">User Comments</th>}
                   {isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">HR Comments</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Advance</th>
-                  {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Priority</th>}
                   {!isFileProcessing && <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>}
                   {pausedOnly && <th className="text-left px-4 py-3 font-medium text-gray-500">Paused Reason</th>}
                   <th className="text-left px-4 py-3 font-medium text-gray-500">Appointment</th>
@@ -309,11 +382,23 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
-                    <td
-                      className={`px-2 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
-                      title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
-                    >
-                      {c.client?.clientRef}
+                    <td className="px-2 py-3 text-xs font-bold">
+                      <div className="flex items-center gap-1">
+                        {/* Red ref = money still outstanding, the signal the desk chases on. */}
+                        <span
+                          className={isAdvanceSettled(c) ? 'text-indigo-600' : 'text-red-600'}
+                          title={isAdvanceSettled(c) ? undefined : 'Advance outstanding — not paid and not waived'}
+                        >
+                          {c.client?.clientRef}
+                        </span>
+                        {/* The WhatsApp-group warning used to own this cell's colour; it keeps
+                            its own signal (and its wording) as an icon beside the ref instead. */}
+                        {!c.whatsappGroupCreated && (
+                          <span title="WhatsApp group not created for this appointment" className="inline-flex text-gray-400">
+                            <MessageCircleOff className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
@@ -336,19 +421,21 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                         <span className="text-xs text-gray-400">—</span>
                       ) : c.advancePaid ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
+                      ) : c.advanceWaived ? (
+                        // Staff-set waiver (refusal / free service). Settled, so it must not
+                        // read as Pending while the Client Ref beside it reads as settled.
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600"
+                          title={c.advanceWaiverReason ?? 'Advance waived'}
+                        >
+                          Waived
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
                           <AlertTriangle className="w-2.5 h-2.5" /> Pending
                         </span>
                       )}
                     </td>
-                    {!isFileProcessing && (
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PRI_COLORS[c.priority]}`}>
-                          {PRI_LABELS[c.priority]}
-                        </span>
-                      </td>
-                    )}
                     {!isFileProcessing && (
                       <td className="px-4 py-3">
                         {c.stage === 'APPOINTMENT' && c.appointmentStatus ? (
@@ -368,6 +455,17 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <p className="font-medium text-gray-900">{c.client?.lastName}</p>
+                        {/* Replaces the old Priority column: ~98% of cases are Normal, so only the
+                            exception is worth a pixel. Sits first in the badge cluster beside the
+                            name — the row's most urgent signal reads before the passport/info ones. */}
+                        {c.priority === 'URGENT' && (
+                          <span
+                            title="Urgent priority"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5" /> Urgent
+                          </span>
+                        )}
                         {(isExpiringSoon(c.client?.passportExpiry) || isExpiringSoon(c.ukVisaExpiry)) && (
                           <span
                             title={[

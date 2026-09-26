@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
-import { generateClientRef, backfillGroupMembers, nextMemberIndex, buildGroupRef } from '../utils/clientRef';
+import { generateClientRef, backfillGroupMembers, nextMemberIndex, groupRefForMember, ungroupedRef } from '../utils/clientRef';
 import { appendHrComment, formatHrCommentEntry } from '../utils/hrComments';
 
 export { generateClientRef };
@@ -124,9 +124,12 @@ export const createClient = async (data: {
   if (!clientRef && data.groupId) {
     const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
     if (group) {
-      const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
+      // Backfill first so any legacy-format members are upgraded before this one is
+      // stamped; its return value is deliberately ignored — a brand-new client has no
+      // number to preserve, so groupRefForMember mints one for it.
+      await backfillGroupMembers(data.groupId, group.groupRef);
       const memberIndex = await nextMemberIndex(data.groupId);
-      clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
+      clientRef = await groupRefForMember(null, group.groupRef, memberIndex);
     }
   }
   if (!clientRef) clientRef = await generateClientRef();
@@ -263,6 +266,30 @@ export const bulkImportClients = async (
   return results;
 };
 
+// The list's filters, expressed as raw SQL for the ordered-id query below. Must stay in
+// step with the Prisma `where` listClients builds for the count — same predicates, said
+// twice, because only one of the two forms can express the ORDER BY we need.
+const buildListFilterSql = (search?: string, stage?: string, destination?: string) => {
+  const conditions: Prisma.Sql[] = [];
+
+  if (search) {
+    const like = `%${search}%`;
+    conditions.push(Prisma.sql`(
+      c."firstName" ILIKE ${like} OR c."lastName" ILIKE ${like} OR c."clientRef" ILIKE ${like}
+      OR c."passportNumber" ILIKE ${like} OR c."phone" ILIKE ${like} OR c."email" ILIKE ${like}
+    )`);
+  }
+
+  if (stage || destination) {
+    const caseConditions: Prisma.Sql[] = [Prisma.sql`vc."clientId" = c."id"`];
+    if (stage)       caseConditions.push(Prisma.sql`vc."stage" = ${stage}::"CaseStage"`);
+    if (destination) caseConditions.push(Prisma.sql`vc."destination" ILIKE ${`%${destination}%`}`);
+    conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM "visa_cases" vc WHERE ${Prisma.join(caseConditions, ' AND ')})`);
+  }
+
+  return conditions.length ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}` : Prisma.empty;
+};
+
 export const listClients = async (page = 1, limit = 20, search?: string, stage?: string, destination?: string) => {
   const skip = (page - 1) * limit;
   const where: Prisma.ClientWhereInput = {};
@@ -287,12 +314,70 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
     };
   }
 
-  const [clients, total] = await Promise.all([
-    prisma.client.findMany({ where, skip, take: limit, select: CLIENT_SELECT, orderBy: { receivedDate: 'desc' } }),
+  // Ordering has to happen in SQL. Within one receivedDate the rows must come back in
+  // ascending *numeric* client id, and Prisma can only order by a stored column — a
+  // plain `clientRef: 'asc'` is lexicographic, which files CL-1000 above CL-953 (and was
+  // the reported "CL-953 listed above CL-951" bug). Since the sort has to be applied
+  // before LIMIT/OFFSET, the page of ids is selected raw and re-hydrated below.
+  // Refs with no CL-### number (hand-entered or imported oddities) sort last rather than
+  // first. The trailing clientRef tiebreak is only a determinism guard — group members each
+  // keep their OWN number now, so they're already separated by the numeric sort above and
+  // no longer collide on a shared one (see group.service's orderMembers).
+  const [orderedIds, total] = await Promise.all([
+    prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT c."id"
+      FROM "clients" c
+      ${buildListFilterSql(search, stage, destination)}
+      ORDER BY c."receivedDate" DESC,
+               COALESCE(CAST(SUBSTRING(c."clientRef" FROM '^CL-(\\d+)') AS INTEGER), 2147483647) ASC,
+               c."clientRef" ASC
+      LIMIT ${limit} OFFSET ${skip}
+    `),
     prisma.client.count({ where }),
   ]);
 
+  // `IN (...)` carries no ordering of its own, so the raw query's order is restored here.
+  const ids = orderedIds.map(r => r.id);
+  const rows = ids.length
+    ? await prisma.client.findMany({ where: { id: { in: ids } }, select: CLIENT_SELECT })
+    : [];
+  const byId = new Map(rows.map(r => [r.id, r]));
+  const clients = ids
+    .map(id => byId.get(id))
+    .filter((c): c is NonNullable<typeof c> => !!c);
+
   return { clients: clients.map(decorateClient), total, page, limit, totalPages: Math.ceil(total / limit) };
+};
+
+// Backs the create/edit forms' async passport check: staff typing a passport number get
+// told it already belongs to an existing client, so they open a NEW CASE on that client
+// instead of starting a duplicate profile. Deliberately advisory only — duplicates stay
+// allowed, since an existing client applying for another country is the normal path, so
+// nothing here blocks a save.
+// Matched trimmed and case-insensitively because the same passport gets typed as
+// "ab123456", "AB123456 " and so on.
+export const findClientByPassport = async (passportNumber: string, excludeClientId?: string) => {
+  // Called on every debounced keystroke, including the empty field the form starts on —
+  // that's a plain "no match", not a validation error.
+  const trimmed = passportNumber.trim();
+  if (!trimmed) return { exists: false, client: null };
+
+  const match = await prisma.client.findFirst({
+    where: {
+      passportNumber: { equals: trimmed, mode: 'insensitive' },
+      // Set while editing an existing client, so the record doesn't flag itself.
+      ...(excludeClientId ? { id: { not: excludeClientId } } : {}),
+    },
+    select: {
+      id: true, clientRef: true, firstName: true, lastName: true,
+      // Just the newest case — the form only needs "where is this client up to".
+      visaCases: { select: { stage: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+    },
+  });
+  if (!match) return { exists: false, client: null };
+
+  const { visaCases, ...client } = match;
+  return { exists: true, client: { ...client, stage: visaCases[0]?.stage ?? null } };
 };
 
 export const getClientById = async (id: string) => {
@@ -333,20 +418,22 @@ export const updateClient = async (
   if (data.passportExpiry) d.passportExpiry = new Date(data.passportExpiry);
 
   // groupId changing re-derives the clientRef, same rules as group.service's
-  // addMembers/removeMember — joining (or switching to) a group formats it as
-  // CL-number-GroupName-position; clearing it reverts to a fresh plain CL-###.
+  // addMembers/removeMember — a client always KEEPS its own number and only gains or loses
+  // the -G<n>-<position> suffix (CL-945 <-> CL-945-G1-02). Reassigning the number here is
+  // what stranded numbers and made the sequence look like it skipped, so both branches go
+  // through the number-preserving helpers rather than minting a fresh ref.
   // Re-saving the same groupId is a no-op here so repeat saves don't inflate positions.
   if (Object.prototype.hasOwnProperty.call(data, 'groupId')) {
-    const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true } });
+    const current = await prisma.client.findUnique({ where: { id }, select: { groupId: true, clientRef: true } });
     if (data.groupId && data.groupId !== current?.groupId) {
       const group = await prisma.clientGroup.findUnique({ where: { id: data.groupId }, select: { groupRef: true } });
       if (group) {
-        const groupNumber = await backfillGroupMembers(data.groupId, group.groupRef);
+        await backfillGroupMembers(data.groupId, group.groupRef);
         const memberIndex = await nextMemberIndex(data.groupId);
-        d.clientRef = buildGroupRef(groupNumber, group.groupRef, memberIndex);
+        d.clientRef = await groupRefForMember(current?.clientRef ?? null, group.groupRef, memberIndex);
       }
     } else if (data.groupId === null && current?.groupId) {
-      d.clientRef = await generateClientRef();
+      d.clientRef = await ungroupedRef(current.clientRef);
     }
   }
 

@@ -53,6 +53,25 @@ export const getClient = async (req: Request, res: Response): Promise<void> => {
   sendSuccess(res, 'Client retrieved', client);
 };
 
+// Advisory duplicate check the client form fires per debounced keystroke while a
+// passport number is being typed. Never rejects: a blank/garbage query is simply "no
+// match", because a 400 mid-typing would surface as an error toast on every character.
+// That's also why the query is read straight off req.query instead of going through a
+// zod schema that would throw.
+export const checkPassport = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const passportNumber = typeof req.query.passportNumber === 'string' ? req.query.passportNumber : '';
+    // Sent when editing, so the client being edited doesn't match itself.
+    const excludeClientId = typeof req.query.excludeClientId === 'string' && req.query.excludeClientId
+      ? req.query.excludeClientId
+      : undefined;
+    const result = await clientService.findClientByPassport(passportNumber, excludeClientId);
+    sendSuccess(res, result.exists ? 'Existing client found' : 'No matching client', result);
+  } catch {
+    sendError(res, 'Failed to check passport number', 500);
+  }
+};
+
 export const updateClient = async (req: Request, res: Response): Promise<void> => {
   try {
     const data = updateClientSchema.parse(req.body);

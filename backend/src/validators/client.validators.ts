@@ -239,6 +239,11 @@ export const updateCaseSchema = z.object({
   // Onboarding — advance payment status & hold
   advancePaid:     z.boolean().optional(),
   advancePaidDate: z.string().optional(),
+  // Refusal / free-service waiver: staff explicitly declaring no advance is required, so
+  // the case stops reading as unpaid. The reason is nullable so unticking the waiver can
+  // send it away rather than just leaving a stale reason behind.
+  advanceWaived:       z.boolean().optional(),
+  advanceWaiverReason: z.string().max(500).optional().nullable(),
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2

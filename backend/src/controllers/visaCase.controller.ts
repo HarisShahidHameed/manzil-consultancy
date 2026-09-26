@@ -6,7 +6,9 @@ import { createAuditLog } from '../utils/audit';
 import { updateCaseSchema } from '../validators/client.validators';
 import { streamAdvanceReceiptPdf, streamInvoicePdf } from '../utils/pdf';
 
-const caseQuerySchema = z.object({
+// Exported so the service tests can drive the real coercion the wire uses, rather than a
+// hand-rolled copy of it — a metric card's filters have to survive this exact round trip.
+export const caseQuerySchema = z.object({
   page:   z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
   limit:  z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   stage:  z.string().optional(),
@@ -14,23 +16,71 @@ const caseQuerySchema = z.object({
   appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
   destination: z.string().optional(),
   city:        z.string().optional(),
+  // Advance settlement is three states, not a boolean: a waived advance (prior refusal /
+  // free service) is settled without money, so it is neither Paid nor Unpaid and needs to
+  // be askable in its own right. See ADVANCE_STATE_WHERE in visaCase.service.
+  advanceState: z.enum(['paid', 'unpaid', 'waived']).optional(),
+  // Deprecated: the pre-waiver boolean, kept so the documented API surface and any
+  // third-party integration built against it keep working. The service folds it onto the
+  // same predicates as advanceState (true → paid, false → unpaid), and advanceState wins
+  // if both arrive.
   advancePaid: z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
   onHold:      z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
   serviceType: z.enum(['APPOINTMENT_ONLY', 'FULL_SERVICE']).optional(),
-  fileAssignedToId: z.string().uuid().optional(),
+  // A uuid picks one file handler; the 'none' sentinel is the "Unassigned" tab, which a
+  // uuid-only schema had no way to express even though a just-routed case has no handler yet.
+  fileAssignedToId: z.union([z.literal('none'), z.string().uuid()]).optional(),
   // "Appointment allotted" conversion card — cases that already have an appointment date booked.
   hasAppointmentDate: z.enum(['true', 'false']).optional().transform(v => v === undefined ? undefined : v === 'true'),
+  // Listing order. Each page has a sensible default (see visaCaseService.listCases); these
+  // let the File Processing view swap between newest-routed-first and the by-deadline
+  // "earliest appointment due first" ordering without either one being lost.
+  sort:  z.enum(['routedAt', 'appointmentDate', 'receivedDate', 'createdAt']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+  // Metric-card drill-down: the half-open window [from, to) a card counted over, sent back
+  // verbatim so the modal lands on exactly those rows. `dateField` is an enum rather than a
+  // free string — the service would otherwise be handed an arbitrary Prisma column name.
+  from: z.string().datetime({ offset: true }).optional().transform(v => v ? new Date(v) : undefined),
+  to:   z.string().datetime({ offset: true }).optional().transform(v => v ? new Date(v) : undefined),
+  dateField: z.enum(visaCaseService.CASE_DATE_FIELDS).optional(),
+}).refine(q => !(q.from || q.to) || q.dateField !== undefined, {
+  // A range with no column to range over would silently count the wrong event, so it is a
+  // client error rather than a guess.
+  path: ['dateField'],
+  message: 'dateField is required when from or to is supplied',
 });
 
 export const listCases = async (req: Request, res: Response): Promise<void> => {
-  const { page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold, serviceType, fileAssignedToId, hasAppointmentDate } = caseQuerySchema.parse(req.query);
-  const result = await visaCaseService.listCases(page, limit, stage, search, appointmentStatus, destination, city, advancePaid, onHold, serviceType, fileAssignedToId, hasAppointmentDate);
+  let query: z.infer<typeof caseQuerySchema>;
+  try {
+    query = caseQuerySchema.parse(req.query);
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      // 400 rather than the 500 an unhandled ZodError would fall through to: an unknown
+      // dateField or a range missing one is the caller's mistake, not the server's.
+      sendError(res, 'Invalid case filters', 400, error.flatten().fieldErrors);
+      return;
+    }
+    throw error;
+  }
+  const result = await visaCaseService.listCases(query);
   sendSuccess(res, 'Cases retrieved', result.cases, 200, {
     total: result.total,
     page: result.page,
     limit: result.limit,
     totalPages: result.totalPages,
   });
+};
+
+// The three appointment funnel cards (Appointment Date Allotted / Moved to File Processing
+// / Appointment Only), each split into Today / Yesterday / Month calendar buckets.
+//
+// Each card also carries the /api/cases params that reproduce it and the half-open ranges
+// the server counted over, so clicking a number can open exactly those rows — the browser
+// must not recompute "today" for itself, since its timezone need not be the agency's.
+export const getAppointmentMetrics = async (_req: Request, res: Response): Promise<void> => {
+  const metrics = await visaCaseService.getAppointmentMetrics();
+  sendSuccess(res, 'Appointment metrics retrieved', metrics);
 };
 
 export const getCase = async (req: Request, res: Response): Promise<void> => {

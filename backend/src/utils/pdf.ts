@@ -154,20 +154,28 @@ export const streamAdvanceReceiptPdf = (res: Response, vc: any): void => {
   // Amount box
   const boxY = doc.y + 4;
   doc.roundedRect(LEFT, boxY, RIGHT - LEFT, 70, 6).fillAndStroke('#F8FAFC', '#E5E7EB');
-  doc.fontSize(9).font('Helvetica').fillColor(GREY).text('ADVANCE PAID', LEFT + 18, boxY + 14);
+  doc.fontSize(9).font('Helvetica').fillColor(GREY).text(vc.advanceWaived ? 'ADVANCE WAIVED' : 'ADVANCE PAID', LEFT + 18, boxY + 14);
   doc.fontSize(26).font('Helvetica-Bold').fillColor(NAVY).text(money(advance), LEFT + 18, boxY + 28);
 
-  const status = vc.advancePaid ? 'PAID' : 'UNPAID';
-  const statusColor = vc.advancePaid ? '#16A34A' : '#DC2626';
+  // Three states, not two — a refusal/free-service case never owed an advance, so printing
+  // UNPAID on its receipt misrepresents the arrangement to the client. WAIVED carries the
+  // reason in place of the payment date, since there is no payment to date.
+  const status = vc.advancePaid ? 'PAID' : vc.advanceWaived ? 'WAIVED' : 'UNPAID';
+  const statusColor = vc.advancePaid ? '#16A34A' : vc.advanceWaived ? GREY : '#DC2626';
+  const subline = vc.advancePaid
+    ? `Date: ${fdate(vc.advancePaidDate)}`
+    : vc.advanceWaived
+      ? (vc.advanceWaiverReason ? `No advance required — ${vc.advanceWaiverReason}` : 'No advance required')
+      : `Date: ${fdate(vc.advancePaidDate)}`;
   doc.fontSize(13).font('Helvetica-Bold').fillColor(statusColor).text(status, 350, boxY + 22, { width: RIGHT - 350 - 18, align: 'right' });
-  doc.fontSize(8.5).font('Helvetica').fillColor(GREY).text(`Date: ${fdate(vc.advancePaidDate)}`, 350, boxY + 42, { width: RIGHT - 350 - 18, align: 'right' });
+  doc.fontSize(8.5).font('Helvetica').fillColor(GREY).text(subline, 350, boxY + 42, { width: RIGHT - 350 - 18, align: 'right' });
   doc.y = boxY + 86;
 
   sectionTitle(doc, 'Summary');
   kvRows(doc, [
     ['Total Service Charges', money(charges)],
     ['Discount', money(discount)],
-    ['Advance Paid', money(advance)],
+    [vc.advanceWaived ? 'Advance Waived' : 'Advance Paid', money(advance)],
     ['Balance Remaining', money(charges - discount - advance)],
   ]);
 

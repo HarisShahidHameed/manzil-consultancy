@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
@@ -14,7 +14,7 @@ import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 // APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
@@ -22,14 +22,17 @@ const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 
 const APPOINTMENT_ONLY_STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'COMPLETED'];
 const getStageOrder = (serviceType?: string): CaseStage[] =>
   serviceType === 'APPOINTMENT_ONLY' ? APPOINTMENT_ONLY_STAGE_ORDER : STAGE_ORDER;
-const STAGE_LABELS: Record<CaseStage, string> = {
-  APPOINTMENT: 'Appointment', FILE_PROCESSING: 'File Processing',
-  INVOICED: 'Invoiced', COMPLETED: 'Completed', CANCELLED: 'Cancelled',
-};
 const STAGE_COLORS: Record<CaseStage, string> = {
   APPOINTMENT: 'bg-blue-100 text-blue-700',
   FILE_PROCESSING: 'bg-yellow-100 text-yellow-700', INVOICED: 'bg-purple-100 text-purple-700',
   COMPLETED: 'bg-green-100 text-green-700', CANCELLED: 'bg-red-100 text-red-700',
+};
+// Where each stage's queue lives. Back falls through to this when there is no in-app
+// history entry to pop — a deep link, a fresh tab, or an entry pushed by something
+// outside the app — so Back never bounces the user out of the dashboard.
+const STAGE_QUEUE_PATH: Record<CaseStage, string> = {
+  APPOINTMENT: '/appointments', FILE_PROCESSING: '/file-processing',
+  INVOICED: '/invoices', COMPLETED: '/completed', CANCELLED: '/appointments',
 };
 
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
@@ -94,7 +97,11 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['TLS Account', vc.tlsAccount ?? '—'],
   ['FRA No.', vc.fraNo ?? '—'],
   ['Charges', fmtMoney(vc.charges)],
-  ['Advance', `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
+  // A waiver means nothing was ever collected, so the row must not print an amount that
+  // reads as a payment — it says exempt instead.
+  ['Advance', vc.advanceWaived
+    ? 'Waived (refusal / free service)'
+    : `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
 const DOC_COST_KEY: Record<DocKey, keyof VisaCase> = {
@@ -122,9 +129,28 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'BACK_UP', label: 'Back-Up' },
 ];
 
+// The editFields keys each Save actually persists. Once the server has them the server
+// record is authoritative again, so they drop out of the dirty set and go back to
+// re-syncing on every refetch (see the seeding effect).
+const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
+  'destination', 'city', 'charges', 'discount', 'advance', 'priority',
+  'appointmentDate', 'fraNo', 'tlsAccount', 'appointmentNotes',
+];
+const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
+  'travelDate', 'hotelDate', 'salamComments',
+  'docAppointment', 'docTicket', 'docInsurance', 'docHotel',
+  'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
+  'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
+  'docEVisaCost', 'docSopCost', 'docVisaFormCost', 'docSelfEmploymentCost',
+  'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid',
+  'docHotelClientPaid', 'docSelfEmploymentClientPaid',
+  'charges', 'discount', 'advance', 'paymentReceived',
+];
+
 const CaseDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -142,6 +168,9 @@ const CaseDetail: React.FC = () => {
     docEVisa: 'agency', docSop: 'agency', docVisaForm: 'agency', docSelfEmployment: 'client',
   });
   const [hrCommentNote, setHrCommentNote] = useState('');
+  // null means "not edited here" — fall through to whatever the server has. Kept out of
+  // editFields on purpose: the waiver is patched immediately, it isn't part of a Save.
+  const [waiverReason, setWaiverReason] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['case', id],
@@ -159,47 +188,76 @@ const CaseDetail: React.FC = () => {
 
   const vc = data?.data;
 
+  // Fields the user has typed into since the last seed. The immediate patches on this page
+  // (advance toggle, assignee, pause, destination finalize) PATCH the server mid-edit, and
+  // invalidateFinancials() then refetches — which bumps vc.updatedAt and re-runs the seeding
+  // effect below. Before this set existed that re-seed blew away every figure that had been
+  // typed but not yet saved, which is exactly the "Save clears my charges/discount the first
+  // time and only sticks on the second try" bug: the first Save was racing a refetch it had
+  // itself triggered by flipping the advance-paid toggle.
+  const dirtyFields = useRef<Set<keyof VisaCase>>(new Set());
+  // The case the dirty set belongs to — switching cases is always a clean slate.
+  const seededCaseId = useRef<string | null>(null);
+  const clearDirty = (keys: (keyof VisaCase)[]) => keys.forEach(k => dirtyFields.current.delete(k));
+
   useEffect(() => {
-    if (vc) {
-      setEditFields({
-        destination: vc.destination ?? '',
-        city: vc.city ?? '',
-        priority: vc.priority,
-        appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
-        fraNo: vc.fraNo ?? '',
-        tlsAccount: vc.tlsAccount ?? '',
-        appointmentNotes: vc.appointmentNotes ?? '',
-        travelDate: vc.travelDate?.split('T')[0] ?? '',
-        hotelDate: vc.hotelDate?.split('T')[0] ?? '',
-        salamComments: vc.salamComments ?? '',
-        docAppointment: vc.docAppointment,
-        docTicket: vc.docTicket,
-        docInsurance: vc.docInsurance,
-        docHotel: vc.docHotel,
-        docEVisa: vc.docEVisa,
-        docSop: vc.docSop,
-        docVisaForm: vc.docVisaForm,
-        docSelfEmployment: vc.docSelfEmployment,
-        docAppointmentClientPaid: vc.docAppointmentClientPaid,
-        docTicketClientPaid: vc.docTicketClientPaid,
-        docInsuranceClientPaid: vc.docInsuranceClientPaid,
-        docHotelClientPaid: vc.docHotelClientPaid,
-        docSelfEmploymentClientPaid: vc.docSelfEmploymentClientPaid,
-        charges: vc.charges,
-        discount: vc.discount,
-        advance: vc.advance,
-        paymentReceived: vc.paymentReceived,
-      });
-      setActiveSection(vc.stage === 'CANCELLED' ? 'APPOINTMENT' : vc.stage);
-      setDocPaidBy(prev => ({
-        ...prev,
-        docAppointment: (vc.docAppointmentCost != null && Number(vc.docAppointmentCost) > 0) ? 'agency' : 'client',
-        docTicket:      (vc.docTicketCost      != null && Number(vc.docTicketCost)      > 0) ? 'agency' : 'client',
-        docInsurance:   (vc.docInsuranceCost   != null && Number(vc.docInsuranceCost)   > 0) ? 'agency' : 'client',
-        docHotel:       (vc.docHotelCost       != null && Number(vc.docHotelCost)       > 0) ? 'agency' : 'client',
-        docSelfEmployment: (vc.docSelfEmploymentCost != null && Number(vc.docSelfEmploymentCost) > 0) ? 'agency' : 'client',
-      }));
+    if (!vc) return;
+    const caseChanged = seededCaseId.current !== vc.id;
+    if (caseChanged) {
+      dirtyFields.current.clear();
+      seededCaseId.current = vc.id;
     }
+    const fromServer: Partial<VisaCase> = {
+      destination: vc.destination ?? '',
+      city: vc.city ?? '',
+      priority: vc.priority,
+      appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
+      fraNo: vc.fraNo ?? '',
+      tlsAccount: vc.tlsAccount ?? '',
+      appointmentNotes: vc.appointmentNotes ?? '',
+      travelDate: vc.travelDate?.split('T')[0] ?? '',
+      hotelDate: vc.hotelDate?.split('T')[0] ?? '',
+      salamComments: vc.salamComments ?? '',
+      docAppointment: vc.docAppointment,
+      docTicket: vc.docTicket,
+      docInsurance: vc.docInsurance,
+      docHotel: vc.docHotel,
+      docEVisa: vc.docEVisa,
+      docSop: vc.docSop,
+      docVisaForm: vc.docVisaForm,
+      docSelfEmployment: vc.docSelfEmployment,
+      docAppointmentClientPaid: vc.docAppointmentClientPaid,
+      docTicketClientPaid: vc.docTicketClientPaid,
+      docInsuranceClientPaid: vc.docInsuranceClientPaid,
+      docHotelClientPaid: vc.docHotelClientPaid,
+      docSelfEmploymentClientPaid: vc.docSelfEmploymentClientPaid,
+      charges: vc.charges,
+      discount: vc.discount,
+      advance: vc.advance,
+      paymentReceived: vc.paymentReceived,
+    };
+    setEditFields(prev => {
+      const next: Record<string, unknown> = { ...fromServer };
+      // Untouched fields refresh from the server — that's the whole point of re-syncing on
+      // updatedAt, so a saved discount stops showing its pre-save value. Fields the user has
+      // edited but not yet saved keep what they typed.
+      dirtyFields.current.forEach(key => { next[key as string] = (prev as Record<string, unknown>)[key as string]; });
+      return next as Partial<VisaCase>;
+    });
+    setActiveSection(vc.stage === 'CANCELLED' ? 'APPOINTMENT' : vc.stage);
+    // Same dirty guard: a cost that's mid-edit must not have its Paid By radio snapped back
+    // to "client" by a refetch, because that swaps the cost input for a disabled £0 box and
+    // looks identical to the figure being wiped.
+    setDocPaidBy(prev => {
+      const next = { ...prev };
+      AGENCY_PAID_DOCS.forEach(key => {
+        const costKey = DOC_COST_KEY[key];
+        if (dirtyFields.current.has(costKey)) return;
+        const cost = vc[costKey] as number | string | null | undefined;
+        next[key] = (cost != null && Number(cost) > 0) ? 'agency' : 'client';
+      });
+      return next;
+    });
   // Re-syncs whenever the server record actually changes (save/refetch), not just when
   // switching cases — otherwise editFields keeps showing pre-save values (e.g. discount)
   // until a full page reload re-mounts the component.
@@ -248,6 +306,9 @@ const CaseDetail: React.FC = () => {
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
     }),
     onSuccess: () => {
+      // Persisted — these fields are the server's again, so the refetch below is free to
+      // re-seed them (rounded/normalised values included).
+      clearDirty(APPOINTMENT_SAVE_KEYS);
       invalidateFinancials();
       showSuccess('Appointment details saved');
     },
@@ -286,6 +347,7 @@ const CaseDetail: React.FC = () => {
       paymentReceived: toNum(editFields.paymentReceived),
     }),
     onSuccess: () => {
+      clearDirty(FILE_SAVE_KEYS);
       invalidateFinancials();
       showSuccess('File processing saved');
     },
@@ -359,13 +421,36 @@ const CaseDetail: React.FC = () => {
     onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to create invoice'),
   });
 
+  // Back has to land on the page the user actually came from, exactly one step. Two things
+  // break a bare navigate(-1): callers elsewhere push a brand-new entry instead of popping
+  // (ClientForm's Cancel/back and its post-save redirect both do), so the entry behind this
+  // page isn't always the one the user sees as "previous"; and a deep link or fresh tab has
+  // no in-app entry to pop at all. So: honour an explicit `from` when a caller passes one,
+  // otherwise pop exactly one entry but only when react-router says one exists (it keeps its
+  // position in the stack on window.history.state.idx), and otherwise fall back to this
+  // case's own queue rather than throwing the user out of the app.
+  const backTo = (location.state as { from?: string } | null)?.from;
+  const goBack = () => {
+    if (backTo) { navigate(backTo, { replace: true }); return; }
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === 'number' && idx > 0) { navigate(-1); return; }
+    navigate(vc ? STAGE_QUEUE_PATH[vc.stage] : '/appointments', { replace: true });
+  };
+
   const handleDownload = async (fn: () => Promise<void>) => {
     try { setDownloading(true); await fn(); } catch { setError('Failed to download PDF'); }
     finally { setDownloading(false); }
   };
 
+  // Single funnel for every write into editFields, so nothing can be edited without being
+  // recorded as dirty — that's what stops a mid-edit refetch overwriting it.
+  const updateEF = (k: keyof VisaCase, value: unknown) => {
+    dirtyFields.current.add(k);
+    setEditFields(f => ({ ...f, [k]: value }));
+  };
+
   const setEF = (k: keyof VisaCase) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setEditFields(f => ({ ...f, [k]: e.target.value }));
+    updateEF(k, e.target.value);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -376,7 +461,7 @@ const CaseDetail: React.FC = () => {
   if (!vc) return (
     <div className="text-center py-16">
       <p className="text-gray-500">Case not found.</p>
-      <Button variant="outline" className="mt-4" onClick={() => navigate(-1)}>Back</Button>
+      <Button variant="outline" className="mt-4" onClick={goBack}>Back</Button>
     </div>
   );
 
@@ -446,8 +531,9 @@ const CaseDetail: React.FC = () => {
 
   // Advance payment is not a hard gate — it's a non-blocking warning that follows
   // the case through every stage until it's paid (auto-marked paid once a non-zero
-  // advance amount is on file).
-  const advancePending = !vc.advancePaid && vc.stage !== 'CANCELLED';
+  // advance amount is on file). An explicitly waived advance (refusal / free service) is
+  // settled, not outstanding, so it stops nagging too.
+  const advancePending = !vc.advancePaid && !vc.advanceWaived && vc.stage !== 'CANCELLED';
 
   const togglePause = () => {
     if (vc.onHold) {
@@ -461,7 +547,7 @@ const CaseDetail: React.FC = () => {
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-center gap-4">
-        <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <button onClick={goBack} className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
           <ArrowLeft className="w-5 h-5 text-gray-600" />
         </button>
         <div className="flex-1">
@@ -584,16 +670,7 @@ const CaseDetail: React.FC = () => {
       {/* Appointment Section — the case lands here as soon as client info is filled */}
       {activeSection === 'APPOINTMENT' && (
       <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
-          {!locked && (
-            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
-                Save
-              </Button>
-            </Can>
-          )}
-        </div>
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Appointment Details</h3>
         {/* Client info captured at onboarding, read-only here — corrected via Edit Client Info */}
         <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
           <h4 className="text-xs font-semibold text-gray-500 mb-3">Client & Appointment Summary</h4>
@@ -767,27 +844,49 @@ const CaseDetail: React.FC = () => {
               <input type="number" min="0" step="0.01" className={`${inputCls} mt-1`} value={editFields.advance as string ?? ''} onChange={setEF('advance')} />
             </div>
           </div>
+          {/* The balance and the invoice preview both subtract the advance as money already
+              in hand, and both deliberately still mirror the backend's invoice math — so a
+              waived case that kept a non-zero advance would understate what's owed. We flag
+              it rather than quietly dropping the figure out of the arithmetic. */}
+          {vc.advanceWaived && num(editFields.advance ?? vc.advance) > 0 && (
+            <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              This advance is waived but still has an amount on it. Nothing was collected, so set it
+              to £0 — otherwise the balance and the invoice both credit the client for money they
+              never paid.
+            </p>
+          )}
         </div>
 
-        {/* Advance paid status + receipt */}
+        {/* Advance paid status + receipt. The paid toggle is inert while the advance is
+            waived — lift the waiver first if an advance is being collected after all. */}
         <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
               <button
                 type="button"
-                disabled={patchMut.isPending}
+                disabled={patchMut.isPending || !!vc.advanceWaived}
+                title={vc.advanceWaived ? 'Advance is waived - remove the waiver to record a payment' : undefined}
                 onClick={() => patchMut.mutate({ patch: { advancePaid: !vc.advancePaid }, msg: vc.advancePaid ? 'Advance marked unpaid' : 'Advance marked paid' })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advancePaid ? 'bg-green-500' : 'bg-gray-300'}`}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${vc.advancePaid && !vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid ? 'translate-x-6' : 'translate-x-1'}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advancePaid && !vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </Can>
             <div>
               <p className="text-sm font-medium text-gray-800">
-                Advance Payment: <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
+                Advance Payment:{' '}
+                {/* A waiver outranks paid/unpaid — the whole point is that the case stops
+                    reading as outstanding when no advance was ever due. */}
+                {vc.advanceWaived ? (
+                  <span className="text-green-600">Waived</span>
+                ) : (
+                  <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
+                )}
               </p>
               <p className="text-xs text-gray-400">
-                {fmtMoney(vc.advance)}{vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}
+                {vc.advanceWaived
+                  ? `No advance required${vc.advanceWaiverReason ? ` — ${vc.advanceWaiverReason}` : ''}`
+                  : `${fmtMoney(vc.advance)}${vc.advancePaid && vc.advancePaidDate ? ` · paid ${new Date(vc.advancePaidDate).toLocaleDateString('en-GB')}` : ''}`}
               </p>
             </div>
           </div>
@@ -796,7 +895,7 @@ const CaseDetail: React.FC = () => {
             size="sm"
             leftIcon={<Download className="w-3.5 h-3.5" />}
             loading={downloading}
-            disabled={!vc.advancePaid}
+            disabled={!vc.advancePaid || !!vc.advanceWaived}
             onClick={() => handleDownload(() => downloadAdvanceReceipt(vc.id, vc.client!.clientRef))}
           >
             Advance Receipt
@@ -805,6 +904,70 @@ const CaseDetail: React.FC = () => {
         <p className="text-xs text-gray-400">
           Automatically marked paid once a non-zero advance amount is saved. Use the toggle only to correct it manually.
         </p>
+
+        {/* Advance waiver — prior-refusal and free-service cases never collect an advance, so
+            they need an explicit exemption. Without one they sit on "Unpaid" forever and keep
+            raising the pending-advance alert on a case where nothing is actually owed. */}
+        <div className="border border-gray-100 bg-gray-50/60 rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+              <button
+                type="button"
+                disabled={patchMut.isPending}
+                onClick={() => {
+                  if (vc.advanceWaived) {
+                    setWaiverReason(null);
+                    patchMut.mutate({ patch: { advanceWaived: false }, msg: 'Advance waiver removed' });
+                    return;
+                  }
+                  patchMut.mutate({
+                    patch: { advanceWaived: true, advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null },
+                    msg: 'Advance waived',
+                  });
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </Can>
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                Advance Waived (refusal / free service):{' '}
+                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>{vc.advanceWaived ? 'Yes' : 'No'}</span>
+              </p>
+              <p className="text-xs text-gray-400">
+                Marks the advance as exempt rather than outstanding. No money is recorded as received.
+              </p>
+            </div>
+          </div>
+          {/* The reason only matters once the waiver is on, and it patches on its own so staff
+              can correct the wording without flipping the waiver off and back on. */}
+          {vc.advanceWaived && (
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs text-gray-500">Waiver Reason</label>
+                <input
+                  className={`${inputCls} mt-1`}
+                  placeholder="e.g. Previous refusal - free re-application"
+                  value={waiverReason ?? vc.advanceWaiverReason ?? ''}
+                  onChange={e => setWaiverReason(e.target.value)}
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                loading={patchMut.isPending}
+                disabled={waiverReason === null || waiverReason.trim() === (vc.advanceWaiverReason ?? '')}
+                onClick={() => patchMut.mutate({
+                  patch: { advanceWaiverReason: (waiverReason ?? '').trim() || null },
+                  msg: 'Waiver reason saved',
+                })}
+              >
+                Save Reason
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* WhatsApp group status — flagged on the client ref in listings until this is checked on */}
         <div className="flex items-center gap-3 border border-gray-100 bg-gray-50/60 rounded-lg p-4">
@@ -823,22 +986,26 @@ const CaseDetail: React.FC = () => {
           </p>
         </div>
         </fieldset>
+
+        {/* Save lives at the bottom of every section, after its last field — same position,
+            size and icon in Appointment, File Processing and any stage added later. It sits
+            outside the fieldset because it's an action on the form, not a field in it. */}
+        {!locked && (
+          <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
+            <div className="flex justify-end border-t border-gray-100 pt-4">
+              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+                Save
+              </Button>
+            </div>
+          </Can>
+        )}
       </div>
       )}
 
       {/* File Processing Section */}
       {activeSection === 'FILE_PROCESSING' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
-            {!locked && (
-              <Can permissions={['files:write', 'clients:write']} requireAll={false}>
-                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
-                  Save
-                </Button>
-              </Can>
-            )}
-          </div>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
 
           {/* Everything captured earlier in the workflow, read-only for the file processor */}
           <div className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
@@ -1016,7 +1183,7 @@ const CaseDetail: React.FC = () => {
                         <select
                           className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                           value={editFields[key] as DocumentStatus ?? vc[key]}
-                          onChange={e => setEditFields(f => ({ ...f, [key]: e.target.value as DocumentStatus }))}
+                          onChange={e => updateEF(key, e.target.value as DocumentStatus)}
                         >
                           <option value="PENDING">Pending</option>
                           <option value="IN_PROGRESS">In Progress</option>
@@ -1040,7 +1207,10 @@ const CaseDetail: React.FC = () => {
                                   checked={paidBy === opt}
                                   onChange={() => {
                                     setDocPaidBy(p => ({ ...p, [key]: opt }));
-                                    if (opt === 'client') setEditFields(f => ({ ...f, [costKey]: 0 }));
+                                    // Either direction is a deliberate edit of this doc's cost, so pin it
+                                    // against a mid-edit refetch. Client-paid means the agency fronted
+                                    // nothing, so the cost goes to zero.
+                                    updateEF(costKey, opt === 'client' ? 0 : (editFields[costKey] ?? vc?.[costKey] ?? ''));
                                   }}
                                   className="accent-indigo-600"
                                 />
@@ -1067,7 +1237,7 @@ const CaseDetail: React.FC = () => {
                               className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                               placeholder="0.00"
                               value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
-                              onChange={e => setEditFields(f => ({ ...f, [costKey]: e.target.value }))}
+                              onChange={e => updateEF(costKey, e.target.value)}
                             />
                           )
                         ) : (
@@ -1081,7 +1251,7 @@ const CaseDetail: React.FC = () => {
                             className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
                             placeholder="0.00"
                             value={String((editFields[clientPaidKey] as string | number | undefined) ?? vc[clientPaidKey] ?? '')}
-                            onChange={e => setEditFields(f => ({ ...f, [clientPaidKey]: e.target.value }))}
+                            onChange={e => updateEF(clientPaidKey, e.target.value)}
                           />
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
@@ -1121,6 +1291,8 @@ const CaseDetail: React.FC = () => {
                 {fmtMoney(caseDue)}
               </span>
             </div>
+            {/* Preview Receipt stays with the Payment figures it renders — it's a read-only
+                view of this block, not a form-level action competing with Save. */}
             <div className="mt-3 flex justify-end">
               <Button variant="outline" size="sm" leftIcon={<Receipt className="w-3.5 h-3.5" />} onClick={() => setPreviewOpen(true)}>
                 Preview Receipt
@@ -1128,6 +1300,17 @@ const CaseDetail: React.FC = () => {
             </div>
           </div>
           </fieldset>
+
+          {/* Same bottom-of-section Save as the Appointment form above. */}
+          {!locked && (
+            <Can permissions={['files:write', 'clients:write']} requireAll={false}>
+              <div className="flex justify-end border-t border-gray-100 pt-4">
+                <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveFileMut.isPending} onClick={() => saveFileMut.mutate()}>
+                  Save
+                </Button>
+              </div>
+            </Can>
+          )}
         </div>
       )}
 
