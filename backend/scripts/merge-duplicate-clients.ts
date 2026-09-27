@@ -110,7 +110,16 @@ async function main() {
     // The survivor is the lowest client number — the original profile, i.e. the "master
     // Client ID" the requirement doc refers to. createdAt breaks a tie for refs with no
     // number at all.
+    //
+    // A family member outranks that, though. Group members are displayed in the group
+    // format (CL-116-G1-01) and the family is meant to read as a set, so if one side of the
+    // merge is in a client group it has to be the one that survives — otherwise the merged
+    // client keeps a plain ref while inheriting the group, and shows up as the odd one out
+    // among its own siblings. Groups spread across several client groups were already
+    // rejected above, so at most one group is in play here.
     const ordered = [...members].sort((a, b) => {
+      const grouped = Number(!!b.groupId) - Number(!!a.groupId);
+      if (grouped !== 0) return grouped;
       const an = a.clientRefNum ?? Number.MAX_SAFE_INTEGER;
       const bn = b.clientRefNum ?? Number.MAX_SAFE_INTEGER;
       return an !== bn ? an - bn : a.createdAt.getTime() - b.createdAt.getTime();

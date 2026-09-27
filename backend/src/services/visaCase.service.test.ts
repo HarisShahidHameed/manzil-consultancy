@@ -26,6 +26,7 @@ import { caseQuerySchema } from '../controllers/visaCase.controller';
 import {
   assertTransitionAllowed,
   isAdvanceSettled,
+  createCase,
   updateCase,
   getAppointmentMetrics,
   listCases,
@@ -256,6 +257,71 @@ describe('family bookings — one advance and one WhatsApp group for the whole g
     mockUpdateFlow(existingCase({ client: { groupId: null, serviceType: 'FULL_SERVICE' } }));
     await updateCase('case-1', { advancePaid: true });
     expect(caseMock.updateMany).not.toHaveBeenCalled();
+  });
+
+  // A group member is an individual client who happens to be linked to a family, not a
+  // permanent dependant of it. The family's settled advance belongs to the booking it was
+  // paid for; a case opened later must start unpaid, or a member returning a year later for
+  // a visa of their own gets a case that reads as settled with nobody having paid for it.
+  describe('a member opening a case of their own later', () => {
+    const mockCreateFlow = (siblings: Record<string, unknown>[], groupId: string | null) => {
+      (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId });
+      caseMock.findMany.mockResolvedValue(siblings);
+      caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({ id: 'new-case', ...data }));
+      caseMock.updateMany.mockResolvedValue({ count: 0 });
+    };
+
+    it("does not inherit the family's already-paid advance", async () => {
+      mockCreateFlow([{
+        advancePaid: true, advancePaidDate: new Date('2026-01-01'),
+        advanceWaived: false, advanceWaiverReason: null, whatsappGroupCreated: false,
+      }], 'group-1');
+
+      await createCase('client-1', { destination: 'Japan' });
+
+      const created = caseMock.create.mock.calls[0][0].data;
+      expect(created.advancePaid).toBe(false);
+      expect(created.advancePaidDate).toBeUndefined();
+    });
+
+    it("does not inherit the family's waiver either", async () => {
+      mockCreateFlow([{
+        advancePaid: false, advancePaidDate: null,
+        advanceWaived: true, advanceWaiverReason: 'Prior refusal', whatsappGroupCreated: false,
+      }], 'group-1');
+
+      await createCase('client-1', { destination: 'Japan' });
+
+      const created = caseMock.create.mock.calls[0][0].data;
+      expect(created.advanceWaived).toBeUndefined();
+      expect(created.advanceWaiverReason).toBeUndefined();
+    });
+
+    // The WhatsApp group is the exception: one group per family unit regardless of member
+    // count, so it IS a standing property of the family rather than of one booking.
+    it("does inherit the family's shared WhatsApp group", async () => {
+      mockCreateFlow([{
+        advancePaid: true, advancePaidDate: new Date('2026-01-01'),
+        advanceWaived: false, advanceWaiverReason: null, whatsappGroupCreated: true,
+      }], 'group-1');
+
+      await createCase('client-1', { destination: 'Japan' });
+
+      expect(caseMock.create.mock.calls[0][0].data.whatsappGroupCreated).toBe(true);
+    });
+
+    it('still settles the family when this new case is the one carrying the payment', async () => {
+      mockCreateFlow([{
+        advancePaid: false, advancePaidDate: null,
+        advanceWaived: false, advanceWaiverReason: null, whatsappGroupCreated: false,
+      }], 'group-1');
+
+      await createCase('client-1', { destination: 'France', advance: 200 });
+
+      expect(caseMock.create.mock.calls[0][0].data.advancePaid).toBe(true);
+      expect(caseMock.updateMany.mock.calls[0][0].data.advancePaid).toBe(true);
+    });
   });
 });
 

@@ -454,10 +454,18 @@ export const createCase = async (
     // this single read and no more.
     const client = await tx.client.findUnique({ where: { id: clientId }, select: { groupId: true } });
     const groupId = client?.groupId ?? null;
-    // A case opened for someone whose family already settled the advance (or already has
-    // the shared WhatsApp group) starts out settled — see propagateGroupFlags.
+    // Only the WhatsApp group is inherited from the family. That one IS a standing property
+    // of the family unit — a single group per family regardless of member count — so a new
+    // case for a member belongs to the group that already exists.
+    //
+    // The advance and the waiver are deliberately NOT inherited. They are facts about one
+    // booking, not about the family forever. Inheriting them meant a member who came back a
+    // year later for a visa of their own opened a case already marked paid, for a trip
+    // nobody had paid for — money that then appeared on no chase list anywhere. A group
+    // member is an individual client with their own cases; only the members' cases that
+    // exist when the money actually changes hands are settled by it, which is what
+    // propagateGroupFlags below does.
     const family = groupId ? await readGroupSettlement(tx, groupId) : null;
-    const advancePaid = paidNow || (family?.advancePaid ?? false);
 
     const created = await tx.visaCase.create({
       data: {
@@ -472,10 +480,8 @@ export const createCase = async (
         advance:  data.advance  !== undefined ? new Prisma.Decimal(data.advance)  : undefined,
         charges:  data.charges  !== undefined ? new Prisma.Decimal(data.charges)  : undefined,
         discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
-        advancePaid,
-        advancePaidDate: paidNow ? new Date() : (family?.advancePaidDate ?? undefined),
-        advanceWaived:       family?.advanceWaived ?? false,
-        advanceWaiverReason: family?.advanceWaived ? family.advanceWaiverReason : undefined,
+        advancePaid: paidNow,
+        advancePaidDate: paidNow ? new Date() : undefined,
         whatsappGroupCreated: family?.whatsappGroupCreated ?? false,
       },
       select: CASE_SELECT,
