@@ -209,6 +209,11 @@ model ClientGroup {
 model Client {
   id                   String   @id @default(uuid())
   clientRef            String   @unique
+  // Postgres-generated numeric view of clientRef ("CL-953" -> 953, "CL-942-G1-02" -> 942),
+  // so listings can order by the NUMBER — clientRef is text and sorts CL-1000 above CL-953.
+  // READ-ONLY: the column is GENERATED ALWAYS (see migration 20260927120000), so nothing
+  // may ever write to it. Declared here only so Prisma can select and orderBy it.
+  clientRefNum         Int?
   groupId              String?
   receivedDate         DateTime
   firstName            String

@@ -260,11 +260,25 @@ export type SortOrder = 'asc' | 'desc';
  * before that timestamp existed have no value for it, so they fall in behind on
  * `nulls: 'last'` and keep their received-date order from the tiebreaker.
  */
+// Every ordering ends on the client number, ascending. Two cases that tie on the primary
+// key — which is the norm, since a day's intake shares a received date — would otherwise
+// come back in whatever order Postgres happened to produce, which is the reported
+// "CL-953 is listed above CL-951 and CL-950" bug. clientRefNum is the database-generated
+// numeric form of clientRef (see schema): ordering by clientRef itself is alphabetical and
+// would file CL-1000 above CL-953.
+// clientRef itself breaks the remaining tie. Members of a legacy shared-number group all
+// carry the same number (CL-116-G1-01, CL-116-G1-02, ...), so clientRefNum alone leaves
+// them in arbitrary order; their zero-padded position makes the text sort correct there.
+const BY_CLIENT_NUMBER: Prisma.VisaCaseOrderByWithRelationInput[] = [
+  { client: { clientRefNum: 'asc' } },
+  { client: { clientRef: 'asc' } },
+];
+
 const CASE_ORDER_BY: Record<CaseSortField, (order: SortOrder) => Prisma.VisaCaseOrderByWithRelationInput[]> = {
-  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { client: { receivedDate: 'desc' } }],
-  appointmentDate: (order) => [{ appointmentDate: { sort: order, nulls: 'last' } }],
-  receivedDate:    (order) => [{ client: { receivedDate: order } }],
-  createdAt:       (order) => [{ createdAt: order }],
+  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { client: { receivedDate: 'desc' } }, ...BY_CLIENT_NUMBER],
+  appointmentDate: (order) => [{ appointmentDate: { sort: order, nulls: 'last' } }, ...BY_CLIENT_NUMBER],
+  receivedDate:    (order) => [{ client: { receivedDate: order } }, ...BY_CLIENT_NUMBER],
+  createdAt:       (order) => [{ createdAt: order }, ...BY_CLIENT_NUMBER],
 };
 
 /**
