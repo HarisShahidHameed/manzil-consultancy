@@ -421,8 +421,17 @@ export const listCases = async (opts: CaseListOptions = {}) => {
   // That "earliest appointment due first" view is still genuinely useful when working the
   // queue by deadline, so it stays reachable as ?sort=appointmentDate&order=asc rather
   // than being thrown away. Every other listing stays newest-received-first.
-  const defaultSort: CaseSortField = opts.stage === 'FILE_PROCESSING' ? 'routedAt' : 'receivedDate';
-  const orderBy = CASE_ORDER_BY[opts.sort ?? defaultSort](opts.order ?? 'desc');
+  // File Processing works to appointment deadlines, so it leads with the soonest — that is
+  // the order the file team reads the board in. (It briefly defaulted to newest-routed to
+  // keep a day's intake on page 1; that solved the wrong half of the problem and scrambled
+  // the deadline order the page exists to show. The intake is kept visible by the 50-row
+  // page, the Unassigned tab and the page clamp instead, and "Recently routed" is now an
+  // option in the UI rather than a URL-only escape hatch.)
+  const defaultSort: CaseSortField = opts.stage === 'FILE_PROCESSING' ? 'appointmentDate' : 'receivedDate';
+  const sort = opts.sort ?? defaultSort;
+  // A deadline reads soonest-first; every other column reads newest-first.
+  const defaultOrder: SortOrder = sort === 'appointmentDate' ? 'asc' : 'desc';
+  const orderBy = CASE_ORDER_BY[sort](opts.order ?? defaultOrder);
   const [cases, total] = await Promise.all([
     prisma.visaCase.findMany({ where, skip, take: limit, select: CASE_SELECT, orderBy }),
     prisma.visaCase.count({ where }),

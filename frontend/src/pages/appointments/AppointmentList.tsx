@@ -102,6 +102,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   // free service) is settled without ever having been paid, so it needs its own filter value
   // rather than being lumped in with the outstanding ones. '' means "any".
   const [advanceState, setAdvanceState] = useState<'' | AdvanceState>('');
+  // '' leaves the ordering to the server's default for this page (File Processing leads
+  // with the soonest appointment). The other values are the whitelisted sort fields.
+  const [sort, setSort] = useState<'' | 'appointmentDate' | 'routedAt'>('');
   const [page, setPage] = useState(1);
   // File Processing is ordered by appointment date ascending server-side, so the clients
   // routed in today — whose appointments are the furthest out — sort to the END of the list.
@@ -125,9 +128,12 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   if (showUserTabs) { if (fileAssignedToId) params.fileAssignedToId = fileAssignedToId; }
   else if (city) params.city = city;
   if (advanceState) params.advanceState = advanceState;
+  // The server picks the direction that suits the field (deadlines ascending, everything
+  // else descending), so only the field travels.
+  if (sort) params.sort = sort;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, fileAssignedToId, advanceState, page, limit],
+    queryKey: ['cases', stage, pausedOnly, serviceType, tab, search, destination, city, fileAssignedToId, advanceState, sort, page, limit],
     queryFn:  () => getCases(params),
   });
 
@@ -154,6 +160,8 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
   const cases: VisaCase[] = data?.data ?? [];
   const meta = data?.meta;
 
+  // Deliberately excludes `sort`: it chooses a view rather than hiding rows, so "Clear
+  // filters" must not quietly reorder the board underneath someone.
   const hasActiveFilters = !!(search || destination || city || fileAssignedToId || advanceState || tab !== 'ALL');
   const clearFilters = () => {
     setSearch(''); setDestination(''); setCity(''); setFileAssignedToId(''); setAdvanceState(''); setTab('ALL'); setPage(1);
@@ -298,6 +306,22 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                 onChange={e => { setTab(e.target.value as TabKey); setPage(1); }}
               >
                 {tabs.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
+            )}
+            {/* The file team reads the board by deadline, so that is the default. "Recently
+                routed" is the other view they actually want — what was moved here today,
+                whose appointments are by definition the furthest out and therefore last
+                under the deadline sort. It used to exist only as a URL parameter, which is
+                the same as not existing. */}
+            {isFileProcessing && (
+              <select
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={sort}
+                onChange={e => { setSort(e.target.value as '' | 'appointmentDate' | 'routedAt'); setPage(1); }}
+                title="Order the list by"
+              >
+                <option value="">Appointment date (soonest first)</option>
+                <option value="routedAt">Recently routed here</option>
               </select>
             )}
             {/* Waived is its own option, not a flavour of Paid or Unpaid — the desk chases

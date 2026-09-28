@@ -562,20 +562,31 @@ describe('listCases ordering', () => {
     caseMock.count.mockResolvedValue(0);
   });
 
-  it('puts the most recently routed cases first on File Processing', async () => {
+  // File Processing is a deadline board: the file team reads it soonest-appointment-first,
+  // and an ordering that ignores that is the "data is messed up" complaint.
+  it('leads File Processing with the soonest appointment, without being asked to', async () => {
     await listCases({ stage: 'FILE_PROCESSING' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
-      { fileProcessingStartedAt: { sort: 'desc', nulls: 'last' } },
-      { client: { receivedDate: 'desc' } },
+      { appointmentDate: { sort: 'asc', nulls: 'last' } },
       { client: { clientRefNum: 'asc' } },
       { client: { clientRef: 'asc' } },
     ]);
   });
 
-  it('still offers the by-deadline view the file team sometimes works from', async () => {
-    await listCases({ stage: 'FILE_PROCESSING', sort: 'appointmentDate', order: 'asc' });
-    expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
+  // A deadline reads soonest-first; asking for the field alone must not hand back the
+  // descending default the other columns use.
+  it('defaults an appointment-date sort to ascending even when no order is given', async () => {
+    await listCases({ stage: 'FILE_PROCESSING', sort: 'appointmentDate' });
+    expect(caseMock.findMany.mock.calls[0][0].orderBy[0]).toEqual(
       { appointmentDate: { sort: 'asc', nulls: 'last' } },
+    );
+  });
+
+  it('offers "recently routed" as the other view the file team wants', async () => {
+    await listCases({ stage: 'FILE_PROCESSING', sort: 'routedAt' });
+    expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
+      { fileProcessingStartedAt: { sort: 'desc', nulls: 'last' } },
+      { client: { receivedDate: 'desc' } },
       { client: { clientRefNum: 'asc' } },
       { client: { clientRef: 'asc' } },
     ]);
