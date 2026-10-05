@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2, Undo2 } from 'lucide-react';
 import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
+import { useAuth } from '../../hooks/useAuth';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
 
@@ -152,6 +153,7 @@ const CaseDetail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
+  const { hasRole } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<VisaCase>>({});
@@ -396,6 +398,19 @@ const CaseDetail: React.FC = () => {
     },
   });
 
+  // Super Admin correction: send a case already in File Processing back to Appointments so
+  // its booking can be re-worked on the original record (e.g. an October appointment that
+  // had to be rebooked for November) instead of opening a second case for the same trip.
+  const revertToAppointmentMut = useMutation({
+    mutationFn: (reason: string) => updateCase(id!, { stage: 'APPOINTMENT', revertReason: reason || undefined }),
+    onSuccess: () => {
+      invalidateFinancials();
+      setActiveSection('APPOINTMENT');
+      showSuccess('Case moved back to Appointments');
+    },
+    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to move the case back'),
+  });
+
   const cancelMut = useMutation({
     mutationFn: () => updateCase(id!, { stage: 'CANCELLED' }),
     onSuccess: () => {
@@ -594,6 +609,22 @@ const CaseDetail: React.FC = () => {
                 {vc.onHold ? 'Resume' : 'Pause'}
               </Button>
             </Can>
+            {vc.stage === 'FILE_PROCESSING' && hasRole('SUPER_ADMIN') && (
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Undo2 className="w-4 h-4" />}
+                loading={revertToAppointmentMut.isPending}
+                onClick={() => {
+                  const reason = window.prompt(
+                    'Move this case back to Appointments so the appointment can be re-booked?\n\nReason (optional, saved to HR Comments):'
+                  );
+                  if (reason !== null) revertToAppointmentMut.mutate(reason.trim());
+                }}
+              >
+                Back to Appointments
+              </Button>
+            )}
             <Can permissions={['clients:write']}>
               <Button
                 variant="outline"

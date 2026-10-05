@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 import { computeAgencyDocLineItems, InvoiceLineItem } from '../utils/invoiceItems';
+import { appendHrComment } from '../utils/hrComments';
 
 // A case is created with either a single decided `destination` or a shortlist of
 // `destinationOptions` when it isn't decided yet. A single-entry shortlist has no real
@@ -165,6 +166,18 @@ export const TRANSITION_PERMISSIONS: Record<string, string[]> = {
   '*>CANCELLED':                ['clients:write'],
 };
 
+/**
+ * The one backwards move the workflow allows: a case already handed over to File Processing
+ * goes back to Appointments when the client's plans change (e.g. an October appointment is
+ * cancelled and has to be rebooked for November). Re-working the date on the original record
+ * beats opening a second case for the same trip. It is a correction, not a step of the
+ * normal flow, so it is gated on the SUPER_ADMIN role rather than on a team permission —
+ * see the controller — and none of the forward gates apply to it.
+ */
+export const isRevertToAppointment = (from: string, to: string): boolean =>
+  from === 'FILE_PROCESSING' && to === 'APPOINTMENT';
+export const REVERT_ROLE = 'SUPER_ADMIN';
+
 export const requiredPermsForTransition = (from: string, to: string): string[] => {
   if (to === 'CANCELLED') return TRANSITION_PERMISSIONS['*>CANCELLED'];
   return TRANSITION_PERMISSIONS[`${from}>${to}`] ?? ['clients:write'];
@@ -200,6 +213,10 @@ export const assertTransitionAllowed = (
 
   // Cancellation is allowed from any active stage
   if (next === 'CANCELLED') return;
+
+  // The Super Admin correction back to Appointments (role-checked by the controller). Allowed
+  // while paused too: pausing is often exactly what a changed booking looks like.
+  if (isRevertToAppointment(current, next)) return;
 
   // A paused (on-hold) case cannot move forward until it is resumed
   if (caseRecord.onHold) throw new Error('ON_HOLD');
@@ -527,7 +544,15 @@ const BEFORE_UPDATE_SELECT = {
   },
 } satisfies Prisma.VisaCaseSelect;
 
-export const updateCase = async (id: string, data: Record<string, any>) => {
+export const updateCase = async (
+  id: string,
+  rawData: Record<string, any>,
+  // Who is making the change — only used to sign the HR Comments entry a move back to
+  // Appointments leaves behind. Optional so every existing caller keeps working unchanged.
+  opts: { actorEmail?: string } = {},
+) => {
+  // `revertReason` is a note that travels with a move back to Appointments, not a column.
+  const { revertReason, ...data } = rawData;
   const has = (f: string) => Object.prototype.hasOwnProperty.call(data, f);
   // Read the pre-update case once and share it: the workflow rules, the conversion-card
   // timestamps and the family-group propagation all ask about the same row, and an update
@@ -646,6 +671,18 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     const updated = await tx.visaCase.update({ where: { id }, data: d, select: CASE_SELECT });
 
     await propagateGroupFlags(tx, id, groupId, groupFlags);
+
+    // A move back to Appointments is a correction to the workflow, so it leaves a dated line
+    // in the client's HR Comments log saying why — the file team would otherwise just see the
+    // case vanish from their board.
+    if (before && d.stage && isRevertToAppointment(before.stage, d.stage)) {
+      const c = await tx.client.findUnique({ where: { id: updated.clientId }, select: { hrComments: true } });
+      const note = `Case moved back from File Processing to Appointments${opts.actorEmail ? ` by ${opts.actorEmail}` : ''}`
+        + `${typeof revertReason === 'string' && revertReason.trim() ? ` — ${revertReason.trim()}` : ''}.`;
+      const hrComments = appendHrComment(c?.hrComments, 'Appointment', note);
+      await tx.client.update({ where: { id: updated.clientId }, data: { hrComments } });
+      if (updated.client) updated.client.hrComments = hrComments;
+    }
 
     // A client is only meant to be actively working one case at a time. Once a case
     // reaches File Processing, any other still-open case (Appointment stage) for the

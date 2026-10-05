@@ -112,7 +112,14 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
     if (data.stage) {
       const current = await visaCaseService.getCaseStage(req.params.id);
       if (!current) { sendError(res, 'Case not found', 404); return; }
-      if (current !== data.stage) {
+      if (visaCaseService.isRevertToAppointment(current, data.stage)) {
+        // A role, not a permission: this undoes a hand-over, so it is reserved for Super
+        // Admins whatever team permissions anyone else holds.
+        if (!req.user?.roles?.includes(visaCaseService.REVERT_ROLE)) {
+          sendError(res, 'Only a Super Admin can move a case back from File Processing to Appointments.', 403);
+          return;
+        }
+      } else if (current !== data.stage) {
         const required = visaCaseService.requiredPermsForTransition(current, data.stage);
         const userPerms = req.user?.permissions ?? [];
         const allowed = required.some(p => userPerms.includes(p));
@@ -123,13 +130,13 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
       }
     }
 
-    const visaCase = await visaCaseService.updateCase(req.params.id, data);
+    const visaCase = await visaCaseService.updateCase(req.params.id, data, { actorEmail: req.user?.email });
     await createAuditLog({
       userId: req.user?.sub,
       action: data.stage ? 'CASE_STAGE_CHANGED' : 'CASE_UPDATED',
       resource: 'cases',
       resourceId: req.params.id,
-      details: { stage: data.stage },
+      details: { stage: data.stage, ...(data.revertReason ? { revertReason: data.revertReason } : {}) },
       req,
     });
     sendSuccess(res, 'Case updated', visaCase);

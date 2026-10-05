@@ -238,6 +238,9 @@ export const updateCaseSchema = z.object({
   ukVisaExpiry: optionalDate(),
   eVisaType:    z.string().max(100).optional(),
   stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  // Why a case is being moved back from File Processing to Appointments (Super Admin only).
+  // Not stored on the case — it is written into the client's HR Comments log.
+  revertReason: z.string().max(500).optional(),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),

@@ -7,7 +7,7 @@ jest.mock('../config/database', () => {
     create: jest.fn(),
     count: jest.fn(),
   };
-  const client = { findUnique: jest.fn() };
+  const client = { findUnique: jest.fn(), update: jest.fn() };
   return {
     prisma: {
       visaCase,
@@ -705,5 +705,40 @@ describe('removing an appointment date', () => {
     mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
     await expect(updateCase('case-1', { appointmentDate: null })).rejects.toThrow('APPOINTMENT_DATE_LOCKED');
     expect(caseMock.update).not.toHaveBeenCalled();
+  });
+});
+
+// 1 Oct 2026 #4 — a Super Admin can send a File Processing case back to Appointments to
+// re-book it, rather than opening a second case for the same trip.
+describe('moving a case back to Appointments', () => {
+  const clientMock = prisma.client as unknown as Record<string, jest.Mock>;
+  beforeEach(() => jest.clearAllMocks());
+
+  it('is the one backwards transition the workflow allows', () => {
+    expect(() => assertTransitionAllowed('FILE_PROCESSING', 'APPOINTMENT', { ...baseCase, onHold: true } as any)).not.toThrow();
+    expect(() => assertTransitionAllowed('INVOICED', 'APPOINTMENT', baseCase as any)).toThrow('STAGE_SKIP');
+    expect(() => assertTransitionAllowed('COMPLETED', 'APPOINTMENT', baseCase as any)).toThrow('STAGE_TERMINAL');
+  });
+
+  it('keeps the record, and leaves a signed note in the HR Comments log', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
+    clientMock.findUnique.mockResolvedValue({ hrComments: '[Client Intake — 01/10/2026] first note' });
+    await updateCase('case-1', { stage: 'APPOINTMENT', revertReason: 'Rebooking for November' }, { actorEmail: 'admin@manzil.com' });
+
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.stage).toBe('APPOINTMENT');
+    expect(data).not.toHaveProperty('revertReason');
+    const hr = clientMock.update.mock.calls[0][0].data.hrComments as string;
+    expect(hr.startsWith('[Client Intake — 01/10/2026] first note\n')).toBe(true);
+    expect(hr).toContain('moved back from File Processing to Appointments by admin@manzil.com — Rebooking for November');
+  });
+
+  it('writes no HR note for an ordinary forward move', async () => {
+    mockUpdateFlow(existingCase({
+      stage: 'APPOINTMENT', appointmentDate: new Date('2026-10-20'),
+      client: { groupId: null, serviceType: 'FULL_SERVICE', ...completeClient },
+    }));
+    await updateCase('case-1', { stage: 'FILE_PROCESSING' });
+    expect(clientMock.update).not.toHaveBeenCalled();
   });
 });
