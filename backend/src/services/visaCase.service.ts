@@ -564,6 +564,16 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     }
   }
 
+  // Removing an appointment date is only meaningful while the case is still being booked.
+  // Past the Appointment stage the date is what the case was handed over on (the hand-over
+  // gate requires it), so clearing it there would leave a File Processing case with no
+  // appointment at all. Staff reschedule those by moving the case back to Appointments.
+  const clearingAppointmentDate = has('appointmentDate') && data.appointmentDate === null
+    && !!before?.appointmentDate;
+  if (clearingAppointmentDate && before && !['APPOINTMENT', 'CANCELLED'].includes(before.stage)) {
+    throw new Error('APPOINTMENT_DATE_LOCKED');
+  }
+
   const d: any = { ...data };
   const dateFields = ['ukVisaExpiry', 'appointmentDate', 'travelDate', 'hotelDate', 'advancePaidDate'];
   for (const f of dateFields) {
@@ -592,6 +602,10 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
   // A reschedule isn't a second allotment, and a case bouncing back into File Processing
   // isn't a second conversion — see the fields' comments in schema.prisma.
   if (before && d.appointmentDate && !before.appointmentDateSetAt) d.appointmentDateSetAt = new Date();
+  // Removing the date reverses the allotment it triggered: the "Appointment Date Allotted"
+  // card stops counting the case, and a date entered again later is a fresh allotment
+  // stamped on the day it actually happens rather than on the original, withdrawn one.
+  if (clearingAppointmentDate) d.appointmentDateSetAt = null;
   if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [
     'advance', 'charges', 'discount', 'paymentReceived',
@@ -843,9 +857,10 @@ const BUCKETS: BucketName[] = ['today', 'yesterday', 'month'];
  * card by when the case was opened — booking the appointment is the whole job.
  */
 const METRIC_CARDS = {
-  // `hasAppointmentDate` is part of the predicate, not decoration: appointmentDateSetAt is
-  // stamped once and never cleared, so a case whose appointment date was later removed
-  // would otherwise still be counted as allotted while showing no date in the drill-down.
+  // `hasAppointmentDate` is part of the predicate, not decoration. updateCase now clears
+  // appointmentDateSetAt when the date is removed, but rows whose date was blanked before
+  // that existed (or directly in the database) still carry a stamp with no date behind it,
+  // and must not be counted as allotted while showing no date in the drill-down.
   appointmentDateAllotted: {
     dateField: 'appointmentDateSetAt', serviceType: 'FULL_SERVICE', onHold: false, hasAppointmentDate: true,
   },

@@ -300,7 +300,9 @@ const CaseDetail: React.FC = () => {
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
       priority:         editFields.priority,
-      appointmentDate:  (editFields.appointmentDate as string) || undefined,
+      // null, not undefined, when the box is empty: undefined drops the key and leaves the
+      // stored date untouched, which is why a date once entered could never be removed.
+      appointmentDate:  (editFields.appointmentDate as string) || null,
       fraNo:            (editFields.fraNo as string) || undefined,
       tlsAccount:       (editFields.tlsAccount as string) || undefined,
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
@@ -810,8 +812,21 @@ const CaseDetail: React.FC = () => {
             )}
           </div>
           <div>
-            <label className="text-xs text-gray-500">Appointment Date</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-gray-500">Appointment Date</label>
+              {/* Native date pickers have no consistent clear control across browsers, so the
+                  removal is an explicit action. It only empties the box; Save persists it,
+                  which also withdraws the "Appointment Date Allotted" count. */}
+              {!!editFields.appointmentDate && vc.stage === 'APPOINTMENT' && (
+                <button type="button" className="text-xs text-indigo-600 hover:underline" onClick={() => updateEF('appointmentDate', '')}>
+                  Clear
+                </button>
+              )}
+            </div>
             <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
+            {!editFields.appointmentDate && vc.appointmentDate && (
+              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm.</p>
+            )}
           </div>
           <div>
             <label className="text-xs text-gray-500">FRA No.</label>

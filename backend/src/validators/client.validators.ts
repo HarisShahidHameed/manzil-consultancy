@@ -119,6 +119,12 @@ const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
 const optionalDate = () =>
   z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).optional().or(z.literal('')).transform(v => v || undefined);
+// A date the user must be able to REMOVE, not just change. optionalDate() turns '' into
+// undefined, and an absent key leaves the column untouched — which is exactly why an
+// appointment date, once entered, could never be cleared. Here '' and null both mean
+// "clear it" and reach the service as an explicit null; an absent key still means "leave it".
+const clearableDate = () =>
+  z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).nullable().optional().or(z.literal('').transform(() => null));
 
 export const importClientSchema = createClientObjectSchema.extend({
   // Carried over as-is from the source file's "#" column when present, instead of
@@ -248,7 +254,7 @@ export const updateCaseSchema = z.object({
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
   appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
-  appointmentDate:         optionalDate(),
+  appointmentDate:         clearableDate(),
   bookedById:              clearableAssignee(),
   appointmentAssignedToId: clearableAssignee(),
   fileAssignedToId:        clearableAssignee(),

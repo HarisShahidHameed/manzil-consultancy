@@ -95,6 +95,7 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
   CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move past the Appointment stage.' },
+  APPOINTMENT_DATE_LOCKED: { status: 409, message: 'The appointment date can only be removed while the case is in the Appointment stage. Move it back to Appointments first.' },
   APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case past the Appointment stage.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
   DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },

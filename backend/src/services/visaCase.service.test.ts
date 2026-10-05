@@ -669,3 +669,41 @@ describe('caseQuerySchema — the wire contract for the new filters', () => {
     expect(() => caseQuerySchema.parse({ fileAssignedToId: 'nobody' })).toThrow();
   });
 });
+
+// 1 Oct 2026 #3 — an appointment date could be entered but never removed, and the
+// "Appointment Date Allotted" card kept counting a case whose date had been withdrawn.
+describe('removing an appointment date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('clears the date and withdraws the allotment stamp', async () => {
+    mockUpdateFlow(existingCase({
+      appointmentDate: new Date('2026-10-20'),
+      appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
+    }));
+    await updateCase('case-1', { appointmentDate: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.appointmentDate).toBeNull();
+    expect(data.appointmentDateSetAt).toBeNull();
+  });
+
+  it('stamps a re-entered date as a fresh allotment', async () => {
+    mockUpdateFlow(existingCase({ appointmentDate: null, appointmentDateSetAt: null }));
+    await updateCase('case-1', { appointmentDate: '2026-11-15' });
+    expect(caseMock.update.mock.calls[0][0].data.appointmentDateSetAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves the stamp alone on a plain reschedule', async () => {
+    mockUpdateFlow(existingCase({
+      appointmentDate: new Date('2026-10-20'),
+      appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
+    }));
+    await updateCase('case-1', { appointmentDate: '2026-11-15' });
+    expect(caseMock.update.mock.calls[0][0].data).not.toHaveProperty('appointmentDateSetAt');
+  });
+
+  it('refuses to strip the date off a case already in File Processing', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
+    await expect(updateCase('case-1', { appointmentDate: null })).rejects.toThrow('APPOINTMENT_DATE_LOCKED');
+    expect(caseMock.update).not.toHaveBeenCalled();
+  });
+});
