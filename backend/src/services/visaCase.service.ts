@@ -260,18 +260,20 @@ export type SortOrder = 'asc' | 'desc';
  * before that timestamp existed have no value for it, so they fall in behind on
  * `nulls: 'last'` and keep their received-date order from the tiebreaker.
  */
-// Every ordering ends on the client number, ascending. Two cases that tie on the primary
-// key — which is the norm, since a day's intake shares a received date — would otherwise
-// come back in whatever order Postgres happened to produce, which is the reported
-// "CL-953 is listed above CL-951 and CL-950" bug. clientRefNum is the database-generated
-// numeric form of clientRef (see schema): ordering by clientRef itself is alphabetical and
-// would file CL-1000 above CL-953.
+// Every ordering ends on the client number, DESCENDING — newest client on top. Two cases
+// that tie on the primary key (the norm, since a day's intake shares a received date) would
+// otherwise come back in whatever order Postgres happened to produce. It used to be
+// ascending, which filed each newly added client at the BOTTOM of its day's group; the
+// 1 Oct 2026 change round asked for the reverse, so the board now reads in one consistent
+// downward flow: latest date first, and within a date the highest number first.
+// clientRefNum is the database-generated numeric form of clientRef (see schema): ordering by
+// clientRef itself is alphabetical and would file CL-1000 below CL-953.
 // clientRef itself breaks the remaining tie. Members of a legacy shared-number group all
 // carry the same number (CL-116-G1-01, CL-116-G1-02, ...), so clientRefNum alone leaves
 // them in arbitrary order; their zero-padded position makes the text sort correct there.
 const BY_CLIENT_NUMBER: Prisma.VisaCaseOrderByWithRelationInput[] = [
-  { client: { clientRefNum: 'asc' } },
-  { client: { clientRef: 'asc' } },
+  { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+  { client: { clientRef: 'desc' } },
 ];
 
 const CASE_ORDER_BY: Record<CaseSortField, (order: SortOrder) => Prisma.VisaCaseOrderByWithRelationInput[]> = {

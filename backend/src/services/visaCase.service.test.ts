@@ -568,8 +568,8 @@ describe('listCases ordering', () => {
     await listCases({ stage: 'FILE_PROCESSING' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
       { appointmentDate: { sort: 'asc', nulls: 'last' } },
-      { client: { clientRefNum: 'asc' } },
-      { client: { clientRef: 'asc' } },
+      { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+      { client: { clientRef: 'desc' } },
     ]);
   });
 
@@ -587,24 +587,25 @@ describe('listCases ordering', () => {
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
       { fileProcessingStartedAt: { sort: 'desc', nulls: 'last' } },
       { client: { receivedDate: 'desc' } },
-      { client: { clientRefNum: 'asc' } },
-      { client: { clientRef: 'asc' } },
+      { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+      { client: { clientRef: 'desc' } },
     ]);
   });
 
   // The reported bug was on the STAGE views, not the Clients page: a day's intake shares a
   // received date, so without a final tiebreak those rows came back in arbitrary order
   // (CL-1033, CL-1031, CL-1032 as seen in production). Every ordering must end on the
-  // client number, whichever sort field the caller picked.
+  // client number, whichever sort field the caller picked — descending since 1 Oct 2026,
+  // so the newest client tops each same-date group.
   it.each(['routedAt', 'appointmentDate', 'receivedDate', 'createdAt'] as const)(
-    'ends the %s ordering on ascending client number',
+    'ends the %s ordering on descending client number',
     async (sort) => {
       caseMock.findMany.mockClear();
       await listCases({ sort });
       const orderBy = caseMock.findMany.mock.calls[0][0].orderBy;
       expect(orderBy.slice(-2)).toEqual([
-        { client: { clientRefNum: 'asc' } },
-        { client: { clientRef: 'asc' } },
+        { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+        { client: { clientRef: 'desc' } },
       ]);
     },
   );
