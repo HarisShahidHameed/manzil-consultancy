@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck, CalendarClock, MessageCircleOff } from 'lucide-react';
+import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck, CalendarClock } from 'lucide-react';
 import { getAppointmentMetrics, getCases } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import type { AdvanceState, AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
@@ -21,12 +21,6 @@ const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'
 // selected value, which is safe precisely because it isn't a valid uuid — it can never
 // match a real user's id when deciding which tab is highlighted.
 const UNASSIGNED_TAB = 'none';
-
-// The advance counts as settled once it's paid or explicitly waived (refusal / free-service
-// cases). A cancelled case is never chased for payment either, so it must not read as
-// outstanding — same carve-out the Advance column makes.
-const isAdvanceSettled = (c: Pick<VisaCase, 'stage' | 'advancePaid' | 'advanceWaived'>) =>
-  c.stage === 'CANCELLED' || !!c.advancePaid || !!c.advanceWaived;
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
@@ -406,23 +400,15 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
-                    <td className="px-2 py-3 text-xs font-bold">
-                      <div className="flex items-center gap-1">
-                        {/* Red ref = money still outstanding, the signal the desk chases on. */}
-                        <span
-                          className={isAdvanceSettled(c) ? 'text-indigo-600' : 'text-red-600'}
-                          title={isAdvanceSettled(c) ? undefined : 'Advance outstanding — not paid and not waived'}
-                        >
-                          {c.client?.clientRef}
-                        </span>
-                        {/* The WhatsApp-group warning used to own this cell's colour; it keeps
-                            its own signal (and its wording) as an icon beside the ref instead. */}
-                        {!c.whatsappGroupCreated && (
-                          <span title="WhatsApp group not created for this appointment" className="inline-flex text-gray-400">
-                            <MessageCircleOff className="w-3 h-3" />
-                          </span>
-                        )}
-                      </div>
+                    {/* Red ref = WhatsApp group not created yet. The 1 Oct 2026 round cancelled
+                        the Sep change that had tied this colour to the unpaid advance, so the
+                        colour is back on its original, single meaning. Advance status is read
+                        from the Advance column instead. */}
+                    <td
+                      className={`px-2 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
+                      title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
+                    >
+                      {c.client?.clientRef}
                     </td>
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
