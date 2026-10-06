@@ -161,7 +161,7 @@ const CaseGuide: React.FC = () => {
           title="The document checklist" subtitle="Advancing the case reveals a read-only summary of everything the appointment team entered, plus a document checklist the file team works through.">
           <div className="flex flex-wrap gap-5 mb-5">
             <Frame src="/guide/08-fileprocessing-stepper.jpg" url="/cases/…" alt="File processing stepper" caption="Appointment closed off — File Processing is live." />
-            <Frame src="/guide/09-checklist.jpg" url="/cases/…" alt="Document checklist" caption="Appointment Docs marked Done; the rest still Pending." />
+            <Frame src="/guide/09-checklist.jpg" url="/cases/…" alt="Document checklist" caption="Appointment marked Done; the rest still Pending." />
           </div>
           <p className="text-sm text-gray-600 max-w-2xl">
             Each document line tracks its own status, who paid for it — client or agency — and the cost,

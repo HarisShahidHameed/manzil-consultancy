@@ -214,6 +214,9 @@ export interface VisaCase {
   onHoldReason?: string;
   appointmentStatus?: AppointmentStatus | null;
   appointmentDate?: string;
+  // Who paid for the appointment, recorded by the Appointment team with the date (1 Oct 2026).
+  // null = never recorded (older cases) — the checklist then infers it from the cost.
+  appointmentPaidBy?: 'CLIENT' | 'AGENCY' | null;
   bookedById?: string;
   appointmentAssignedToId?: string;
   fileAssignedToId?: string;

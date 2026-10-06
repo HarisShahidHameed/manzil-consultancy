@@ -96,6 +96,8 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
   CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move past the Appointment stage.' },
   APPOINTMENT_DATE_LOCKED: { status: 409, message: 'The appointment date can only be removed while the case is in the Appointment stage. Move it back to Appointments first.' },
+  APPOINTMENT_PAYER_REQUIRED: { status: 422, message: 'Select who paid for the appointment (Client or Agency) when setting the appointment date.' },
+  APPOINTMENT_PAYER_LOCKED: { status: 403, message: 'Who paid for the appointment was recorded by the Appointment team. Only a Super Admin can change it now.' },
   APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case past the Appointment stage.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
   DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },
@@ -130,7 +132,7 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
       }
     }
 
-    const visaCase = await visaCaseService.updateCase(req.params.id, data, { actorEmail: req.user?.email });
+    const visaCase = await visaCaseService.updateCase(req.params.id, data, { actorEmail: req.user?.email, actorRoles: req.user?.roles });
     await createAuditLog({
       userId: req.user?.sub,
       action: data.stage ? 'CASE_STAGE_CHANGED' : 'CASE_UPDATED',

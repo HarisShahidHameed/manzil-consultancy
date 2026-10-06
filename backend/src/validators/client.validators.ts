@@ -258,6 +258,8 @@ export const updateCaseSchema = z.object({
   // Stage 2
   appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
   appointmentDate:         clearableDate(),
+  // Who paid for the appointment (1 Oct 2026 #5) — asked for when the date is allotted.
+  appointmentPaidBy:       z.enum(['CLIENT', 'AGENCY']).nullable().optional(),
   bookedById:              clearableAssignee(),
   appointmentAssignedToId: clearableAssignee(),
   fileAssignedToId:        clearableAssignee(),

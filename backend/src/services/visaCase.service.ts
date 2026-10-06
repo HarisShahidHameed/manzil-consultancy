@@ -32,7 +32,7 @@ const CASE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true,
   onHold: true, onHoldReason: true,
   appointmentStatus: true,
-  appointmentDate: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
+  appointmentDate: true, appointmentPaidBy: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
   fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
   travelDate: true, hotelDate: true, salamComments: true,
   docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
@@ -200,6 +200,9 @@ export const assertTransitionAllowed = (
     destination: string | null; destinationOptions?: string[];
     city?: string | null; cityOptions?: string[];
     appointmentDate: Date | null;
+    // Optional so callers built before 1 Oct 2026 (and their tests) type-check unchanged; an
+    // absent key reads as "not recorded" and blocks the hand-over like a null does.
+    appointmentPaidBy?: string | null;
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
       passportIssue: Date | null; passportExpiry: Date | null;
@@ -238,6 +241,10 @@ export const assertTransitionAllowed = (
       throw e;
     }
     if (!caseRecord.appointmentDate) throw new Error('APPOINTMENT_NOT_BOOKED');
+    // Who paid for the appointment travels with the hand-over, so File Processing never has
+    // to go back and ask. Only the File Processing hand-over needs it; an appointment-only
+    // case completing here has no checklist downstream to feed.
+    if (next === 'FILE_PROCESSING' && !caseRecord.appointmentPaidBy) throw new Error('APPOINTMENT_PAYER_REQUIRED');
   }
 
   // Gate 2: a shortlisted-but-undecided destination or city must be finalized to a
@@ -534,6 +541,7 @@ const BEFORE_UPDATE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
   destination: true, destinationOptions: true, city: true, cityOptions: true,
   appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
+  appointmentPaidBy: true,
   invoices: { select: { status: true } },
   client: {
     select: {
@@ -549,7 +557,7 @@ export const updateCase = async (
   rawData: Record<string, any>,
   // Who is making the change — only used to sign the HR Comments entry a move back to
   // Appointments leaves behind. Optional so every existing caller keeps working unchanged.
-  opts: { actorEmail?: string } = {},
+  opts: { actorEmail?: string; actorRoles?: string[] } = {},
 ) => {
   // `revertReason` is a note that travels with a move back to Appointments, not a column.
   const { revertReason, ...data } = rawData;
@@ -558,7 +566,7 @@ export const updateCase = async (
   // timestamps and the family-group propagation all ask about the same row, and an update
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
-    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate'].some(has);
+    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
     : null;
@@ -599,7 +607,27 @@ export const updateCase = async (
     throw new Error('APPOINTMENT_DATE_LOCKED');
   }
 
+  // Appointment payer (1 Oct 2026 #5). The Appointment team records it with the date; from
+  // File Processing on it is read-only, and only a Super Admin may correct it there. A case
+  // that never had one recorded (pre-dating the field) may still have it filled in once.
+  if (before && has('appointmentPaidBy') && data.appointmentPaidBy !== before.appointmentPaidBy
+      && before.stage !== 'APPOINTMENT' && before.appointmentPaidBy != null
+      && !opts.actorRoles?.includes('SUPER_ADMIN')) {
+    throw new Error('APPOINTMENT_PAYER_LOCKED');
+  }
+  // Allotting a date (new, or moved) is the moment the payer is asked for. Re-saving an
+  // unchanged date on an older case does not nag; the hand-over gate catches those instead.
+  if (before && data.appointmentDate) {
+    const newDate = new Date(data.appointmentDate).getTime();
+    const dateChanged = !before.appointmentDate || before.appointmentDate.getTime() !== newDate;
+    const payer = has('appointmentPaidBy') ? data.appointmentPaidBy : before.appointmentPaidBy;
+    if (dateChanged && !payer) throw new Error('APPOINTMENT_PAYER_REQUIRED');
+  }
+
   const d: any = { ...data };
+  // Client-paid means the agency fronted nothing, so there is no agency cost to recover —
+  // the same rule the checklist's Paid By radio has always applied to the cost box.
+  if (d.appointmentPaidBy === 'CLIENT' && !has('docAppointmentCost')) d.docAppointmentCost = 0;
   const dateFields = ['ukVisaExpiry', 'appointmentDate', 'travelDate', 'hotelDate', 'advancePaidDate'];
   for (const f of dateFields) {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);

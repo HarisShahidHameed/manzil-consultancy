@@ -93,6 +93,7 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
   ['Visa Type', vc.visaType ?? '—'],
   ['Appointment Date', fmtDate(vc.appointmentDate)],
+  ['Appointment Paid By', vc.appointmentPaidBy === 'AGENCY' ? 'Agency' : vc.appointmentPaidBy === 'CLIENT' ? 'Client' : '—'],
   ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
   ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
   ['TLS Account', vc.tlsAccount ?? '—'],
@@ -135,7 +136,7 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
 // re-syncing on every refetch (see the seeding effect).
 const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
   'destination', 'city', 'charges', 'discount', 'advance', 'priority',
-  'appointmentDate', 'fraNo', 'tlsAccount', 'appointmentNotes',
+  'appointmentDate', 'appointmentPaidBy', 'fraNo', 'tlsAccount', 'appointmentNotes',
 ];
 const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
   'travelDate', 'hotelDate', 'salamComments',
@@ -145,7 +146,7 @@ const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
   'docEVisaCost', 'docSopCost', 'docVisaFormCost', 'docSelfEmploymentCost',
   'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid',
   'docHotelClientPaid', 'docSelfEmploymentClientPaid',
-  'charges', 'discount', 'advance', 'paymentReceived',
+  'charges', 'discount', 'advance', 'paymentReceived', 'appointmentPaidBy',
 ];
 
 const CaseDetail: React.FC = () => {
@@ -154,6 +155,7 @@ const CaseDetail: React.FC = () => {
   const location = useLocation();
   const qc = useQueryClient();
   const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<VisaCase>>({});
@@ -214,6 +216,7 @@ const CaseDetail: React.FC = () => {
       city: vc.city ?? '',
       priority: vc.priority,
       appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
+      appointmentPaidBy: vc.appointmentPaidBy ?? null,
       fraNo: vc.fraNo ?? '',
       tlsAccount: vc.tlsAccount ?? '',
       appointmentNotes: vc.appointmentNotes ?? '',
@@ -255,6 +258,12 @@ const CaseDetail: React.FC = () => {
       AGENCY_PAID_DOCS.forEach(key => {
         const costKey = DOC_COST_KEY[key];
         if (dirtyFields.current.has(costKey)) return;
+        // The appointment's payer is recorded upstream now; only cases that never recorded
+        // it fall back to inferring it from whether a cost was entered, as before.
+        if (key === 'docAppointment' && vc.appointmentPaidBy) {
+          next[key] = vc.appointmentPaidBy === 'AGENCY' ? 'agency' : 'client';
+          return;
+        }
         const cost = vc[costKey] as number | string | null | undefined;
         next[key] = (cost != null && Number(cost) > 0) ? 'agency' : 'client';
       });
@@ -305,6 +314,7 @@ const CaseDetail: React.FC = () => {
       // null, not undefined, when the box is empty: undefined drops the key and leaves the
       // stored date untouched, which is why a date once entered could never be removed.
       appointmentDate:  (editFields.appointmentDate as string) || null,
+      appointmentPaidBy: editFields.appointmentPaidBy ?? undefined,
       fraNo:            (editFields.fraNo as string) || undefined,
       tlsAccount:       (editFields.tlsAccount as string) || undefined,
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
@@ -349,6 +359,9 @@ const CaseDetail: React.FC = () => {
       discount:        toNum(editFields.discount),
       advance:         toNum(editFields.advance),
       paymentReceived: toNum(editFields.paymentReceived),
+      // Only sent when actually changed here: it is locked for everyone but a Super Admin
+      // (or on an older case that never recorded it), and the server enforces that too.
+      ...(dirtyFields.current.has('appointmentPaidBy') ? { appointmentPaidBy: editFields.appointmentPaidBy } : {}),
     }),
     onSuccess: () => {
       clearDirty(FILE_SAVE_KEYS);
@@ -542,6 +555,8 @@ const CaseDetail: React.FC = () => {
     gateReason = `Missing required client info: ${missingRequiredFields.map(f => REQUIRED_FIELD_LABELS[f] ?? f).join(', ')}.`;
   } else if (vc.stage === 'APPOINTMENT' && !vc.appointmentDate) {
     gateReason = 'Set the appointment date before this case can move past the Appointment stage.';
+  } else if (vc.stage === 'APPOINTMENT' && nextStage === 'FILE_PROCESSING' && !vc.appointmentPaidBy) {
+    gateReason = 'Record who paid for the appointment (Client or Agency) before handing over to File Processing.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
     gateReason = `All invoices must be marked Paid before completing (${unpaidInvoices.length} outstanding).`;
   }
@@ -859,6 +874,28 @@ const CaseDetail: React.FC = () => {
               <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm.</p>
             )}
           </div>
+          {/* Asked here, at allotment, so File Processing gets it locked in and never has to
+              come back and check who paid the appointment fee. */}
+          <div>
+            <label className="text-xs text-gray-500">
+              Appointment Paid By{editFields.appointmentDate ? <span className="text-red-500 ml-0.5">*</span> : null}
+            </label>
+            <div className="mt-2.5 flex items-center gap-4">
+              {(['CLIENT', 'AGENCY'] as const).map(opt => (
+                <label key={opt} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="appointmentPaidBy"
+                    value={opt}
+                    checked={editFields.appointmentPaidBy === opt}
+                    onChange={() => updateEF('appointmentPaidBy', opt)}
+                    className="accent-indigo-600"
+                  />
+                  {opt === 'CLIENT' ? 'Client' : 'Agency'}
+                </label>
+              ))}
+            </div>
+          </div>
           <div>
             <label className="text-xs text-gray-500">FRA No.</label>
             <input className={`${inputCls} mt-1`} value={editFields.fraNo as string ?? ''} onChange={setEF('fraNo')} />
@@ -1039,7 +1076,21 @@ const CaseDetail: React.FC = () => {
         {!locked && (
           <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
             <div className="flex justify-end border-t border-gray-100 pt-4">
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+              <Button
+                size="sm"
+                leftIcon={<Save className="w-3.5 h-3.5" />}
+                loading={saveAppointmentMut.isPending}
+                onClick={() => {
+                  // Same rule the server applies: allotting or moving a date needs a payer.
+                  const date = editFields.appointmentDate as string;
+                  const dateChanged = !!date && date !== (vc.appointmentDate?.split('T')[0] ?? '');
+                  if (dateChanged && !editFields.appointmentPaidBy) {
+                    setError('Select who paid for the appointment (Client or Agency) before saving the date.');
+                    return;
+                  }
+                  saveAppointmentMut.mutate();
+                }}
+              >
                 Save
               </Button>
             </div>
@@ -1222,6 +1273,10 @@ const CaseDetail: React.FC = () => {
                     const clientPaidKey = DOC_CLIENT_PAID_KEY[key];
                     const hasPaidBy = AGENCY_PAID_DOCS.has(key);
                     const paidBy = docPaidBy[key];
+                    // The appointment's payer comes from the Appointment team and is read-only
+                    // here. A Super Admin can still correct it, and an older case that never
+                    // recorded one can have it set once.
+                    const payerLocked = key === 'docAppointment' && !!vc.appointmentPaidBy && !isSuperAdmin;
                     return (
                     <tr key={key}>
                       <td className="px-3 py-2 font-medium text-gray-700">{DOC_LABELS[key]}</td>
@@ -1243,16 +1298,18 @@ const CaseDetail: React.FC = () => {
                       </td>
                       <td className="px-3 py-2">
                         {hasPaidBy ? (
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3" title={payerLocked ? 'Recorded by the Appointment team. Only a Super Admin can change it.' : undefined}>
                             {(['client', 'agency'] as const).map(opt => (
-                              <label key={opt} className="flex items-center gap-1 cursor-pointer">
+                              <label key={opt} className={`flex items-center gap-1 ${payerLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                                 <input
                                   type="radio"
                                   name={`paidBy-${key}`}
                                   value={opt}
                                   checked={paidBy === opt}
+                                  disabled={payerLocked}
                                   onChange={() => {
                                     setDocPaidBy(p => ({ ...p, [key]: opt }));
+                                    if (key === 'docAppointment') updateEF('appointmentPaidBy', opt === 'agency' ? 'AGENCY' : 'CLIENT');
                                     // Either direction is a deliberate edit of this doc's cost, so pin it
                                     // against a mid-edit refetch. Client-paid means the agency fronted
                                     // nothing, so the cost goes to zero.
@@ -1263,6 +1320,7 @@ const CaseDetail: React.FC = () => {
                                 <span className="text-xs text-gray-600 capitalize">{opt}</span>
                               </label>
                             ))}
+                            {payerLocked && <Lock className="w-3 h-3 text-gray-400" />}
                           </div>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>

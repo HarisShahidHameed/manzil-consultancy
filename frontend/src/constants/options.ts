@@ -65,7 +65,7 @@ export const EVISA_TYPE_OPTIONS = [
 export type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm' | 'docSelfEmployment';
 export const DOC_KEYS: DocKey[] = ['docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment'];
 export const DOC_LABELS: Record<DocKey, string> = {
-  docAppointment: 'Appointment Docs', docTicket: 'Ticket',
+  docAppointment: 'Appointment', docTicket: 'Ticket',
   docInsurance: 'Insurance', docHotel: 'Hotel', docEVisa: 'E-Visa',
   docSop: 'SOP', docVisaForm: 'Visa Form', docSelfEmployment: 'Self Employment Letter',
 };

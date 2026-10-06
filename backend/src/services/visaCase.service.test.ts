@@ -77,6 +77,7 @@ const baseCase = {
   invoices: [] as { status: string }[],
   destination: 'UK',
   appointmentDate: new Date('2026-08-01'),
+  appointmentPaidBy: 'AGENCY',
   client: completeClient,
 };
 
@@ -688,7 +689,7 @@ describe('removing an appointment date', () => {
 
   it('stamps a re-entered date as a fresh allotment', async () => {
     mockUpdateFlow(existingCase({ appointmentDate: null, appointmentDateSetAt: null }));
-    await updateCase('case-1', { appointmentDate: '2026-11-15' });
+    await updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'CLIENT' });
     expect(caseMock.update.mock.calls[0][0].data.appointmentDateSetAt).toBeInstanceOf(Date);
   });
 
@@ -696,6 +697,7 @@ describe('removing an appointment date', () => {
     mockUpdateFlow(existingCase({
       appointmentDate: new Date('2026-10-20'),
       appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
+      appointmentPaidBy: 'AGENCY',
     }));
     await updateCase('case-1', { appointmentDate: '2026-11-15' });
     expect(caseMock.update.mock.calls[0][0].data).not.toHaveProperty('appointmentDateSetAt');
@@ -735,10 +737,57 @@ describe('moving a case back to Appointments', () => {
 
   it('writes no HR note for an ordinary forward move', async () => {
     mockUpdateFlow(existingCase({
-      stage: 'APPOINTMENT', appointmentDate: new Date('2026-10-20'),
+      stage: 'APPOINTMENT', appointmentDate: new Date('2026-10-20'), appointmentPaidBy: 'CLIENT',
       client: { groupId: null, serviceType: 'FULL_SERVICE', ...completeClient },
     }));
     await updateCase('case-1', { stage: 'FILE_PROCESSING' });
     expect(clientMock.update).not.toHaveBeenCalled();
+  });
+});
+
+// 1 Oct 2026 #5 — who paid for the appointment is recorded by the Appointment team with the
+// date, and is read-only from File Processing on (Super Admin excepted).
+describe('appointment payer', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('blocks the hand-over to File Processing until it is recorded', () => {
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'FILE_PROCESSING', { ...baseCase, appointmentPaidBy: null }))
+      .toThrow('APPOINTMENT_PAYER_REQUIRED');
+    // Appointment-only cases have no checklist downstream, so they are not held up.
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', {
+      ...baseCase, appointmentPaidBy: null, client: { ...completeClient, serviceType: 'APPOINTMENT_ONLY' },
+    })).not.toThrow();
+  });
+
+  it('is asked for when a date is allotted', async () => {
+    mockUpdateFlow(existingCase());
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15' })).rejects.toThrow('APPOINTMENT_PAYER_REQUIRED');
+  });
+
+  it('does not nag when an older case is re-saved with its date unchanged', async () => {
+    mockUpdateFlow(existingCase({ appointmentDate: new Date('2026-11-15') }));
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15', fraNo: 'X1' })).resolves.toBeDefined();
+  });
+
+  it('zeroes the agency appointment cost when the client paid', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'CLIENT' });
+    expect(Number(caseMock.update.mock.calls[0][0].data.docAppointmentCost)).toBe(0);
+  });
+
+  it('is locked in File Processing for everyone but a Super Admin', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: 'CLIENT' }));
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['FILE_TEAM'] }))
+      .rejects.toThrow('APPOINTMENT_PAYER_LOCKED');
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['SUPER_ADMIN'] }))
+      .resolves.toBeDefined();
+    // Re-sending the same value (the File Processing Save always does) is not a change.
+    await expect(updateCase('case-1', { appointmentPaidBy: 'CLIENT' }, { actorRoles: ['FILE_TEAM'] }))
+      .resolves.toBeDefined();
+  });
+
+  it('can be filled in once on an older case that never recorded it', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: null }));
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['FILE_TEAM'] })).resolves.toBeDefined();
   });
 });
