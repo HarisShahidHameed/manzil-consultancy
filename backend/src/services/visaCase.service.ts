@@ -27,7 +27,7 @@ const resolveCity = (data: { city?: string; cityOptions?: string[] }) => {
 
 const CASE_SELECT = {
   id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
-  stage: true, priority: true,
+  stage: true, priority: true, receivedDate: true,
   advance: true, charges: true, discount: true,
   advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true, advanceWaiverType: true,
   onHold: true, onHoldReason: true,
@@ -305,9 +305,12 @@ const BY_CLIENT_NUMBER: Prisma.VisaCaseOrderByWithRelationInput[] = [
 ];
 
 const CASE_ORDER_BY: Record<CaseSortField, (order: SortOrder) => Prisma.VisaCaseOrderByWithRelationInput[]> = {
-  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { client: { receivedDate: 'desc' } }, ...BY_CLIENT_NUMBER],
+  // receivedDate is the CASE's own entry date since 1 Oct 2026 (#10), not the client's: a
+  // returning client's new case files under the day it was opened, not under the date their
+  // profile was first received.
+  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { receivedDate: 'desc' }, ...BY_CLIENT_NUMBER],
   appointmentDate: (order) => [{ appointmentDate: { sort: order, nulls: 'last' } }, ...BY_CLIENT_NUMBER],
-  receivedDate:    (order) => [{ client: { receivedDate: order } }, ...BY_CLIENT_NUMBER],
+  receivedDate:    (order) => [{ receivedDate: order }, ...BY_CLIENT_NUMBER],
   createdAt:       (order) => [{ createdAt: order }, ...BY_CLIENT_NUMBER],
 };
 
@@ -474,6 +477,14 @@ export const getCaseById = async (id: string) => {
   return c ? decorateCase(c) : null;
 };
 
+/**
+ * Today as a date-only value: midnight UTC of the server's calendar day, the same convention
+ * a 'YYYY-MM-DD' received date parses to — so a case opened today sorts and displays with
+ * the day's other intake rather than a few hours either side of it.
+ */
+export const todayAsDate = (now = new Date()): Date =>
+  new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
 export const createCase = async (
   clientId: string,
   data: {
@@ -485,6 +496,9 @@ export const createCase = async (
     // the amount, as before.
     advancePaid?: boolean;
     advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND';
+    // The new case's entry date, 'YYYY-MM-DD' (1 Oct 2026 #10). Defaults to today — never
+    // to the client's original received date — even though the client number is reused.
+    receivedDate?: string;
   }
 ) => {
   const paidNow = data.advancePaid ?? (data.advance ?? 0) > 0;
@@ -513,6 +527,7 @@ export const createCase = async (
     const created = await tx.visaCase.create({
       data: {
         clientId,
+        receivedDate: data.receivedDate ? new Date(data.receivedDate) : todayAsDate(),
         appointmentStatus: 'WAITING',
         destination, destinationOptions,
         city, cityOptions,

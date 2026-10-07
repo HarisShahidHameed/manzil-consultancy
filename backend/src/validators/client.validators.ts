@@ -232,6 +232,8 @@ export const createCaseSchema = z.object({
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
   ...advanceStatusFields,
+  // Entry date of the new case (1 Oct 2026 #10); omitted = today.
+  receivedDate: optionalDate(),
 }).refine(requireDestination, { message: 'Destination (or destination options) is required', path: ['destination'] });
 
 // Assignee fields: a uuid to assign, or '' / null from the "— Unassigned —" option to

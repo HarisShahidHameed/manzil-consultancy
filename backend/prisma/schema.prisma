@@ -293,6 +293,10 @@ model VisaCase {
   visaType                String?
   ukVisaExpiry            DateTime?
   eVisaType               String?
+  // The case's own entry date (1 Oct 2026 #10). The first case shares the client's
+  // receivedDate; a later case for a returning client is dated the day it is opened, so it
+  // lists under today even though the client number is an old one. Date-only (midnight).
+  receivedDate            DateTime       @default(now())
   stage                   CaseStage      @default(APPOINTMENT)
   priority                Priority       @default(MEDIUM)
   advance                 Decimal?       @db.Decimal(10, 2)

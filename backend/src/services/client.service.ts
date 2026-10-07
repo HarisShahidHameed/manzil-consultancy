@@ -44,7 +44,7 @@ const CLIENT_DETAIL_SELECT = {
   visaCases: {
     select: {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
-      stage: true, priority: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
+      stage: true, priority: true, receivedDate: true, appointmentStatus: true, appointmentDate: true, bookedById: true,
       appointmentAssignedToId: true, fraNo: true, tlsAccount: true, appointmentNotes: true,
       travelDate: true, hotelDate: true, salamComments: true,
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
@@ -165,6 +165,8 @@ export const createClient = async (data: {
       // as soon as the client's information is filled in.
       visaCases: {
         create: {
+          // The first case arrives with the client, so it shares the client's received date.
+          receivedDate: new Date(rest.receivedDate),
           appointmentStatus: 'WAITING',
           destination, destinationOptions,
           city, cityOptions,
@@ -380,6 +382,18 @@ export const updateClient = async (
 
   const d: any = { ...data };
   if (data.receivedDate)  d.receivedDate  = new Date(data.receivedDate);
+  // Listings order by the CASE's received date since 1 Oct 2026 (#10). Correcting the
+  // client's received date has always moved their row, so the case(s) that were dated with
+  // the client — the first case — move with it. Later cases keep their own, later dates.
+  if (data.receivedDate) {
+    const before = await prisma.client.findUnique({ where: { id }, select: { receivedDate: true } });
+    if (before && before.receivedDate.getTime() !== d.receivedDate.getTime()) {
+      await prisma.visaCase.updateMany({
+        where: { clientId: id, receivedDate: before.receivedDate },
+        data: { receivedDate: d.receivedDate },
+      });
+    }
+  }
   if (data.dob)           d.dob           = new Date(data.dob);
   if (data.passportIssue)  d.passportIssue  = new Date(data.passportIssue);
   if (data.passportExpiry) d.passportExpiry = new Date(data.passportExpiry);

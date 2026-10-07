@@ -589,7 +589,7 @@ describe('listCases ordering', () => {
     await listCases({ stage: 'FILE_PROCESSING', sort: 'routedAt' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
       { fileProcessingStartedAt: { sort: 'desc', nulls: 'last' } },
-      { client: { receivedDate: 'desc' } },
+      { receivedDate: 'desc' },
       { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
       { client: { clientRef: 'desc' } },
     ]);
@@ -857,5 +857,34 @@ describe('advance waiver type', () => {
     await createCase('client-1', { destination: 'France', advance: 100, advancePaid: false });
     expect(caseMock.create.mock.calls[1][0].data.advancePaid).toBe(false);
     expect(caseMock.create.mock.calls[1][0].data.advanceWaived).toBeFalsy();
+  });
+});
+
+// 1 Oct 2026 #10 — a returning client's new case is dated today, not with the client's
+// original received date, even though the client number is the same.
+describe('new case entry date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('defaults to today, as a date-only value', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France' });
+    const now = new Date();
+    expect(caseMock.create.mock.calls[0][0].data.receivedDate)
+      .toEqual(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+  });
+
+  it('takes an explicit date when staff give one', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France', receivedDate: '2026-09-30' });
+    expect(caseMock.create.mock.calls[0][0].data.receivedDate).toEqual(new Date('2026-09-30'));
+  });
+
+  it('orders the listings by the case date, not the client date', async () => {
+    caseMock.findMany.mockResolvedValue([]);
+    caseMock.count.mockResolvedValue(0);
+    await listCases({ stage: 'APPOINTMENT' });
+    expect(caseMock.findMany.mock.calls[0][0].orderBy[0]).toEqual({ receivedDate: 'desc' });
   });
 });

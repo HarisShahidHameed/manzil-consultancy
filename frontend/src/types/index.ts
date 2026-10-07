@@ -198,6 +198,9 @@ export interface VisaCase {
   eVisaType?: string;
   stage: CaseStage;
   priority: Priority;
+  // The case's own entry date (1 Oct 2026 #10). Equals the client's received date for their
+  // first case; a returning client's later case carries the day it was opened.
+  receivedDate?: string;
   // Present (non-empty) only while stage is APPOINTMENT — fields still needed
   // before the case can move to File Processing.
   missingRequiredFields?: CaseRequiredField[];

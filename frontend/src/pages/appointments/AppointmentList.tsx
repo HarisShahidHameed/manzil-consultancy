@@ -415,7 +415,9 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
-                    {!isFileProcessing && <td className="pl-1 pr-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.receivedDate)}</td>}
+                    {/* The case's own entry date (1 Oct 2026 #10) — a returning client's new case
+                        shows today, not the day their profile was first received. */}
+                    {!isFileProcessing && <td className="pl-1 pr-4 py-3 text-gray-500 text-xs">{fmtDate(c.receivedDate ?? c.client?.receivedDate)}</td>}
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     {isFileProcessing && (

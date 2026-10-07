@@ -3,12 +3,14 @@ jest.mock('../config/database', () => ({
     client: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
     },
     visaCase: {
       findMany: jest.fn(),
+      updateMany: jest.fn(),
     },
     clientGroup: {
       findUnique: jest.fn(),
@@ -349,5 +351,24 @@ describe('group membership — joining and leaving', () => {
     });
     // No number was consumed on the way out.
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+});
+
+// 1 Oct 2026 #10 — listings order by the case's own received date, so correcting the client's
+// received date must still move the case that was received with them (and only that one).
+describe('updateClient received date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('moves the case dated with the client, leaving later cases on their own dates', async () => {
+    (prisma.visaCase.findMany as jest.Mock).mockResolvedValue([{ stage: 'APPOINTMENT' }]);
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ receivedDate: new Date('2025-01-01') });
+    (prisma.client.update as jest.Mock).mockResolvedValue({ id: 'c1' });
+
+    await updateClient('c1', { receivedDate: '2025-01-05' });
+
+    expect(prisma.visaCase.updateMany).toHaveBeenCalledWith({
+      where: { clientId: 'c1', receivedDate: new Date('2025-01-01') },
+      data: { receivedDate: new Date('2025-01-05') },
+    });
   });
 });
