@@ -10,6 +10,10 @@ router.use(authenticate);
 router.get('/',          requirePermission('clients:read'),   clientController.listClients);
 router.post('/',         requirePermission('clients:write'),  clientController.createClient);
 router.post('/import',   requirePermission('clients:write'),  clientController.importClients);
+// Exclusive Add Client lock (1 Oct 2026 #8) — above '/:id' so "creation-lock" is not read as an id.
+router.get('/creation-lock',    requirePermission('clients:write'), clientController.getCreationLock);
+router.post('/creation-lock',   requirePermission('clients:write'), clientController.acquireCreationLock);
+router.delete('/creation-lock', requirePermission('clients:write'), clientController.releaseCreationLock);
 // Must stay above every '/:id' route — Express would otherwise match "check-passport"
 // as an id. Advisory duplicate lookup for the client form; see client.controller.
 router.get('/check-passport', requirePermission('clients:read'), clientController.checkPassport);

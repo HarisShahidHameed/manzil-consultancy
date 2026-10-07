@@ -446,3 +446,18 @@ model Invoice {
 
   @@map("invoices")
 }
+
+// Exclusive "Add Client" lock (1 Oct 2026 #8). Holds at most one row, id 'ADD_CLIENT': the
+// member of staff whose Add Client form is open. Not a foreign key to users on purpose — a
+// lock must never block deleting a user, and a stale row simply expires.
+model ClientCreationLock {
+  id          String   @id
+  holderId    String
+  holderName  String
+  // One per open form, so a release from a tab that has since lost the lock is a no-op.
+  token       String
+  acquiredAt  DateTime @default(now())
+  heartbeatAt DateTime @default(now())
+
+  @@map("client_creation_locks")
+}

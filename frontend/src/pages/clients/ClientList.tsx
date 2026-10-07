@@ -12,6 +12,8 @@ import { Alert } from '../../components/ui/Alert';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
+import { useAuth } from '../../hooks/useAuth';
+import { acquireCreationLock, forceReleaseCreationLock, newLockToken } from '../../api/clientLock';
 import ImportClientsModal from './ImportClientsModal';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
 
@@ -80,6 +82,36 @@ const ClientList: React.FC = () => {
 
   const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
+  // Exclusive Add Client lock (1 Oct 2026 #8): the form only opens if nobody else is
+  // already adding a client. The token travels to the form, which keeps the lock alive.
+  const { hasRole } = useAuth();
+  const [opening, setOpening] = useState(false);
+  const openAddClient = async () => {
+    setError(null);
+    setOpening(true);
+    const token = newLockToken();
+    try {
+      await acquireCreationLock(token);
+      navigate('/clients/new', { state: { lockToken: token } });
+    } catch (e) {
+      const err = e as AxiosError<{ message?: string }>;
+      const message = err.response?.data?.message ?? 'Could not open the Add Client form.';
+      // A Super Admin may clear a lock somebody walked away from, after being told whose it is.
+      if (err.response?.status === 409 && hasRole('SUPER_ADMIN')
+          && window.confirm(`${message}\n\nAs a Super Admin you can release their lock and continue. Their unsaved form will not be able to save. Release it?`)) {
+        try {
+          await forceReleaseCreationLock();
+          await acquireCreationLock(token);
+          navigate('/clients/new', { state: { lockToken: token } });
+          return;
+        } catch { /* fall through to the message */ }
+      }
+      setError(message);
+    } finally {
+      setOpening(false);
+    }
+  };
+
   const del = useMutation({
     mutationFn: deleteClient,
     onSuccess: () => {
@@ -106,7 +138,7 @@ const ClientList: React.FC = () => {
             <Button variant="outline" leftIcon={<Upload className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
               Import
             </Button>
-            <Button leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => navigate('/clients/new')}>
+            <Button leftIcon={<UserPlus className="w-4 h-4" />} loading={opening} onClick={openAddClient}>
               Add Client
             </Button>
           </div>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { AlertTriangle, ArrowLeft, FilePlus, Save } from 'lucide-react';
@@ -15,6 +15,7 @@ import type { NewCasePrefill } from './ClientDetail';
 import { PendingDocumentGallery, type PendingUploadProgress } from '../../components/clients/PendingDocumentGallery';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS, STAGE_LABELS } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
+import { useAddClientLock } from '../../hooks/useAddClientLock';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
@@ -59,9 +60,21 @@ const ClientForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  // Exclusive Add Client lock (1 Oct 2026 #8). Creating only — editing an existing client
+  // is not restricted. Reuses the token the Add Client button already took the lock with, so
+  // arriving here does not flicker through "someone else has it"; a direct visit to the URL
+  // takes the lock itself.
+  const { state: lock, retry: retryLock } = useAddClientLock(
+    !isEdit,
+    (location.state as { lockToken?: string } | null)?.lockToken,
+  );
+  const lockBlocked = !isEdit && lock.status === 'blocked';
+  const lockPending = !isEdit && lock.status === 'acquiring';
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   // Staged, not-yet-uploaded documents picked before the client exists — there's no id
   // to namespace S3 keys under until createClient() resolves, so these are held as plain
@@ -332,11 +345,17 @@ const ClientForm: React.FC = () => {
       </div>
 
       {error && <Alert variant="error" message={error} onClose={() => setError(null)} />}
+      {lockBlocked && lock.status === 'blocked' && (
+        <div className="space-y-2">
+          <Alert variant="warning" message={`${lock.message} This form opens for you automatically once they finish.`} />
+          <Button size="sm" variant="outline" onClick={() => retryLock()}>Try again now</Button>
+        </div>
+      )}
       {isLocked && (
         <Alert variant="warning" message="This client is locked — all cases are completed and information can no longer be changed." />
       )}
 
-      <fieldset disabled={isLocked} className="space-y-6">
+      <fieldset disabled={isLocked || lockBlocked} className="space-y-6">
       <Section title="Personal Information">
         <div className="grid grid-cols-2 gap-4">
           <Field label="First Name" required error={fieldErrors.firstName}>
@@ -609,6 +628,7 @@ const ClientForm: React.FC = () => {
           <Button
             leftIcon={<Save className="w-4 h-4" />}
             loading={save.isPending}
+            disabled={lockBlocked || lockPending}
             onClick={() => save.mutate()}
           >
             {isEdit ? 'Save Changes' : 'Create Client'}
