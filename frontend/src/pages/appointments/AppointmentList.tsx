@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS, waiverLabel } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 import { MetricBreakdownCard } from '../../components/cases/MetricBreakdownCard';
 
@@ -431,17 +431,17 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>
-                      ) : c.advancePaid ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : c.advanceWaived ? (
-                        // Staff-set waiver (refusal / free service). Settled, so it must not
-                        // read as Pending while the Client Ref beside it reads as settled.
+                        // Staff-set waiver, shown by its kind — Waived, Family or Friend
+                        // (1 Oct 2026 #9). Checked before Paid, matching the Waived filter.
                         <span
                           className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600"
                           title={c.advanceWaiverReason ?? 'Advance waived'}
                         >
-                          Waived
+                          {waiverLabel(c.advanceWaiverType)}
                         </span>
+                      ) : c.advancePaid ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
                           <AlertTriangle className="w-2.5 h-2.5" /> Pending

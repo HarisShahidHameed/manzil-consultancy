@@ -18,7 +18,8 @@ import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
 import { useAuth } from '../../hooks/useAuth';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey,
+  ADVANCE_WAIVER_LABELS, ADVANCE_WAIVER_TYPES, waiverLabel, type AdvanceWaiverType } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 // APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
@@ -105,7 +106,7 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   // A waiver means nothing was ever collected, so the row must not print an amount that
   // reads as a payment — it says exempt instead.
   ['Advance', vc.advanceWaived
-    ? 'Waived (refusal / free service)'
+    ? `Waived (${waiverLabel(vc.advanceWaiverType)})`
     : `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
@@ -975,7 +976,7 @@ const CaseDetail: React.FC = () => {
                 {/* A waiver outranks paid/unpaid — the whole point is that the case stops
                     reading as outstanding when no advance was ever due. */}
                 {vc.advanceWaived ? (
-                  <span className="text-green-600">Waived</span>
+                  <span className="text-green-600">{waiverLabel(vc.advanceWaiverType)}</span>
                 ) : (
                   <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
                 )}
@@ -1006,31 +1007,40 @@ const CaseDetail: React.FC = () => {
             they need an explicit exemption. Without one they sit on "Unpaid" forever and keep
             raising the pending-advance alert on a case where nothing is actually owed. */}
         <div className="border border-gray-100 bg-gray-50/60 rounded-lg p-4 space-y-3">
-          <div className="flex items-center gap-3">
+          {/* Exactly three kinds of waiver (1 Oct 2026 #9): Waived, Family, Friend. Picking one
+              waives the advance; "Not waived" lifts it. The kind is what the listings show. */}
+          <div className="flex flex-wrap items-center gap-3">
             <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <button
-                type="button"
+              <select
+                className={`${inputCls} max-w-[200px]`}
                 disabled={patchMut.isPending}
-                onClick={() => {
-                  if (vc.advanceWaived) {
+                value={vc.advanceWaived ? (vc.advanceWaiverType ?? 'WAIVED') : ''}
+                onChange={e => {
+                  const type = e.target.value as AdvanceWaiverType | '';
+                  if (!type) {
                     setWaiverReason(null);
-                    patchMut.mutate({ patch: { advanceWaived: false }, msg: 'Advance waiver removed' });
+                    patchMut.mutate({ patch: { advanceWaiverType: null }, msg: 'Advance waiver removed' });
                     return;
                   }
                   patchMut.mutate({
-                    patch: { advanceWaived: true, advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null },
-                    msg: 'Advance waived',
+                    patch: {
+                      advanceWaiverType: type,
+                      ...(vc.advanceWaived ? {} : { advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null }),
+                    },
+                    msg: `Advance waived (${ADVANCE_WAIVER_LABELS[type]})`,
                   });
                 }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
+                <option value="">Not waived</option>
+                {ADVANCE_WAIVER_TYPES.map(t => <option key={t} value={t}>{ADVANCE_WAIVER_LABELS[t]}</option>)}
+              </select>
             </Can>
             <div>
               <p className="text-sm font-medium text-gray-800">
-                Advance Waived (refusal / free service):{' '}
-                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>{vc.advanceWaived ? 'Yes' : 'No'}</span>
+                Advance Waived:{' '}
+                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>
+                  {vc.advanceWaived ? waiverLabel(vc.advanceWaiverType) : 'No'}
+                </span>
               </p>
               <p className="text-xs text-gray-400">
                 Marks the advance as exempt rather than outstanding. No money is recorded as received.

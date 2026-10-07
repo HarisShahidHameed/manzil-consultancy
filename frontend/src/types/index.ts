@@ -210,6 +210,8 @@ export interface VisaCase {
   // Treated as "settled" everywhere advancePaid is, so the case stops reading as unpaid.
   advanceWaived?: boolean;
   advanceWaiverReason?: string | null;
+  // Waived / Family / Friend (1 Oct 2026 #9); set whenever advanceWaived is.
+  advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND' | null;
   onHold?: boolean;
   onHoldReason?: string;
   appointmentStatus?: AppointmentStatus | null;

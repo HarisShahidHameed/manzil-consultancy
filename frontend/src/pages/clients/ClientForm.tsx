@@ -13,7 +13,10 @@ import { Modal } from '../../components/ui/Modal';
 import { MultiCombobox } from '../../components/ui/MultiCombobox';
 import type { NewCasePrefill } from './ClientDetail';
 import { PendingDocumentGallery, type PendingUploadProgress } from '../../components/clients/PendingDocumentGallery';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS, STAGE_LABELS } from '../../constants/options';
+import {
+  DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS, STAGE_LABELS,
+  ADVANCE_WAIVER_LABELS, ADVANCE_WAIVER_TYPES, type AdvanceWaiverType,
+} from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 import { useAddClientLock } from '../../hooks/useAddClientLock';
 
@@ -53,6 +56,10 @@ const emptyForm = {
   destinations: [] as string[], cities: [] as string[], visaType: '', ukVisaExpiry: '', eVisaType: '',
   priority: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT',
   advance: '', charges: '', discount: '', groupId: '',
+  // Advance status set up front (1 Oct 2026 #9, new clients only). '' = automatic: paid once
+  // an amount is entered, the long-standing rule.
+  advancePaidChoice: '' as '' | 'PAID' | 'UNPAID',
+  advanceWaiverType: '' as '' | AdvanceWaiverType,
   serviceType: 'FULL_SERVICE' as 'APPOINTMENT_ONLY' | 'FULL_SERVICE',
 };
 
@@ -139,6 +146,9 @@ const ClientForm: React.FC = () => {
       discount: targetCase?.discount != null ? String(targetCase.discount) : '',
       groupId: client.groupId ?? '',
       serviceType: client.serviceType ?? 'FULL_SERVICE',
+      // Create-only controls; an existing case's advance is managed on the case itself.
+      advancePaidChoice: '',
+      advanceWaiverType: '',
     });
   }, [client]);
 
@@ -216,6 +226,7 @@ const ClientForm: React.FC = () => {
       delete clientPayload.destinations; delete clientPayload.cities; delete clientPayload.visaType;
       delete clientPayload.ukVisaExpiry; delete clientPayload.eVisaType; delete clientPayload.priority; delete clientPayload.advance;
       delete clientPayload.charges; delete clientPayload.discount;
+      delete clientPayload.advancePaidChoice; delete clientPayload.advanceWaiverType;
 
       // A single pick sets the decided destination/city directly; more than one leaves it
       // as a shortlist for File Processing to finalize down to one later. destinationOptions
@@ -246,6 +257,10 @@ const ClientForm: React.FC = () => {
           advance:  form.advance  ? parseFloat(form.advance)  : undefined,
           charges:  form.charges  ? parseFloat(form.charges)  : undefined,
           discount: form.discount ? parseFloat(form.discount) : undefined,
+          // Omitted unless chosen, so the server keeps deriving paid from the amount.
+          advancePaid: form.advanceWaiverType ? undefined
+            : form.advancePaidChoice === 'PAID' ? true : form.advancePaidChoice === 'UNPAID' ? false : undefined,
+          advanceWaiverType: form.advanceWaiverType || undefined,
         });
 
         // The client now has an id — any documents staged in the form above can finally
@@ -575,8 +590,34 @@ const ClientForm: React.FC = () => {
               <input type="number" min="0" step="0.01" className={inputCls} value={form.advance} onChange={set('advance')} placeholder="0.00" />
             </Field>
           </div>
+          {!isEdit && (
+            // Same advance controls the case's Appointment section has (1 Oct 2026 #9), so the
+            // status can be right from the first save instead of fixed up afterwards.
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Advance Payment">
+                <select
+                  className={inputCls}
+                  value={form.advanceWaiverType ? '' : form.advancePaidChoice}
+                  disabled={!!form.advanceWaiverType}
+                  onChange={set('advancePaidChoice')}
+                >
+                  <option value="">Automatic (paid once an amount is entered)</option>
+                  <option value="PAID">Paid</option>
+                  <option value="UNPAID">Unpaid</option>
+                </select>
+              </Field>
+              <Field label="Advance Waived">
+                <select className={inputCls} value={form.advanceWaiverType} onChange={set('advanceWaiverType')}>
+                  <option value="">Not waived</option>
+                  {ADVANCE_WAIVER_TYPES.map(t => <option key={t} value={t}>{ADVANCE_WAIVER_LABELS[t]}</option>)}
+                </select>
+              </Field>
+            </div>
+          )}
           <p className="text-xs text-gray-400">
-            A non-zero advance is automatically marked as paid. Leaving it at £0 shows a pending-advance warning on the case until it's filled in.
+            {isEdit
+              ? 'A non-zero advance is automatically marked as paid. Leaving it at £0 shows a pending-advance warning on the case until it\'s filled in.'
+              : 'Left on Automatic, a non-zero advance is marked paid and £0 shows a pending-advance warning. A waiver (Waived, Family or Friend) settles the advance without any payment.'}
           </p>
         </Section>
       )}

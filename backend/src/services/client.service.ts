@@ -22,6 +22,7 @@ const CLIENT_SELECT = {
     select: {
       id: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, stage: true, priority: true,
       appointmentStatus: true, appointmentDate: true, advance: true, charges: true, discount: true, advancePaid: true,
+      advanceWaived: true, advanceWaiverType: true,
       createdAt: true, updatedAt: true,
     },
     orderBy: { createdAt: 'desc' as const },
@@ -49,7 +50,7 @@ const CLIENT_DETAIL_SELECT = {
       docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
       docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,
       advance: true, charges: true, discount: true, paymentReceived: true,
-      advancePaid: true, advancePaidDate: true,
+      advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverType: true,
       createdAt: true, updatedAt: true,
       bookedBy:           { select: { id: true, firstName: true, lastName: true } },
       appointmentAssigned:{ select: { id: true, firstName: true, lastName: true } },
@@ -116,6 +117,10 @@ export const createClient = async (data: {
   city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   advance?: number; charges?: number; discount?: number;
+  // Advance status picked on the Add Client form (1 Oct 2026 #9). Absent advancePaid = derive
+  // from the amount, as before; a waiver type means the advance is waived for that reason.
+  advancePaid?: boolean;
+  advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND';
 }) => {
   // An explicit groupId at creation time (picked from the client form's group select)
   // gets the client its group-formatted ref straight away, same as adding an existing
@@ -138,6 +143,7 @@ export const createClient = async (data: {
   const {
     visaType, ukVisaExpiry, eVisaType, priority,
     advance, charges, discount, createdById, clientRef: _clientRef,
+    advancePaid, advanceWaiverType,
     destination: _destination, destinationOptions: _destinationOptions,
     city: _city, cityOptions: _cityOptions, ...rest
   } = data;
@@ -169,8 +175,10 @@ export const createClient = async (data: {
           advance:  advance  !== undefined ? new Prisma.Decimal(advance)  : undefined,
           charges:  charges  !== undefined ? new Prisma.Decimal(charges)  : undefined,
           discount: discount !== undefined ? new Prisma.Decimal(discount) : undefined,
-          advancePaid: (advance ?? 0) > 0,
-          advancePaidDate: (advance ?? 0) > 0 ? new Date() : undefined,
+          advancePaid: advancePaid ?? (advance ?? 0) > 0,
+          advancePaidDate: (advancePaid ?? (advance ?? 0) > 0) ? new Date() : undefined,
+          advanceWaived: !!advanceWaiverType,
+          advanceWaiverType: advanceWaiverType ?? null,
         },
       },
     },

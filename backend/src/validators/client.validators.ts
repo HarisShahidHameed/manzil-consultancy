@@ -25,6 +25,15 @@ const cityFields = {
   cityOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
 };
 
+// Advance status chosen up front on the Add Client / New Case forms (1 Oct 2026 #9):
+// paid/unpaid explicitly (absent = derived from the amount, as before), and an optional waiver
+// with one of exactly three reasons. Choosing a reason is what waives the advance.
+export const ADVANCE_WAIVER_TYPES = ['WAIVED', 'FAMILY', 'FRIEND'] as const;
+const advanceStatusFields = {
+  advancePaid:       z.boolean().optional(),
+  advanceWaiverType: z.enum(ADVANCE_WAIVER_TYPES).optional(),
+};
+
 const createClientObjectSchema = z.object({
   receivedDate: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
   firstName:    z.string().min(1).max(100).trim(),
@@ -67,6 +76,7 @@ const createClientObjectSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
+  ...advanceStatusFields,
 });
 export const createClientSchema = createClientObjectSchema.refine(requireDestination, {
   message: 'Destination (or destination options) is required', path: ['destination'],
@@ -221,6 +231,7 @@ export const createCaseSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
+  ...advanceStatusFields,
 }).refine(requireDestination, { message: 'Destination (or destination options) is required', path: ['destination'] });
 
 // Assignee fields: a uuid to assign, or '' / null from the "— Unassigned —" option to
@@ -253,6 +264,8 @@ export const updateCaseSchema = z.object({
   // send it away rather than just leaving a stale reason behind.
   advanceWaived:       z.boolean().optional(),
   advanceWaiverReason: z.string().max(500).optional().nullable(),
+  // Waived / Family / Friend (1 Oct 2026 #9). Setting one waives; null lifts the waiver.
+  advanceWaiverType:   z.enum(ADVANCE_WAIVER_TYPES).nullable().optional(),
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2

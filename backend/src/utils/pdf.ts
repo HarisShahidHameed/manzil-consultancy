@@ -12,6 +12,8 @@ const money = (v: unknown) => {
 };
 const fdate = (d: unknown) => (d ? new Date(d as string).toLocaleDateString('en-GB') : '—');
 const cap = (s?: string | null) => (s ? s.charAt(0) + s.slice(1).toLowerCase() : '—');
+// " (Family)" / " (Friend)" after "No advance required"; a plain waiver needs no qualifier.
+const waiverTypeLabel = (t?: string | null) => (t === 'FAMILY' ? ' (Family)' : t === 'FRIEND' ? ' (Friend)' : '');
 const formatAddress = (c: { addressStreet?: string | null; addressCity?: string | null; addressShire?: string | null; addressPostalCode?: string | null; addressCountry?: string | null }) =>
   [c.addressStreet, c.addressCity, c.addressShire, c.addressPostalCode, c.addressCountry].filter(Boolean).join(', ');
 
@@ -165,7 +167,7 @@ export const streamAdvanceReceiptPdf = (res: Response, vc: any): void => {
   const subline = vc.advancePaid
     ? `Date: ${fdate(vc.advancePaidDate)}`
     : vc.advanceWaived
-      ? (vc.advanceWaiverReason ? `No advance required — ${vc.advanceWaiverReason}` : 'No advance required')
+      ? `No advance required${waiverTypeLabel(vc.advanceWaiverType)}${vc.advanceWaiverReason ? ` — ${vc.advanceWaiverReason}` : ''}`
       : `Date: ${fdate(vc.advancePaidDate)}`;
   doc.fontSize(13).font('Helvetica-Bold').fillColor(statusColor).text(status, 350, boxY + 22, { width: RIGHT - 350 - 18, align: 'right' });
   doc.fontSize(8.5).font('Helvetica').fillColor(GREY).text(subline, 350, boxY + 42, { width: RIGHT - 350 - 18, align: 'right' });

@@ -234,6 +234,8 @@ describe('family bookings — one advance and one WhatsApp group for the whole g
     expect(caseMock.updateMany.mock.calls[0][0].data).toEqual({
       advanceWaived: true,
       advanceWaiverReason: 'Prior refusal',
+      // A bare waiver is the plain kind (1 Oct 2026 #9), and the kind travels with it.
+      advanceWaiverType: 'WAIVED',
     });
   });
 
@@ -811,5 +813,49 @@ describe('monthly-report timestamps', () => {
     const data = caseMock.update.mock.calls[0][0].data;
     expect(data).not.toHaveProperty('onHoldAt');
     expect(data).not.toHaveProperty('appointmentStatusChangedAt');
+  });
+});
+
+// 1 Oct 2026 #9 — a waiver is one of three kinds: Waived, Family or Friend.
+describe('advance waiver type', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('picking a type waives the advance', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { advanceWaiverType: 'FAMILY' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.advanceWaived).toBe(true);
+    expect(data.advanceWaiverType).toBe('FAMILY');
+  });
+
+  it('a bare waiver from an older caller reads as a plain WAIVED', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { advanceWaived: true });
+    expect(caseMock.update.mock.calls[0][0].data.advanceWaiverType).toBe('WAIVED');
+  });
+
+  it('lifting the waiver clears its type and reason', async () => {
+    mockUpdateFlow(existingCase({ advanceWaived: true }));
+    await updateCase('case-1', { advanceWaiverType: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.advanceWaived).toBe(false);
+    expect(data.advanceWaiverType).toBeNull();
+    expect(data.advanceWaiverReason).toBeNull();
+  });
+
+  it('travels across a family with the waiver flag', async () => {
+    mockUpdateFlow(existingCase({ client: { groupId: 'g1', serviceType: 'FULL_SERVICE' } }));
+    await updateCase('case-1', { advanceWaiverType: 'FRIEND' });
+    expect(caseMock.updateMany.mock.calls[0][0].data).toMatchObject({ advanceWaived: true, advanceWaiverType: 'FRIEND' });
+  });
+
+  it('a new case can open already waived, or explicitly unpaid despite an amount', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France', advanceWaiverType: 'FRIEND' });
+    expect(caseMock.create.mock.calls[0][0].data).toMatchObject({ advanceWaived: true, advanceWaiverType: 'FRIEND', advancePaid: false });
+    await createCase('client-1', { destination: 'France', advance: 100, advancePaid: false });
+    expect(caseMock.create.mock.calls[1][0].data.advancePaid).toBe(false);
+    expect(caseMock.create.mock.calls[1][0].data.advanceWaived).toBeFalsy();
   });
 });

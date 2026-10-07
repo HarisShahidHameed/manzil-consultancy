@@ -29,7 +29,7 @@ const CASE_SELECT = {
   id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
   stage: true, priority: true,
   advance: true, charges: true, discount: true,
-  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true,
+  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true, advanceWaiverType: true,
   onHold: true, onHoldReason: true,
   appointmentStatus: true,
   appointmentDate: true, appointmentPaidBy: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
@@ -481,9 +481,13 @@ export const createCase = async (
     city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     advance?: number; charges?: number; discount?: number;
+    // Explicit advance status chosen on the form (1 Oct 2026 #9). Absent = derive paid from
+    // the amount, as before.
+    advancePaid?: boolean;
+    advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND';
   }
 ) => {
-  const paidNow = (data.advance ?? 0) > 0;
+  const paidNow = data.advancePaid ?? (data.advance ?? 0) > 0;
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
@@ -521,6 +525,8 @@ export const createCase = async (
         discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
         advancePaid: paidNow,
         advancePaidDate: paidNow ? new Date() : undefined,
+        // Only when the form chose a waiver — never inherited from the family (see above).
+        ...(data.advanceWaiverType ? { advanceWaived: true, advanceWaiverType: data.advanceWaiverType } : {}),
         whatsappGroupCreated: family?.whatsappGroupCreated ?? false,
       },
       select: CASE_SELECT,
@@ -570,7 +576,7 @@ export const updateCase = async (
   // timestamps and the family-group propagation all ask about the same row, and an update
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
-    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
+    || ['advance', 'advancePaid', 'advanceWaived', 'advanceWaiverType', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
         'onHold', 'appointmentStatus'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
@@ -638,6 +644,13 @@ export const updateCase = async (
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
   }
+  // Waiver sub-type (1 Oct 2026 #9). Picking Waived / Family / Friend IS waiving, so a type
+  // on its own switches the waiver on; turning the waiver off takes the type with it; and a
+  // bare advanceWaived: true from an older caller gets the plain WAIVED type.
+  if (d.advanceWaiverType && !has('advanceWaived')) d.advanceWaived = true;
+  if (d.advanceWaiverType === null && !has('advanceWaived')) d.advanceWaived = false;
+  if (d.advanceWaived === false) d.advanceWaiverType = null;
+  if (d.advanceWaived === true && !d.advanceWaiverType) d.advanceWaiverType = 'WAIVED';
   // The waiver as it will stand after this write — either what the caller is setting now,
   // or what the case already carried.
   const waived = has('advanceWaived') ? d.advanceWaived === true : (before?.advanceWaived ?? false);
@@ -701,6 +714,7 @@ export const updateCase = async (
     }
     if (d.advanceWaived !== undefined && d.advanceWaived !== before.advanceWaived) {
       groupFlags.advanceWaived = d.advanceWaived;
+      groupFlags.advanceWaiverType = d.advanceWaiverType ?? null;
       if (d.advanceWaived === false) groupFlags.advanceWaiverReason = null;
       else if (d.advanceWaiverReason !== undefined) groupFlags.advanceWaiverReason = d.advanceWaiverReason;
     }

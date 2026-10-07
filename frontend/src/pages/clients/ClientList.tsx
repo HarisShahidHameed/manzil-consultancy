@@ -15,7 +15,7 @@ import { Can } from '../../routes/RoleGuard';
 import { useAuth } from '../../hooks/useAuth';
 import { acquireCreationLock, forceReleaseCreationLock, newLockToken } from '../../api/clientLock';
 import ImportClientsModal from './ImportClientsModal';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity, waiverLabel } from '../../constants/options';
 
 // Built off the shared STAGE_LABELS map (constants/options) so the filter can never list a
 // stage the rest of the UI spells differently — or miss one that gets added.
@@ -230,6 +230,11 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3">
                       {!c.visaCases[0] || c.visaCases[0].stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>
+                      ) : c.visaCases[0].advanceWaived ? (
+                        // Waiver kind — Waived, Family or Friend (1 Oct 2026 #9).
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
+                          {waiverLabel(c.visaCases[0].advanceWaiverType)}
+                        </span>
                       ) : c.visaCases[0].advancePaid ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : (

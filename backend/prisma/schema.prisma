@@ -62,6 +62,13 @@ enum PaymentSource {
   AGENCY
 }
 
+// Why an advance was waived (1 Oct 2026 #9) — shown in listings instead of a bare "Waived".
+enum AdvanceWaiverType {
+  WAIVED
+  FAMILY
+  FRIEND
+}
+
 enum InvoiceStatus {
   DRAFT
   SENT
@@ -302,6 +309,9 @@ model VisaCase {
   // Why the advance was waived, e.g. "Prior refusal" / "Free service" — free text, and
   // cleared automatically whenever the waiver itself is turned back off.
   advanceWaiverReason     String?
+  // Which of the three waiver kinds this is — set whenever advanceWaived is true, cleared with
+  // it. advanceWaiverReason stays as an optional free-text note alongside.
+  advanceWaiverType       AdvanceWaiverType?
   onHold                  Boolean        @default(false)
   onHoldReason            String?
   appointmentStatus       AppointmentStatus? @default(WAITING)
