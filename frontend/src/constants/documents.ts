@@ -1,15 +1,9 @@
 // Mirrors backend/src/services/clientDocument.service.ts — kept in sync manually since
 // client-side checks are just a fast-fail UX nicety; the server re-validates everything.
-export const ACCEPTED_FILE_INPUT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.heif,application/pdf,image/*';
+// Any file type is accepted since 1 Oct 2026 (#6) — PDFs, images, Word files and anything
+// else a client sends — so there is no `accept` filter on the pickers any more. Only the
+// per-file size cap remains.
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
-export const ALLOWED_MIME_TYPES = new Set([
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-]);
 
 export const isImageMime = (mimeType: string): boolean => mimeType.startsWith('image/');
 

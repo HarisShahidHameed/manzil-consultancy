@@ -48,6 +48,7 @@ async function withConcurrency<T>(items: T[], limit: number, worker: (item: T, i
   await Promise.all(runners);
 }
 
+const PRESIGN_BATCH = 20;     // mirrors MAX_FILES_PER_REQUEST in clientDocument.service.ts
 const FILE_CONCURRENCY = 3;   // simultaneous files uploading
 const PART_CONCURRENCY = 4;   // simultaneous parts, per large file
 
@@ -70,9 +71,14 @@ export const uploadClientDocuments = async (
   files: File[],
   onProgress: (progress: UploadProgress) => void
 ): Promise<ClientDocument[]> => {
-  let presigned: PresignedFile[];
+  let presigned: PresignedFile[] = [];
   try {
-    presigned = await presignUploads(clientId, files.map(f => ({ fileName: f.name, mimeType: f.type || 'application/octet-stream', sizeBytes: f.size })));
+    // The server presigns at most PRESIGN_BATCH files per request, and a whole client folder
+    // dropped in (1 Oct 2026 #6) is routinely more than that, so presign in batches.
+    for (let i = 0; i < files.length; i += PRESIGN_BATCH) {
+      const batch = files.slice(i, i + PRESIGN_BATCH);
+      presigned.push(...await presignUploads(clientId, batch.map(f => ({ fileName: f.name, mimeType: f.type || 'application/octet-stream', sizeBytes: f.size }))));
+    }
   } catch (err: any) {
     // The whole batch failed before any file-specific upload started (bad config, network
     // drop, validation) — surface it per file rather than leaving progress bars stuck.

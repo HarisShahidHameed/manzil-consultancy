@@ -8,7 +8,10 @@ import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
 import { appendHrComment } from '../../api/clients';
 import { downloadAdvanceReceipt, downloadInvoicePdf, downloadReceiptPreview } from '../../api/pdf';
-import type { AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
+import { getDocuments } from '../../api/documents';
+import type { AssignableUser, CaseStage, ClientDocument, DocumentStatus, VisaCase } from '../../types';
+import { DocumentUploader } from '../../components/clients/DocumentUploader';
+import { DocumentList } from '../../components/clients/DocumentList';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
@@ -191,6 +194,16 @@ const CaseDetail: React.FC = () => {
   const fileUsers = assignableUsers.filter(u => u.roles.some(r => FILE_ROLES.includes(r)));
 
   const vc = data?.data;
+
+  // The client's documents, worked from File Processing too (1 Oct 2026 #6). Same query key
+  // as ClientDetail, so an upload here shows up on the client's profile and vice versa.
+  const docsClientId = vc?.clientId;
+  const { data: documents = [] } = useQuery({
+    queryKey: ['clientDocuments', docsClientId],
+    queryFn:  () => getDocuments(docsClientId!),
+    enabled:  !!docsClientId && activeSection === 'FILE_PROCESSING',
+  });
+  const setDocuments = (docs: ClientDocument[]) => qc.setQueryData(['clientDocuments', docsClientId], docs);
 
   // Fields the user has typed into since the last seed. The immediate patches on this page
   // (advance toggle, assignee, pause, destination finalize) PATCH the server mid-edit, and
@@ -1366,6 +1379,21 @@ const CaseDetail: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Client documents — the same upload box as the Add Client screen, so the file team
+              can attach share codes, e-visas, letters, insurance and bookings (any file type,
+              or a whole folder saved off WhatsApp) without leaving the case. */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 mb-2">Documents ({documents.length})</h4>
+            {!locked && (
+              <Can permissions={['clients:write', 'files:write']} requireAll={false}>
+                <div className="mb-4">
+                  <DocumentUploader clientId={vc.clientId} onUploaded={uploaded => setDocuments([...uploaded, ...documents])} />
+                </div>
+              </Can>
+            )}
+            <DocumentList clientId={vc.clientId} documents={documents} onChange={setDocuments} />
           </div>
 
           {/* Payment */}
