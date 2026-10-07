@@ -50,6 +50,9 @@ enum AppointmentStatus {
   HOLD
   DROPPED
   BACK_UP
+  // Client could not make it to the appointment (1 Oct 2026 #7) — counted on its own in the
+  // monthly report, separately from DROPPED.
+  MISSED
 }
 
 // Who paid a third-party fee on the client's behalf. Used for the appointment fee, which the
@@ -310,6 +313,13 @@ model VisaCase {
   // Stamped the moment this case's stage first advances from Appointment into File
   // Processing — powers the "Moved to File Processing" conversion card's last-24h filter.
   fileProcessingStartedAt DateTime?
+  // When each status the monthly report counts last happened (1 Oct 2026 #7), stamped by
+  // updateCase / advanceToInvoicedWithInvoice. Rows from before then were backfilled from
+  // updatedAt (approximate) — see migration 20261001130000.
+  completedAt                DateTime?
+  cancelledAt                DateTime?
+  onHoldAt                   DateTime?
+  appointmentStatusChangedAt DateTime?
   // Who paid for the appointment — chosen by the Appointment team when the date is allotted
   // and shown locked in File Processing (only a Super Admin can change it there once set).
   // NULL = never recorded (cases from before this field existed); the checklist then falls

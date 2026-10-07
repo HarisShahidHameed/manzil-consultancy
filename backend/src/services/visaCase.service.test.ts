@@ -791,3 +791,25 @@ describe('appointment payer', () => {
     await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['FILE_TEAM'] })).resolves.toBeDefined();
   });
 });
+
+// 1 Oct 2026 #7 — the monthly report counts each status by WHEN it happened.
+describe('monthly-report timestamps', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('stamps a cancellation, a pause and an appointment-status change once each', async () => {
+    mockUpdateFlow(existingCase({ appointmentStatus: 'REGISTERED' }));
+    await updateCase('case-1', { stage: 'CANCELLED', onHold: true, appointmentStatus: 'MISSED' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.cancelledAt).toBeInstanceOf(Date);
+    expect(data.onHoldAt).toBeInstanceOf(Date);
+    expect(data.appointmentStatusChangedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not restamp when the same values are re-saved', async () => {
+    mockUpdateFlow(existingCase({ onHold: true, appointmentStatus: 'DROPPED' }));
+    await updateCase('case-1', { onHold: true, appointmentStatus: 'DROPPED' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('onHoldAt');
+    expect(data).not.toHaveProperty('appointmentStatusChangedAt');
+  });
+});

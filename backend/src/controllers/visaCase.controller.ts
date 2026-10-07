@@ -13,7 +13,7 @@ export const caseQuerySchema = z.object({
   limit:  z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   stage:  z.string().optional(),
   search: z.string().optional(),
-  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
+  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP', 'MISSED']).optional(),
   destination: z.string().optional(),
   city:        z.string().optional(),
   // Advance settlement is three states, not a boolean: a waived advance (prior refusal /

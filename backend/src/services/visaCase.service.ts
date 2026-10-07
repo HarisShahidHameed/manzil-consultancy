@@ -74,6 +74,10 @@ export const isAdvanceSettled = (c: { advancePaid: boolean; advanceWaived: boole
   c.advancePaid || c.advanceWaived;
 
 
+// The note a duplicate case is auto-cancelled with. Exported so the monthly report can tell a
+// system clean-up apart from a client actually cancelling.
+export const AUTO_CANCEL_DUPLICATE_REASON = 'Auto-cancelled: duplicate case for this client';
+
 export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
 // APPOINTMENT_ONLY clients just want the appointment booked — their cases skip File
@@ -541,7 +545,7 @@ const BEFORE_UPDATE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
   destination: true, destinationOptions: true, city: true, cityOptions: true,
   appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
-  appointmentPaidBy: true,
+  appointmentPaidBy: true, appointmentStatus: true,
   invoices: { select: { status: true } },
   client: {
     select: {
@@ -566,7 +570,8 @@ export const updateCase = async (
   // timestamps and the family-group propagation all ask about the same row, and an update
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
-    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy'].some(has);
+    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
+        'onHold', 'appointmentStatus'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
     : null;
@@ -659,6 +664,17 @@ export const updateCase = async (
   // card stops counting the case, and a date entered again later is a fresh allotment
   // stamped on the day it actually happens rather than on the original, withdrawn one.
   if (clearingAppointmentDate) d.appointmentDateSetAt = null;
+  // Monthly-report timestamps (1 Oct 2026 #7): when each counted status last happened. Only a
+  // genuine change stamps, so re-saving a form with the same values moves nothing.
+  if (before) {
+    const now = new Date();
+    if (d.stage && d.stage !== before.stage) {
+      if (d.stage === 'COMPLETED') d.completedAt = now;
+      if (d.stage === 'CANCELLED') d.cancelledAt = now;
+    }
+    if (d.onHold === true && !before.onHold) d.onHoldAt = now;
+    if (has('appointmentStatus') && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
+  }
   if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [
     'advance', 'charges', 'discount', 'paymentReceived',
@@ -718,7 +734,7 @@ export const updateCase = async (
     if (d.stage === 'FILE_PROCESSING') {
       await tx.visaCase.updateMany({
         where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
-        data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
+        data: { stage: 'CANCELLED', onHoldReason: AUTO_CANCEL_DUPLICATE_REASON, cancelledAt: new Date() },
       });
     }
 
@@ -793,7 +809,7 @@ export const advanceToInvoicedWithInvoice = async (
       select: { id: true, invoiceRef: true, totalAmount: true, outstanding: true, status: true, issueDate: true },
     });
 
-    const updated = await tx.visaCase.update({ where: { id }, data: { stage: 'COMPLETED' }, select: CASE_SELECT });
+    const updated = await tx.visaCase.update({ where: { id }, data: { stage: 'COMPLETED', completedAt: new Date() }, select: CASE_SELECT });
     return [inv, updated] as const;
   });
 

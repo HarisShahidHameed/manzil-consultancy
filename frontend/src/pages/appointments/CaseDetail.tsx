@@ -132,6 +132,7 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'HOLD', label: 'Hold' },
   { value: 'DROPPED', label: 'Dropped' },
   { value: 'BACK_UP', label: 'Back-Up' },
+  { value: 'MISSED', label: 'Missed' },
 ];
 
 // The editFields keys each Save actually persists. Once the server has them the server

@@ -101,7 +101,7 @@ export interface PaginatedData<T> {
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type MaritalStatus = 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
-export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
+export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP' | 'MISSED';
 
 export interface ClientGroup {
   id: string;
@@ -430,3 +430,34 @@ export interface AppointmentMetrics {
 // How a case's advance stands. Three mutually exclusive states, not a paid/unpaid boolean:
 // a refusal / free-service case never owed an advance, so it is neither paid nor outstanding.
 export type AdvanceState = 'paid' | 'unpaid' | 'waived';
+
+// Monthly business & operations report (1 Oct 2026 #7) — see backend monthlyReport.service.ts.
+export interface MonthlyReportFilters {
+  fromMonth?: string; // 'YYYY-MM'
+  toMonth?: string;   // 'YYYY-MM'
+  assignedToId?: string;
+}
+
+export interface MonthlyReportData {
+  range: { from: string; to: string };
+  completed: {
+    total: number;
+    byDestination: { destination: string; count: number }[];
+    byStaff: { userId: string | null; name: string; count: number }[];
+  };
+  statusCounts: {
+    completedFiles: number;
+    appointmentOnly: number;
+    cancelled: number;
+    missedAppointment: number;
+    dropped: number;
+    paused: number;
+  };
+  revenue: {
+    serviceCharges: number;
+    discounts: number;
+    netServiceRevenue: number;
+    passThroughCosts: number;
+    grossBilled: number;
+  };
+}

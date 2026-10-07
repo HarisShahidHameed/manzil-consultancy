@@ -46,10 +46,11 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   HOLD:       'bg-orange-100 text-orange-700',
   DROPPED:    'bg-red-100 text-red-700',
   BACK_UP:    'bg-purple-100 text-purple-700',
+  MISSED:     'bg-rose-100 text-rose-700',
 };
 
 // Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered / Completed / Hold / Dropped / Back-Up.
-type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
+type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP' | 'MISSED';
 
 interface CaseListProps {
   /** Omit for a cross-stage listing (the Paused page pulls from every active stage). */
@@ -178,6 +179,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
     { key: 'HOLD',       label: 'Hold' },
     { key: 'DROPPED',    label: 'Dropped' },
     { key: 'BACK_UP',    label: 'Back-Up' },
+    { key: 'MISSED',     label: 'Missed' },
   ];
 
   return (

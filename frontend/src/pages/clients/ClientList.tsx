@@ -44,6 +44,7 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   HOLD:       'bg-orange-100 text-orange-700',
   DROPPED:    'bg-red-100 text-red-700',
   BACK_UP:    'bg-purple-100 text-purple-700',
+  MISSED:     'bg-rose-100 text-rose-700',
 };
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');

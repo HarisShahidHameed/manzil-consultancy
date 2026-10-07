@@ -21,3 +21,13 @@ export const financialReportsQuerySchema = z.object({
 });
 
 export type FinancialReportsQuery = z.infer<typeof financialReportsQuerySchema>;
+
+// Monthly business report (1 Oct 2026 #7): whole calendar months, fromMonth..toMonth inclusive.
+const MONTH = z.string().regex(/^(19|20)\d{2}-(0[1-9]|1[0-2])$/, 'Use YYYY-MM format');
+export const monthlyReportQuerySchema = z.object({
+  fromMonth:    MONTH.optional(),
+  toMonth:      MONTH.optional(),
+  assignedToId: z.string().uuid().optional(),
+}).refine(q => !q.fromMonth || !q.toMonth || q.fromMonth <= q.toMonth, {
+  path: ['toMonth'], message: 'toMonth must not be before fromMonth',
+});

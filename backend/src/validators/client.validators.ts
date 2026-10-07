@@ -256,7 +256,7 @@ export const updateCaseSchema = z.object({
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
-  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
+  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP', 'MISSED']).nullable().optional(),
   appointmentDate:         clearableDate(),
   // Who paid for the appointment (1 Oct 2026 #5) — asked for when the date is allotted.
   appointmentPaidBy:       z.enum(['CLIENT', 'AGENCY']).nullable().optional(),
