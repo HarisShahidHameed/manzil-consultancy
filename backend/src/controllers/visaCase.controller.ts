@@ -13,7 +13,7 @@ export const caseQuerySchema = z.object({
   limit:  z.string().optional().transform(v => (v ? Math.min(parseInt(v, 10), 100) : 20)),
   stage:  z.string().optional(),
   search: z.string().optional(),
-  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).optional(),
+  appointmentStatus: z.enum(['WAITING', 'ASSIGNED', 'REGISTERED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP', 'MISSED']).optional(),
   destination: z.string().optional(),
   city:        z.string().optional(),
   // Advance settlement is three states, not a boolean: a waived advance (prior refusal /
@@ -95,6 +95,9 @@ const WORKFLOW_ERRORS: Record<string, { status: number; message: string }> = {
   STAGE_INVALID:      { status: 422, message: 'Invalid stage transition.' },
   ON_HOLD:            { status: 409, message: 'This case is paused. Resume it before moving to the next stage.' },
   CLIENT_INFO_INCOMPLETE: { status: 422, message: 'Complete the required client information before this case can move past the Appointment stage.' },
+  APPOINTMENT_DATE_LOCKED: { status: 409, message: 'The appointment date can only be removed while the case is in the Appointment stage. Move it back to Appointments first.' },
+  APPOINTMENT_PAYER_REQUIRED: { status: 422, message: 'Select who paid for the appointment (Client or Agency) when setting the appointment date.' },
+  APPOINTMENT_PAYER_LOCKED: { status: 403, message: 'Who paid for the appointment was recorded by the Appointment team. Only a Super Admin can change it now.' },
   APPOINTMENT_NOT_BOOKED: { status: 422, message: 'Set the appointment date before moving this case past the Appointment stage.' },
   DUES_PENDING:       { status: 422, message: 'All invoices must be marked Paid before the case can be completed.' },
   DESTINATION_NOT_FINALIZED: { status: 422, message: 'Finalize a single destination from the shortlist before moving this case to Invoiced.' },
@@ -111,7 +114,14 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
     if (data.stage) {
       const current = await visaCaseService.getCaseStage(req.params.id);
       if (!current) { sendError(res, 'Case not found', 404); return; }
-      if (current !== data.stage) {
+      if (visaCaseService.isRevertToAppointment(current, data.stage)) {
+        // A role, not a permission: this undoes a hand-over, so it is reserved for Super
+        // Admins whatever team permissions anyone else holds.
+        if (!req.user?.roles?.includes(visaCaseService.REVERT_ROLE)) {
+          sendError(res, 'Only a Super Admin can move a case back from File Processing to Appointments.', 403);
+          return;
+        }
+      } else if (current !== data.stage) {
         const required = visaCaseService.requiredPermsForTransition(current, data.stage);
         const userPerms = req.user?.permissions ?? [];
         const allowed = required.some(p => userPerms.includes(p));
@@ -122,13 +132,13 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
       }
     }
 
-    const visaCase = await visaCaseService.updateCase(req.params.id, data);
+    const visaCase = await visaCaseService.updateCase(req.params.id, data, { actorEmail: req.user?.email, actorRoles: req.user?.roles });
     await createAuditLog({
       userId: req.user?.sub,
       action: data.stage ? 'CASE_STAGE_CHANGED' : 'CASE_UPDATED',
       resource: 'cases',
       resourceId: req.params.id,
-      details: { stage: data.stage },
+      details: { stage: data.stage, ...(data.revertReason ? { revertReason: data.revertReason } : {}) },
       req,
     });
     sendSuccess(res, 'Case updated', visaCase);

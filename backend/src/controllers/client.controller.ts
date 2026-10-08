@@ -13,10 +13,15 @@ import {
   appendHrCommentSchema,
 } from '../validators/client.validators';
 import { streamClientPdf } from '../utils/pdf';
+import * as clientCreationLock from '../services/clientCreationLock.service';
+import { prisma } from '../config/database';
 
 export const createClient = async (req: Request, res: Response): Promise<void> => {
   try {
     const data = createClientSchema.parse(req.body);
+    // Backstop for the exclusive Add Client lock: another person holding a live lock means
+    // this form should never have been open. Imports and the public API are not gated.
+    await clientCreationLock.assertMayCreate(req.user?.sub);
     const client = await clientService.createClient({ ...data, createdById: req.user?.sub });
     await createAuditLog({
       userId: req.user?.sub,
@@ -30,6 +35,10 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
+      return;
+    }
+    if (error?.message === 'CLIENT_CREATION_LOCKED') {
+      sendError(res, `${error.holder.holderName} is currently adding a client. Please wait until they finish.`, 409);
       return;
     }
     sendError(res, 'Failed to create client', 500);
@@ -190,4 +199,59 @@ export const addCase = async (req: Request, res: Response): Promise<void> => {
     }
     sendError(res, 'Failed to create case', 500);
   }
+};
+
+// ── Exclusive Add Client lock (1 Oct 2026 #8) ────────────────────────────────────────────
+// The Add Client form takes this lock when it opens and heartbeats it while open; anyone
+// else clicking Add Client in the meantime is told who is busy instead of getting the form.
+
+const lockTokenSchema = z.object({ token: z.string().min(8).max(100) });
+
+const lockHolderView = (h: clientCreationLock.LockHolder) => ({
+  holderId: h.holderId, holderName: h.holderName, since: h.acquiredAt,
+});
+
+const actorName = async (userId: string, fallback: string): Promise<string> => {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } });
+  return u ? `${u.firstName} ${u.lastName}`.trim() : fallback;
+};
+
+export const getCreationLock = async (_req: Request, res: Response): Promise<void> => {
+  const holder = await clientCreationLock.currentHolder();
+  sendSuccess(res, 'Add Client lock status', {
+    locked: !!holder,
+    holder: holder ? lockHolderView(holder) : null,
+    heartbeatMs: clientCreationLock.HEARTBEAT_MS,
+  });
+};
+
+export const acquireCreationLock = async (req: Request, res: Response): Promise<void> => {
+  const parsed = lockTokenSchema.safeParse(req.body);
+  if (!parsed.success) { sendError(res, 'Validation failed', 422, parsed.error.flatten().fieldErrors); return; }
+  if (!req.user?.sub) { sendError(res, 'Unauthorized', 401); return; }
+  const name = await actorName(req.user.sub, req.user.email);
+  const result = await clientCreationLock.acquire({ id: req.user.sub, name }, parsed.data.token);
+  if (!result.acquired) {
+    sendError(res, `${result.holder.holderName} is currently adding a client. Please wait until they finish.`, 409);
+    return;
+  }
+  sendSuccess(res, 'Add Client lock held', {
+    holder: lockHolderView(result.holder),
+    heartbeatMs: clientCreationLock.HEARTBEAT_MS,
+  });
+};
+
+export const releaseCreationLock = async (req: Request, res: Response): Promise<void> => {
+  if (!req.user?.sub) { sendError(res, 'Unauthorized', 401); return; }
+  // ?force=true lets a Super Admin clear a lock someone walked away from.
+  if (req.query.force === 'true') {
+    if (!req.user.roles?.includes('SUPER_ADMIN')) { sendError(res, 'Only a Super Admin can force-release the Add Client lock.', 403); return; }
+    await clientCreationLock.forceRelease();
+    await createAuditLog({ userId: req.user.sub, action: 'CLIENT_LOCK_FORCE_RELEASED', resource: 'clients', req });
+    sendSuccess(res, 'Add Client lock released');
+    return;
+  }
+  const token = typeof req.query.token === 'string' ? req.query.token : (req.body?.token as string | undefined);
+  if (token) await clientCreationLock.release(req.user.sub, token);
+  sendSuccess(res, 'Add Client lock released');
 };

@@ -7,7 +7,7 @@ jest.mock('../config/database', () => {
     create: jest.fn(),
     count: jest.fn(),
   };
-  const client = { findUnique: jest.fn() };
+  const client = { findUnique: jest.fn(), update: jest.fn() };
   return {
     prisma: {
       visaCase,
@@ -77,6 +77,7 @@ const baseCase = {
   invoices: [] as { status: string }[],
   destination: 'UK',
   appointmentDate: new Date('2026-08-01'),
+  appointmentPaidBy: 'AGENCY',
   client: completeClient,
 };
 
@@ -233,6 +234,8 @@ describe('family bookings — one advance and one WhatsApp group for the whole g
     expect(caseMock.updateMany.mock.calls[0][0].data).toEqual({
       advanceWaived: true,
       advanceWaiverReason: 'Prior refusal',
+      // A bare waiver is the plain kind (1 Oct 2026 #9), and the kind travels with it.
+      advanceWaiverType: 'WAIVED',
     });
   });
 
@@ -568,8 +571,8 @@ describe('listCases ordering', () => {
     await listCases({ stage: 'FILE_PROCESSING' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
       { appointmentDate: { sort: 'asc', nulls: 'last' } },
-      { client: { clientRefNum: 'asc' } },
-      { client: { clientRef: 'asc' } },
+      { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+      { client: { clientRef: 'desc' } },
     ]);
   });
 
@@ -586,25 +589,26 @@ describe('listCases ordering', () => {
     await listCases({ stage: 'FILE_PROCESSING', sort: 'routedAt' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy).toEqual([
       { fileProcessingStartedAt: { sort: 'desc', nulls: 'last' } },
-      { client: { receivedDate: 'desc' } },
-      { client: { clientRefNum: 'asc' } },
-      { client: { clientRef: 'asc' } },
+      { receivedDate: 'desc' },
+      { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+      { client: { clientRef: 'desc' } },
     ]);
   });
 
   // The reported bug was on the STAGE views, not the Clients page: a day's intake shares a
   // received date, so without a final tiebreak those rows came back in arbitrary order
   // (CL-1033, CL-1031, CL-1032 as seen in production). Every ordering must end on the
-  // client number, whichever sort field the caller picked.
+  // client number, whichever sort field the caller picked — descending since 1 Oct 2026,
+  // so the newest client tops each same-date group.
   it.each(['routedAt', 'appointmentDate', 'receivedDate', 'createdAt'] as const)(
-    'ends the %s ordering on ascending client number',
+    'ends the %s ordering on descending client number',
     async (sort) => {
       caseMock.findMany.mockClear();
       await listCases({ sort });
       const orderBy = caseMock.findMany.mock.calls[0][0].orderBy;
       expect(orderBy.slice(-2)).toEqual([
-        { client: { clientRefNum: 'asc' } },
-        { client: { clientRef: 'asc' } },
+        { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+        { client: { clientRef: 'desc' } },
       ]);
     },
   );
@@ -666,5 +670,221 @@ describe('caseQuerySchema — the wire contract for the new filters', () => {
     const id = '11111111-2222-4333-8444-555555555555';
     expect(caseQuerySchema.parse({ fileAssignedToId: id }).fileAssignedToId).toBe(id);
     expect(() => caseQuerySchema.parse({ fileAssignedToId: 'nobody' })).toThrow();
+  });
+});
+
+// 1 Oct 2026 #3 — an appointment date could be entered but never removed, and the
+// "Appointment Date Allotted" card kept counting a case whose date had been withdrawn.
+describe('removing an appointment date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('clears the date and withdraws the allotment stamp', async () => {
+    mockUpdateFlow(existingCase({
+      appointmentDate: new Date('2026-10-20'),
+      appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
+    }));
+    await updateCase('case-1', { appointmentDate: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.appointmentDate).toBeNull();
+    expect(data.appointmentDateSetAt).toBeNull();
+  });
+
+  it('stamps a re-entered date as a fresh allotment', async () => {
+    mockUpdateFlow(existingCase({ appointmentDate: null, appointmentDateSetAt: null }));
+    await updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'CLIENT' });
+    expect(caseMock.update.mock.calls[0][0].data.appointmentDateSetAt).toBeInstanceOf(Date);
+  });
+
+  it('leaves the stamp alone on a plain reschedule', async () => {
+    mockUpdateFlow(existingCase({
+      appointmentDate: new Date('2026-10-20'),
+      appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
+      appointmentPaidBy: 'AGENCY',
+    }));
+    await updateCase('case-1', { appointmentDate: '2026-11-15' });
+    expect(caseMock.update.mock.calls[0][0].data).not.toHaveProperty('appointmentDateSetAt');
+  });
+
+  it('refuses to strip the date off a case already in File Processing', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
+    await expect(updateCase('case-1', { appointmentDate: null })).rejects.toThrow('APPOINTMENT_DATE_LOCKED');
+    expect(caseMock.update).not.toHaveBeenCalled();
+  });
+});
+
+// 1 Oct 2026 #4 — a Super Admin can send a File Processing case back to Appointments to
+// re-book it, rather than opening a second case for the same trip.
+describe('moving a case back to Appointments', () => {
+  const clientMock = prisma.client as unknown as Record<string, jest.Mock>;
+  beforeEach(() => jest.clearAllMocks());
+
+  it('is the one backwards transition the workflow allows', () => {
+    expect(() => assertTransitionAllowed('FILE_PROCESSING', 'APPOINTMENT', { ...baseCase, onHold: true } as any)).not.toThrow();
+    expect(() => assertTransitionAllowed('INVOICED', 'APPOINTMENT', baseCase as any)).toThrow('STAGE_SKIP');
+    expect(() => assertTransitionAllowed('COMPLETED', 'APPOINTMENT', baseCase as any)).toThrow('STAGE_TERMINAL');
+  });
+
+  it('keeps the record, and leaves a signed note in the HR Comments log', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
+    clientMock.findUnique.mockResolvedValue({ hrComments: '[Client Intake — 01/10/2026] first note' });
+    await updateCase('case-1', { stage: 'APPOINTMENT', revertReason: 'Rebooking for November' }, { actorEmail: 'admin@manzil.com' });
+
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.stage).toBe('APPOINTMENT');
+    expect(data).not.toHaveProperty('revertReason');
+    const hr = clientMock.update.mock.calls[0][0].data.hrComments as string;
+    expect(hr.startsWith('[Client Intake — 01/10/2026] first note\n')).toBe(true);
+    expect(hr).toContain('moved back from File Processing to Appointments by admin@manzil.com — Rebooking for November');
+  });
+
+  it('writes no HR note for an ordinary forward move', async () => {
+    mockUpdateFlow(existingCase({
+      stage: 'APPOINTMENT', appointmentDate: new Date('2026-10-20'), appointmentPaidBy: 'CLIENT',
+      client: { groupId: null, serviceType: 'FULL_SERVICE', ...completeClient },
+    }));
+    await updateCase('case-1', { stage: 'FILE_PROCESSING' });
+    expect(clientMock.update).not.toHaveBeenCalled();
+  });
+});
+
+// 1 Oct 2026 #5 — who paid for the appointment is recorded by the Appointment team with the
+// date, and is read-only from File Processing on (Super Admin excepted).
+describe('appointment payer', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('blocks the hand-over to File Processing until it is recorded', () => {
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'FILE_PROCESSING', { ...baseCase, appointmentPaidBy: null }))
+      .toThrow('APPOINTMENT_PAYER_REQUIRED');
+    // Appointment-only cases have no checklist downstream, so they are not held up.
+    expect(() => assertTransitionAllowed('APPOINTMENT', 'COMPLETED', {
+      ...baseCase, appointmentPaidBy: null, client: { ...completeClient, serviceType: 'APPOINTMENT_ONLY' },
+    })).not.toThrow();
+  });
+
+  it('is asked for when a date is allotted', async () => {
+    mockUpdateFlow(existingCase());
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15' })).rejects.toThrow('APPOINTMENT_PAYER_REQUIRED');
+  });
+
+  it('does not nag when an older case is re-saved with its date unchanged', async () => {
+    mockUpdateFlow(existingCase({ appointmentDate: new Date('2026-11-15') }));
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15', fraNo: 'X1' })).resolves.toBeDefined();
+  });
+
+  it('zeroes the agency appointment cost when the client paid', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'CLIENT' });
+    expect(Number(caseMock.update.mock.calls[0][0].data.docAppointmentCost)).toBe(0);
+  });
+
+  it('is locked in File Processing for everyone but a Super Admin', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: 'CLIENT' }));
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['FILE_TEAM'] }))
+      .rejects.toThrow('APPOINTMENT_PAYER_LOCKED');
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['SUPER_ADMIN'] }))
+      .resolves.toBeDefined();
+    // Re-sending the same value (the File Processing Save always does) is not a change.
+    await expect(updateCase('case-1', { appointmentPaidBy: 'CLIENT' }, { actorRoles: ['FILE_TEAM'] }))
+      .resolves.toBeDefined();
+  });
+
+  it('can be filled in once on an older case that never recorded it', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: null }));
+    await expect(updateCase('case-1', { appointmentPaidBy: 'AGENCY' }, { actorRoles: ['FILE_TEAM'] })).resolves.toBeDefined();
+  });
+});
+
+// 1 Oct 2026 #7 — the monthly report counts each status by WHEN it happened.
+describe('monthly-report timestamps', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('stamps a cancellation, a pause and an appointment-status change once each', async () => {
+    mockUpdateFlow(existingCase({ appointmentStatus: 'REGISTERED' }));
+    await updateCase('case-1', { stage: 'CANCELLED', onHold: true, appointmentStatus: 'MISSED' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.cancelledAt).toBeInstanceOf(Date);
+    expect(data.onHoldAt).toBeInstanceOf(Date);
+    expect(data.appointmentStatusChangedAt).toBeInstanceOf(Date);
+  });
+
+  it('does not restamp when the same values are re-saved', async () => {
+    mockUpdateFlow(existingCase({ onHold: true, appointmentStatus: 'DROPPED' }));
+    await updateCase('case-1', { onHold: true, appointmentStatus: 'DROPPED' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('onHoldAt');
+    expect(data).not.toHaveProperty('appointmentStatusChangedAt');
+  });
+});
+
+// 1 Oct 2026 #9 — a waiver is one of three kinds: Waived, Family or Friend.
+describe('advance waiver type', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('picking a type waives the advance', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { advanceWaiverType: 'FAMILY' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.advanceWaived).toBe(true);
+    expect(data.advanceWaiverType).toBe('FAMILY');
+  });
+
+  it('a bare waiver from an older caller reads as a plain WAIVED', async () => {
+    mockUpdateFlow(existingCase());
+    await updateCase('case-1', { advanceWaived: true });
+    expect(caseMock.update.mock.calls[0][0].data.advanceWaiverType).toBe('WAIVED');
+  });
+
+  it('lifting the waiver clears its type and reason', async () => {
+    mockUpdateFlow(existingCase({ advanceWaived: true }));
+    await updateCase('case-1', { advanceWaiverType: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.advanceWaived).toBe(false);
+    expect(data.advanceWaiverType).toBeNull();
+    expect(data.advanceWaiverReason).toBeNull();
+  });
+
+  it('travels across a family with the waiver flag', async () => {
+    mockUpdateFlow(existingCase({ client: { groupId: 'g1', serviceType: 'FULL_SERVICE' } }));
+    await updateCase('case-1', { advanceWaiverType: 'FRIEND' });
+    expect(caseMock.updateMany.mock.calls[0][0].data).toMatchObject({ advanceWaived: true, advanceWaiverType: 'FRIEND' });
+  });
+
+  it('a new case can open already waived, or explicitly unpaid despite an amount', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France', advanceWaiverType: 'FRIEND' });
+    expect(caseMock.create.mock.calls[0][0].data).toMatchObject({ advanceWaived: true, advanceWaiverType: 'FRIEND', advancePaid: false });
+    await createCase('client-1', { destination: 'France', advance: 100, advancePaid: false });
+    expect(caseMock.create.mock.calls[1][0].data.advancePaid).toBe(false);
+    expect(caseMock.create.mock.calls[1][0].data.advanceWaived).toBeFalsy();
+  });
+});
+
+// 1 Oct 2026 #10 — a returning client's new case is dated today, not with the client's
+// original received date, even though the client number is the same.
+describe('new case entry date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('defaults to today, as a date-only value', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France' });
+    const now = new Date();
+    expect(caseMock.create.mock.calls[0][0].data.receivedDate)
+      .toEqual(new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())));
+  });
+
+  it('takes an explicit date when staff give one', async () => {
+    (prisma.client.findUnique as jest.Mock).mockResolvedValue({ groupId: null });
+    caseMock.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ id: 'n', ...data }));
+    await createCase('client-1', { destination: 'France', receivedDate: '2026-09-30' });
+    expect(caseMock.create.mock.calls[0][0].data.receivedDate).toEqual(new Date('2026-09-30'));
+  });
+
+  it('orders the listings by the case date, not the client date', async () => {
+    caseMock.findMany.mockResolvedValue([]);
+    caseMock.count.mockResolvedValue(0);
+    await listCases({ stage: 'APPOINTMENT' });
+    expect(caseMock.findMany.mock.calls[0][0].orderBy[0]).toEqual({ receivedDate: 'desc' });
   });
 });

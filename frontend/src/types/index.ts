@@ -101,7 +101,7 @@ export interface PaginatedData<T> {
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 export type MaritalStatus = 'SINGLE' | 'MARRIED' | 'DIVORCED' | 'WIDOWED';
-export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
+export type AppointmentStatus = 'WAITING' | 'REGISTERED' | 'ASSIGNED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP' | 'MISSED';
 
 export interface ClientGroup {
   id: string;
@@ -198,6 +198,9 @@ export interface VisaCase {
   eVisaType?: string;
   stage: CaseStage;
   priority: Priority;
+  // The case's own entry date (1 Oct 2026 #10). Equals the client's received date for their
+  // first case; a returning client's later case carries the day it was opened.
+  receivedDate?: string;
   // Present (non-empty) only while stage is APPOINTMENT — fields still needed
   // before the case can move to File Processing.
   missingRequiredFields?: CaseRequiredField[];
@@ -210,10 +213,15 @@ export interface VisaCase {
   // Treated as "settled" everywhere advancePaid is, so the case stops reading as unpaid.
   advanceWaived?: boolean;
   advanceWaiverReason?: string | null;
+  // Waived / Family / Friend (1 Oct 2026 #9); set whenever advanceWaived is.
+  advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND' | null;
   onHold?: boolean;
   onHoldReason?: string;
   appointmentStatus?: AppointmentStatus | null;
   appointmentDate?: string;
+  // Who paid for the appointment, recorded by the Appointment team with the date (1 Oct 2026).
+  // null = never recorded (older cases) — the checklist then infers it from the cost.
+  appointmentPaidBy?: 'CLIENT' | 'AGENCY' | null;
   bookedById?: string;
   appointmentAssignedToId?: string;
   fileAssignedToId?: string;
@@ -427,3 +435,34 @@ export interface AppointmentMetrics {
 // How a case's advance stands. Three mutually exclusive states, not a paid/unpaid boolean:
 // a refusal / free-service case never owed an advance, so it is neither paid nor outstanding.
 export type AdvanceState = 'paid' | 'unpaid' | 'waived';
+
+// Monthly business & operations report (1 Oct 2026 #7) — see backend monthlyReport.service.ts.
+export interface MonthlyReportFilters {
+  fromMonth?: string; // 'YYYY-MM'
+  toMonth?: string;   // 'YYYY-MM'
+  assignedToId?: string;
+}
+
+export interface MonthlyReportData {
+  range: { from: string; to: string };
+  completed: {
+    total: number;
+    byDestination: { destination: string; count: number }[];
+    byStaff: { userId: string | null; name: string; count: number }[];
+  };
+  statusCounts: {
+    completedFiles: number;
+    appointmentOnly: number;
+    cancelled: number;
+    missedAppointment: number;
+    dropped: number;
+    paused: number;
+  };
+  revenue: {
+    serviceCharges: number;
+    discounts: number;
+    netServiceRevenue: number;
+    passThroughCosts: number;
+    grossBilled: number;
+  };
+}

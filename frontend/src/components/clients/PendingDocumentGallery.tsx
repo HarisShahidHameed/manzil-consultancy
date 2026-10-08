@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { UploadCloud, AlertCircle } from 'lucide-react';
-import { ACCEPTED_FILE_INPUT, ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
+import { UploadCloud, AlertCircle, FolderUp } from 'lucide-react';
+import { MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
+import { collectDroppedFiles, isJunkFile, FOLDER_INPUT_PROPS } from '../../utils/fileDrop';
 import { DocumentThumb } from './DocumentThumb';
 import { MobileDocumentViewer, type ViewerItem } from './MobileDocumentViewer';
 
@@ -30,6 +31,7 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
   const [rejected, setRejected] = useState<string[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const previewUrls = useRef<Map<File, string>>(new Map());
 
   useEffect(() => () => {
@@ -50,7 +52,7 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
     const bad: string[] = [];
     const ok: File[] = [];
     incoming.forEach(f => {
-      if (!ALLOWED_MIME_TYPES.has(f.type)) { bad.push(`${f.name} is a ${f.type || 'unknown'} file — only PDF, JPEG, PNG, WEBP and HEIC are accepted.`); return; }
+      if (isJunkFile(f)) return;
       if (f.size > MAX_FILE_SIZE_BYTES) { bad.push(`${f.name} (${formatBytes(f.size)} — limit is 25 MB)`); return; }
       ok.push(f);
     });
@@ -80,7 +82,13 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
       <motion.div
         onDragOver={e => { e.preventDefault(); if (!disabled) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); if (!disabled && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); }}
+        onDrop={async e => {
+          e.preventDefault(); setDragOver(false);
+          if (disabled) return;
+          // Folders dropped here are expanded to every file inside them.
+          const dropped = await collectDroppedFiles(e.dataTransfer);
+          if (dropped.length) addFiles(dropped);
+        }}
         onClick={() => !disabled && inputRef.current?.click()}
         animate={{ scale: dragOver ? 1.01 : 1 }}
         transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
@@ -96,13 +104,29 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
         <p className="text-sm text-gray-600">
           <span className="font-medium text-indigo-600">Click to upload</span> or drag and drop
         </p>
-        <p className="text-xs text-gray-400">PDF, JPEG, PNG, WEBP, HEIC · up to 25 MB each · uploaded once the client is saved</p>
+        <p className="text-xs text-gray-400">Any file type, or a whole folder · up to 25 MB each · uploaded once the client is saved</p>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
+            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
+          >
+            <FolderUp className="w-3.5 h-3.5" /> Upload a folder
+          </button>
+        )}
         <input
           ref={inputRef}
           type="file"
           multiple
           disabled={disabled}
-          accept={ACCEPTED_FILE_INPUT}
+          className="hidden"
+          onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ''; }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          {...FOLDER_INPUT_PROPS}
+          disabled={disabled}
           className="hidden"
           onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = ''; }}
         />

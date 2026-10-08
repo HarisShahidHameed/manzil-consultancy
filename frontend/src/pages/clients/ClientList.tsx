@@ -12,8 +12,10 @@ import { Alert } from '../../components/ui/Alert';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
 import { Can } from '../../routes/RoleGuard';
+import { useAuth } from '../../hooks/useAuth';
+import { acquireCreationLock, forceReleaseCreationLock, newLockToken } from '../../api/clientLock';
 import ImportClientsModal from './ImportClientsModal';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, formatCityShortlist, shortCity, waiverLabel } from '../../constants/options';
 
 // Built off the shared STAGE_LABELS map (constants/options) so the filter can never list a
 // stage the rest of the UI spells differently — or miss one that gets added.
@@ -44,6 +46,7 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   HOLD:       'bg-orange-100 text-orange-700',
   DROPPED:    'bg-red-100 text-red-700',
   BACK_UP:    'bg-purple-100 text-purple-700',
+  MISSED:     'bg-rose-100 text-rose-700',
 };
 
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-GB');
@@ -79,6 +82,36 @@ const ClientList: React.FC = () => {
 
   const changeLimit = (l: number) => { setLimit(l); setPage(1); };
 
+  // Exclusive Add Client lock (1 Oct 2026 #8): the form only opens if nobody else is
+  // already adding a client. The token travels to the form, which keeps the lock alive.
+  const { hasRole } = useAuth();
+  const [opening, setOpening] = useState(false);
+  const openAddClient = async () => {
+    setError(null);
+    setOpening(true);
+    const token = newLockToken();
+    try {
+      await acquireCreationLock(token);
+      navigate('/clients/new', { state: { lockToken: token } });
+    } catch (e) {
+      const err = e as AxiosError<{ message?: string }>;
+      const message = err.response?.data?.message ?? 'Could not open the Add Client form.';
+      // A Super Admin may clear a lock somebody walked away from, after being told whose it is.
+      if (err.response?.status === 409 && hasRole('SUPER_ADMIN')
+          && window.confirm(`${message}\n\nAs a Super Admin you can release their lock and continue. Their unsaved form will not be able to save. Release it?`)) {
+        try {
+          await forceReleaseCreationLock();
+          await acquireCreationLock(token);
+          navigate('/clients/new', { state: { lockToken: token } });
+          return;
+        } catch { /* fall through to the message */ }
+      }
+      setError(message);
+    } finally {
+      setOpening(false);
+    }
+  };
+
   const del = useMutation({
     mutationFn: deleteClient,
     onSuccess: () => {
@@ -105,7 +138,7 @@ const ClientList: React.FC = () => {
             <Button variant="outline" leftIcon={<Upload className="w-4 h-4" />} onClick={() => setImportOpen(true)}>
               Import
             </Button>
-            <Button leftIcon={<UserPlus className="w-4 h-4" />} onClick={() => navigate('/clients/new')}>
+            <Button leftIcon={<UserPlus className="w-4 h-4" />} loading={opening} onClick={openAddClient}>
               Add Client
             </Button>
           </div>
@@ -197,6 +230,11 @@ const ClientList: React.FC = () => {
                     <td className="px-4 py-3">
                       {!c.visaCases[0] || c.visaCases[0].stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>
+                      ) : c.visaCases[0].advanceWaived ? (
+                        // Waiver kind — Waived, Family or Friend (1 Oct 2026 #9).
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
+                          {waiverLabel(c.visaCases[0].advanceWaiverType)}
+                        </span>
                       ) : c.visaCases[0].advancePaid ? (
                         <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : (

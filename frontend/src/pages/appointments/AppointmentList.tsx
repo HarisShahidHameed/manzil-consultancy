@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck, CalendarClock, MessageCircleOff } from 'lucide-react';
+import { Search, CalendarDays, AlertTriangle, ArrowRightCircle, CalendarCheck, CalendarClock } from 'lucide-react';
 import { getAppointmentMetrics, getCases } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import type { AdvanceState, AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
@@ -9,7 +9,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { usePersistedPageSize } from '../../hooks/usePersistedPageSize';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, formatShortlist, formatCityShortlist, shortCity, DOC_KEYS, DOC_LABELS, DOC_STATUS_COLORS, waiverLabel } from '../../constants/options';
 import { isExpiringSoon } from '../../utils/dates';
 import { MetricBreakdownCard } from '../../components/cases/MetricBreakdownCard';
 
@@ -21,12 +21,6 @@ const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'
 // selected value, which is safe precisely because it isn't a valid uuid — it can never
 // match a real user's id when deciding which tab is highlighted.
 const UNASSIGNED_TAB = 'none';
-
-// The advance counts as settled once it's paid or explicitly waived (refusal / free-service
-// cases). A cancelled case is never chased for payment either, so it must not read as
-// outstanding — same carve-out the Advance column makes.
-const isAdvanceSettled = (c: Pick<VisaCase, 'stage' | 'advancePaid' | 'advanceWaived'>) =>
-  c.stage === 'CANCELLED' || !!c.advancePaid || !!c.advanceWaived;
 
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
 
@@ -52,10 +46,11 @@ const APPT_STATUS_COLORS: Record<string, string> = {
   HOLD:       'bg-orange-100 text-orange-700',
   DROPPED:    'bg-red-100 text-red-700',
   BACK_UP:    'bg-purple-100 text-purple-700',
+  MISSED:     'bg-rose-100 text-rose-700',
 };
 
 // Mirrors the appointment workflow: Waiting → Assigned (to a booker) → Registered / Completed / Hold / Dropped / Back-Up.
-type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP';
+type TabKey = 'ALL' | 'WAITING' | 'ASSIGNED' | 'REGISTERED' | 'COMPLETED' | 'HOLD' | 'DROPPED' | 'BACK_UP' | 'MISSED';
 
 interface CaseListProps {
   /** Omit for a cross-stage listing (the Paused page pulls from every active stage). */
@@ -184,6 +179,7 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
     { key: 'HOLD',       label: 'Hold' },
     { key: 'DROPPED',    label: 'Dropped' },
     { key: 'BACK_UP',    label: 'Back-Up' },
+    { key: 'MISSED',     label: 'Missed' },
   ];
 
   return (
@@ -406,28 +402,22 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => navigate(`/cases/${c.id}`)}
                   >
-                    <td className="px-2 py-3 text-xs font-bold">
-                      <div className="flex items-center gap-1">
-                        {/* Red ref = money still outstanding, the signal the desk chases on. */}
-                        <span
-                          className={isAdvanceSettled(c) ? 'text-indigo-600' : 'text-red-600'}
-                          title={isAdvanceSettled(c) ? undefined : 'Advance outstanding — not paid and not waived'}
-                        >
-                          {c.client?.clientRef}
-                        </span>
-                        {/* The WhatsApp-group warning used to own this cell's colour; it keeps
-                            its own signal (and its wording) as an icon beside the ref instead. */}
-                        {!c.whatsappGroupCreated && (
-                          <span title="WhatsApp group not created for this appointment" className="inline-flex text-gray-400">
-                            <MessageCircleOff className="w-3 h-3" />
-                          </span>
-                        )}
-                      </div>
+                    {/* Red ref = WhatsApp group not created yet. The 1 Oct 2026 round cancelled
+                        the Sep change that had tied this colour to the unpaid advance, so the
+                        colour is back on its original, single meaning. Advance status is read
+                        from the Advance column instead. */}
+                    <td
+                      className={`px-2 py-3 text-xs font-bold ${c.whatsappGroupCreated ? 'text-indigo-600' : 'text-red-600'}`}
+                      title={c.whatsappGroupCreated ? undefined : 'WhatsApp group not created for this appointment'}
+                    >
+                      {c.client?.clientRef}
                     </td>
                     {pausedOnly && (
                       <td className="px-4 py-3 text-gray-700">{c.stage.replace('_', ' ')}</td>
                     )}
-                    {!isFileProcessing && <td className="pl-1 pr-4 py-3 text-gray-500 text-xs">{fmtDate(c.client?.receivedDate)}</td>}
+                    {/* The case's own entry date (1 Oct 2026 #10) — a returning client's new case
+                        shows today, not the day their profile was first received. */}
+                    {!isFileProcessing && <td className="pl-1 pr-4 py-3 text-gray-500 text-xs">{fmtDate(c.receivedDate ?? c.client?.receivedDate)}</td>}
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c)}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c) ?? '—'}</td>
                     {isFileProcessing && (
@@ -443,17 +433,17 @@ const AppointmentList: React.FC<CaseListProps> = ({ stage, title, showStatusTabs
                     <td className="px-4 py-3">
                       {c.stage === 'CANCELLED' ? (
                         <span className="text-xs text-gray-400">—</span>
-                      ) : c.advancePaid ? (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : c.advanceWaived ? (
-                        // Staff-set waiver (refusal / free service). Settled, so it must not
-                        // read as Pending while the Client Ref beside it reads as settled.
+                        // Staff-set waiver, shown by its kind — Waived, Family or Friend
+                        // (1 Oct 2026 #9). Checked before Paid, matching the Waived filter.
                         <span
                           className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600"
                           title={c.advanceWaiverReason ?? 'Advance waived'}
                         >
-                          Waived
+                          {waiverLabel(c.advanceWaiverType)}
                         </span>
+                      ) : c.advancePaid ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Paid</span>
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
                           <AlertTriangle className="w-2.5 h-2.5" /> Pending

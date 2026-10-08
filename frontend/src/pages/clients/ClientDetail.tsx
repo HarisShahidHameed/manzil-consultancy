@@ -56,6 +56,13 @@ const emptyNewCase = {
 };
 export type NewCasePrefill = Partial<typeof emptyNewCase>;
 
+// A new case for a returning client is dated today (1 Oct 2026 #10) — computed when the form
+// opens rather than at module load, so a tab left open overnight still defaults correctly.
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 // Navigation state this page understands. docWarning comes from a just-created client whose
 // staged documents didn't all upload; openNewCase/newCasePrefill from the duplicate-passport
 // warning on ClientForm.
@@ -95,6 +102,8 @@ const ClientDetail: React.FC = () => {
   // lands straight on the filled-in form; re-renders never re-open it after a dismissal.
   const [newCaseOpen, setNewCaseOpen] = useState(!!navState?.openNewCase);
   const [newCase, setNewCase] = useState({ ...emptyNewCase, ...(navState?.newCasePrefill ?? {}) });
+  const [newCaseDate, setNewCaseDate] = useState(todayIso);
+  const openNewCase = () => { setNewCaseDate(todayIso()); setNewCaseOpen(true); };
   const setNc = (k: keyof typeof emptyNewCase) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setNewCase(f => ({ ...f, [k]: e.target.value }));
 
@@ -134,6 +143,7 @@ const ClientDetail: React.FC = () => {
         advance:  newCase.advance  ? parseFloat(newCase.advance)  : undefined,
         charges:  newCase.charges  ? parseFloat(newCase.charges)  : undefined,
         discount: newCase.discount ? parseFloat(newCase.discount) : undefined,
+        receivedDate: newCaseDate || undefined,
       });
     },
     onSuccess: () => {
@@ -301,7 +311,7 @@ const ClientDetail: React.FC = () => {
               the entry point for adding another to an existing profile instead of re-entering
               the person as a duplicate. */}
           <Can permissions={['clients:write']}>
-            <Button size="sm" variant="outline" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={() => setNewCaseOpen(true)}>
+            <Button size="sm" variant="outline" leftIcon={<Plus className="w-3.5 h-3.5" />} onClick={openNewCase}>
               New Case
             </Button>
           </Can>
@@ -322,6 +332,7 @@ const ClientDetail: React.FC = () => {
                   </span>
                 </div>
                 {vc.visaType && <p className="text-xs text-gray-500">{vc.visaType}</p>}
+                {vc.receivedDate && <p className="text-xs text-gray-500">Received: {fmtDate(vc.receivedDate)}</p>}
                 {vc.appointmentDate && (
                   <p className="text-xs text-gray-500">Appt: {fmtDate(vc.appointmentDate)}</p>
                 )}
@@ -364,6 +375,12 @@ const ClientDetail: React.FC = () => {
             passport and document records are shared, and the new case enters the Appointment
             queue as Waiting.
           </p>
+          {/* The client keeps their number, but the case is dated as new intake, so it lists
+              under today rather than the profile's original received date. */}
+          <div className="flex flex-col gap-1 max-w-[220px]">
+            <label className="text-sm font-medium text-gray-700">Received Date</label>
+            <input type="date" min="1900-01-01" max="2099-12-31" className={inputCls} value={newCaseDate} onChange={e => setNewCaseDate(e.target.value)} />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700">Destination Country<span className="text-red-500 ml-1">*</span></label>

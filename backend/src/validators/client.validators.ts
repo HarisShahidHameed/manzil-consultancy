@@ -25,6 +25,15 @@ const cityFields = {
   cityOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
 };
 
+// Advance status chosen up front on the Add Client / New Case forms (1 Oct 2026 #9):
+// paid/unpaid explicitly (absent = derived from the amount, as before), and an optional waiver
+// with one of exactly three reasons. Choosing a reason is what waives the advance.
+export const ADVANCE_WAIVER_TYPES = ['WAIVED', 'FAMILY', 'FRIEND'] as const;
+const advanceStatusFields = {
+  advancePaid:       z.boolean().optional(),
+  advanceWaiverType: z.enum(ADVANCE_WAIVER_TYPES).optional(),
+};
+
 const createClientObjectSchema = z.object({
   receivedDate: z.string().regex(DATE_REGEX, DATE_FORMAT_MSG),
   firstName:    z.string().min(1).max(100).trim(),
@@ -67,6 +76,7 @@ const createClientObjectSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
+  ...advanceStatusFields,
 });
 export const createClientSchema = createClientObjectSchema.refine(requireDestination, {
   message: 'Destination (or destination options) is required', path: ['destination'],
@@ -119,6 +129,12 @@ const optionalText = (max: number) =>
   z.string().max(max).optional().or(z.literal('')).transform(v => (v ? v.trim() : undefined));
 const optionalDate = () =>
   z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).optional().or(z.literal('')).transform(v => v || undefined);
+// A date the user must be able to REMOVE, not just change. optionalDate() turns '' into
+// undefined, and an absent key leaves the column untouched — which is exactly why an
+// appointment date, once entered, could never be cleared. Here '' and null both mean
+// "clear it" and reach the service as an explicit null; an absent key still means "leave it".
+const clearableDate = () =>
+  z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).nullable().optional().or(z.literal('').transform(() => null));
 
 export const importClientSchema = createClientObjectSchema.extend({
   // Carried over as-is from the source file's "#" column when present, instead of
@@ -215,6 +231,9 @@ export const createCaseSchema = z.object({
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
   discount:     z.number().nonnegative().optional(),
+  ...advanceStatusFields,
+  // Entry date of the new case (1 Oct 2026 #10); omitted = today.
+  receivedDate: optionalDate(),
 }).refine(requireDestination, { message: 'Destination (or destination options) is required', path: ['destination'] });
 
 // Assignee fields: a uuid to assign, or '' / null from the "— Unassigned —" option to
@@ -232,6 +251,9 @@ export const updateCaseSchema = z.object({
   ukVisaExpiry: optionalDate(),
   eVisaType:    z.string().max(100).optional(),
   stage:        z.enum(['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED', 'CANCELLED']).optional(),
+  // Why a case is being moved back from File Processing to Appointments (Super Admin only).
+  // Not stored on the case — it is written into the client's HR Comments log.
+  revertReason: z.string().max(500).optional(),
   priority:     z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   advance:      z.number().nonnegative().optional(),
   charges:      z.number().nonnegative().optional(),
@@ -244,11 +266,15 @@ export const updateCaseSchema = z.object({
   // send it away rather than just leaving a stale reason behind.
   advanceWaived:       z.boolean().optional(),
   advanceWaiverReason: z.string().max(500).optional().nullable(),
+  // Waived / Family / Friend (1 Oct 2026 #9). Setting one waives; null lifts the waiver.
+  advanceWaiverType:   z.enum(ADVANCE_WAIVER_TYPES).nullable().optional(),
   onHold:          z.boolean().optional(),
   onHoldReason:    z.string().max(500).optional(),
   // Stage 2
-  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP']).nullable().optional(),
-  appointmentDate:         optionalDate(),
+  appointmentStatus:       z.enum(['WAITING', 'REGISTERED', 'ASSIGNED', 'COMPLETED', 'HOLD', 'DROPPED', 'BACK_UP', 'MISSED']).nullable().optional(),
+  appointmentDate:         clearableDate(),
+  // Who paid for the appointment (1 Oct 2026 #5) — asked for when the date is allotted.
+  appointmentPaidBy:       z.enum(['CLIENT', 'AGENCY']).nullable().optional(),
   bookedById:              clearableAssignee(),
   appointmentAssignedToId: clearableAssignee(),
   fileAssignedToId:        clearableAssignee(),

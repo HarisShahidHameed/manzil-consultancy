@@ -26,11 +26,17 @@ const PRESIGN_EXPIRY_SECONDS = 300; // 5 minutes — long enough for a slow conn
 export const presignPutObject = (key: string, contentType: string): Promise<string> =>
   getSignedUrl(s3, new PutObjectCommand({ Bucket: BUCKET_NAME, Key: key, ContentType: contentType }), { expiresIn: PRESIGN_EXPIRY_SECONDS });
 
-export const presignGetObject = (key: string, downloadAsFileName?: string): Promise<string> =>
+export const presignGetObject = (
+  key: string,
+  downloadAsFileName?: string,
+  // 'attachment' for anything that should not render in the tab (Word files, and any type
+  // that is not a plain PDF/image) — see INLINE_VIEWABLE_MIME_TYPES in clientDocument.service.
+  disposition: 'inline' | 'attachment' = 'inline',
+): Promise<string> =>
   getSignedUrl(s3, new GetObjectCommand({
     Bucket: BUCKET_NAME,
     Key: key,
-    ...(downloadAsFileName ? { ResponseContentDisposition: `inline; filename="${downloadAsFileName.replace(/"/g, '')}"` } : {}),
+    ...(downloadAsFileName ? { ResponseContentDisposition: `${disposition}; filename="${downloadAsFileName.replace(/"/g, '')}"` } : {}),
   }), { expiresIn: PRESIGN_EXPIRY_SECONDS });
 
 export const deleteObject = (key: string): Promise<void> =>

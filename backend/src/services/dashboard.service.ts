@@ -24,18 +24,24 @@ export const getDashboardStats = async () => {
     }),
   ]);
 
-  const recentClients = await prisma.client.findMany({
+  // Recent intake by CASE, newest first, one row per client (1 Oct 2026 #10). Ordering by the
+  // client's own createdAt hid returning clients: someone first seen last year who opens a new
+  // case today is today's intake, under the same client number. Same response shape as before,
+  // with createdAt now the date of that latest case.
+  const recentCases = await prisma.visaCase.findMany({
     take: 5,
+    distinct: ['clientId'],
     orderBy: { createdAt: 'desc' },
     select: {
-      id: true, clientRef: true, firstName: true, lastName: true, createdAt: true,
-      visaCases: {
-        select: { destination: true, stage: true },
-        take: 1,
-        orderBy: { createdAt: 'desc' },
-      },
+      destination: true, stage: true, createdAt: true,
+      client: { select: { id: true, clientRef: true, firstName: true, lastName: true } },
     },
   });
+  const recentClients = recentCases.map(c => ({
+    ...c.client,
+    createdAt: c.createdAt,
+    visaCases: [{ destination: c.destination, stage: c.stage }],
+  }));
 
   return {
     totalClients,

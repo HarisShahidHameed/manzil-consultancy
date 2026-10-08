@@ -2,19 +2,24 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
-import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, Lock, UserCircle, Download, PauseCircle, PlayCircle, Receipt, UserCog, CheckCircle2, Undo2 } from 'lucide-react';
 import { getCase, updateCase, advanceToInvoiced, type AdvanceToInvoicedResult } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { createInvoice } from '../../api/invoices';
 import { appendHrComment } from '../../api/clients';
 import { downloadAdvanceReceipt, downloadInvoicePdf, downloadReceiptPreview } from '../../api/pdf';
-import type { AssignableUser, CaseStage, DocumentStatus, VisaCase } from '../../types';
+import { getDocuments } from '../../api/documents';
+import type { AssignableUser, CaseStage, ClientDocument, DocumentStatus, VisaCase } from '../../types';
+import { DocumentUploader } from '../../components/clients/DocumentUploader';
+import { DocumentList } from '../../components/clients/DocumentList';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
 import { Can } from '../../routes/RoleGuard';
+import { useAuth } from '../../hooks/useAuth';
 import { Breadcrumbs, type BreadcrumbStep } from '../../components/ui/Breadcrumbs';
-import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey } from '../../constants/options';
+import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, STAGE_LABELS, formatShortlist, DOC_LABELS, DOC_STATUS_COLORS, type DocKey,
+  ADVANCE_WAIVER_LABELS, ADVANCE_WAIVER_TYPES, waiverLabel, type AdvanceWaiverType } from '../../constants/options';
 
 const STAGE_ORDER: CaseStage[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 // APPOINTMENT_ONLY clients skip File Processing/Invoiced entirely — mirrors
@@ -92,6 +97,7 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
   ['Visa Type', vc.visaType ?? '—'],
   ['Appointment Date', fmtDate(vc.appointmentDate)],
+  ['Appointment Paid By', vc.appointmentPaidBy === 'AGENCY' ? 'Agency' : vc.appointmentPaidBy === 'CLIENT' ? 'Client' : '—'],
   ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
   ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
   ['TLS Account', vc.tlsAccount ?? '—'],
@@ -100,7 +106,7 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   // A waiver means nothing was ever collected, so the row must not print an amount that
   // reads as a payment — it says exempt instead.
   ['Advance', vc.advanceWaived
-    ? 'Waived (refusal / free service)'
+    ? `Waived (${waiverLabel(vc.advanceWaiverType)})`
     : `${fmtMoney(vc.advance)}${vc.advancePaid ? ' (paid)' : ''}`],
 ];
 
@@ -127,6 +133,7 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
   { value: 'HOLD', label: 'Hold' },
   { value: 'DROPPED', label: 'Dropped' },
   { value: 'BACK_UP', label: 'Back-Up' },
+  { value: 'MISSED', label: 'Missed' },
 ];
 
 // The editFields keys each Save actually persists. Once the server has them the server
@@ -134,7 +141,7 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
 // re-syncing on every refetch (see the seeding effect).
 const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
   'destination', 'city', 'charges', 'discount', 'advance', 'priority',
-  'appointmentDate', 'fraNo', 'tlsAccount', 'appointmentNotes',
+  'appointmentDate', 'appointmentPaidBy', 'fraNo', 'tlsAccount', 'appointmentNotes',
 ];
 const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
   'travelDate', 'hotelDate', 'salamComments',
@@ -144,7 +151,7 @@ const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
   'docEVisaCost', 'docSopCost', 'docVisaFormCost', 'docSelfEmploymentCost',
   'docAppointmentClientPaid', 'docTicketClientPaid', 'docInsuranceClientPaid',
   'docHotelClientPaid', 'docSelfEmploymentClientPaid',
-  'charges', 'discount', 'advance', 'paymentReceived',
+  'charges', 'discount', 'advance', 'paymentReceived', 'appointmentPaidBy',
 ];
 
 const CaseDetail: React.FC = () => {
@@ -152,6 +159,8 @@ const CaseDetail: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
+  const { hasRole } = useAuth();
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<Partial<VisaCase>>({});
@@ -188,6 +197,16 @@ const CaseDetail: React.FC = () => {
 
   const vc = data?.data;
 
+  // The client's documents, worked from File Processing too (1 Oct 2026 #6). Same query key
+  // as ClientDetail, so an upload here shows up on the client's profile and vice versa.
+  const docsClientId = vc?.clientId;
+  const { data: documents = [] } = useQuery({
+    queryKey: ['clientDocuments', docsClientId],
+    queryFn:  () => getDocuments(docsClientId!),
+    enabled:  !!docsClientId && activeSection === 'FILE_PROCESSING',
+  });
+  const setDocuments = (docs: ClientDocument[]) => qc.setQueryData(['clientDocuments', docsClientId], docs);
+
   // Fields the user has typed into since the last seed. The immediate patches on this page
   // (advance toggle, assignee, pause, destination finalize) PATCH the server mid-edit, and
   // invalidateFinancials() then refetches — which bumps vc.updatedAt and re-runs the seeding
@@ -212,6 +231,7 @@ const CaseDetail: React.FC = () => {
       city: vc.city ?? '',
       priority: vc.priority,
       appointmentDate: vc.appointmentDate?.split('T')[0] ?? '',
+      appointmentPaidBy: vc.appointmentPaidBy ?? null,
       fraNo: vc.fraNo ?? '',
       tlsAccount: vc.tlsAccount ?? '',
       appointmentNotes: vc.appointmentNotes ?? '',
@@ -253,6 +273,12 @@ const CaseDetail: React.FC = () => {
       AGENCY_PAID_DOCS.forEach(key => {
         const costKey = DOC_COST_KEY[key];
         if (dirtyFields.current.has(costKey)) return;
+        // The appointment's payer is recorded upstream now; only cases that never recorded
+        // it fall back to inferring it from whether a cost was entered, as before.
+        if (key === 'docAppointment' && vc.appointmentPaidBy) {
+          next[key] = vc.appointmentPaidBy === 'AGENCY' ? 'agency' : 'client';
+          return;
+        }
         const cost = vc[costKey] as number | string | null | undefined;
         next[key] = (cost != null && Number(cost) > 0) ? 'agency' : 'client';
       });
@@ -300,7 +326,10 @@ const CaseDetail: React.FC = () => {
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
       priority:         editFields.priority,
-      appointmentDate:  (editFields.appointmentDate as string) || undefined,
+      // null, not undefined, when the box is empty: undefined drops the key and leaves the
+      // stored date untouched, which is why a date once entered could never be removed.
+      appointmentDate:  (editFields.appointmentDate as string) || null,
+      appointmentPaidBy: editFields.appointmentPaidBy ?? undefined,
       fraNo:            (editFields.fraNo as string) || undefined,
       tlsAccount:       (editFields.tlsAccount as string) || undefined,
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
@@ -345,6 +374,9 @@ const CaseDetail: React.FC = () => {
       discount:        toNum(editFields.discount),
       advance:         toNum(editFields.advance),
       paymentReceived: toNum(editFields.paymentReceived),
+      // Only sent when actually changed here: it is locked for everyone but a Super Admin
+      // (or on an older case that never recorded it), and the server enforces that too.
+      ...(dirtyFields.current.has('appointmentPaidBy') ? { appointmentPaidBy: editFields.appointmentPaidBy } : {}),
     }),
     onSuccess: () => {
       clearDirty(FILE_SAVE_KEYS);
@@ -392,6 +424,19 @@ const CaseDetail: React.FC = () => {
       setInvoicingOpen(false);
       onErr(e, 'Failed to create invoice and complete case');
     },
+  });
+
+  // Super Admin correction: send a case already in File Processing back to Appointments so
+  // its booking can be re-worked on the original record (e.g. an October appointment that
+  // had to be rebooked for November) instead of opening a second case for the same trip.
+  const revertToAppointmentMut = useMutation({
+    mutationFn: (reason: string) => updateCase(id!, { stage: 'APPOINTMENT', revertReason: reason || undefined }),
+    onSuccess: () => {
+      invalidateFinancials();
+      setActiveSection('APPOINTMENT');
+      showSuccess('Case moved back to Appointments');
+    },
+    onError: (e: AxiosError<{ message: string }>) => onErr(e, 'Failed to move the case back'),
   });
 
   const cancelMut = useMutation({
@@ -525,6 +570,8 @@ const CaseDetail: React.FC = () => {
     gateReason = `Missing required client info: ${missingRequiredFields.map(f => REQUIRED_FIELD_LABELS[f] ?? f).join(', ')}.`;
   } else if (vc.stage === 'APPOINTMENT' && !vc.appointmentDate) {
     gateReason = 'Set the appointment date before this case can move past the Appointment stage.';
+  } else if (vc.stage === 'APPOINTMENT' && nextStage === 'FILE_PROCESSING' && !vc.appointmentPaidBy) {
+    gateReason = 'Record who paid for the appointment (Client or Agency) before handing over to File Processing.';
   } else if (vc.stage === 'INVOICED' && unpaidInvoices.length > 0) {
     gateReason = `All invoices must be marked Paid before completing (${unpaidInvoices.length} outstanding).`;
   }
@@ -592,6 +639,22 @@ const CaseDetail: React.FC = () => {
                 {vc.onHold ? 'Resume' : 'Pause'}
               </Button>
             </Can>
+            {vc.stage === 'FILE_PROCESSING' && hasRole('SUPER_ADMIN') && (
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Undo2 className="w-4 h-4" />}
+                loading={revertToAppointmentMut.isPending}
+                onClick={() => {
+                  const reason = window.prompt(
+                    'Move this case back to Appointments so the appointment can be re-booked?\n\nReason (optional, saved to HR Comments):'
+                  );
+                  if (reason !== null) revertToAppointmentMut.mutate(reason.trim());
+                }}
+              >
+                Back to Appointments
+              </Button>
+            )}
             <Can permissions={['clients:write']}>
               <Button
                 variant="outline"
@@ -810,8 +873,43 @@ const CaseDetail: React.FC = () => {
             )}
           </div>
           <div>
-            <label className="text-xs text-gray-500">Appointment Date</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs text-gray-500">Appointment Date</label>
+              {/* Native date pickers have no consistent clear control across browsers, so the
+                  removal is an explicit action. It only empties the box; Save persists it,
+                  which also withdraws the "Appointment Date Allotted" count. */}
+              {!!editFields.appointmentDate && vc.stage === 'APPOINTMENT' && (
+                <button type="button" className="text-xs text-indigo-600 hover:underline" onClick={() => updateEF('appointmentDate', '')}>
+                  Clear
+                </button>
+              )}
+            </div>
             <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
+            {!editFields.appointmentDate && vc.appointmentDate && (
+              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm.</p>
+            )}
+          </div>
+          {/* Asked here, at allotment, so File Processing gets it locked in and never has to
+              come back and check who paid the appointment fee. */}
+          <div>
+            <label className="text-xs text-gray-500">
+              Appointment Paid By{editFields.appointmentDate ? <span className="text-red-500 ml-0.5">*</span> : null}
+            </label>
+            <div className="mt-2.5 flex items-center gap-4">
+              {(['CLIENT', 'AGENCY'] as const).map(opt => (
+                <label key={opt} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="appointmentPaidBy"
+                    value={opt}
+                    checked={editFields.appointmentPaidBy === opt}
+                    onChange={() => updateEF('appointmentPaidBy', opt)}
+                    className="accent-indigo-600"
+                  />
+                  {opt === 'CLIENT' ? 'Client' : 'Agency'}
+                </label>
+              ))}
+            </div>
           </div>
           <div>
             <label className="text-xs text-gray-500">FRA No.</label>
@@ -878,7 +976,7 @@ const CaseDetail: React.FC = () => {
                 {/* A waiver outranks paid/unpaid — the whole point is that the case stops
                     reading as outstanding when no advance was ever due. */}
                 {vc.advanceWaived ? (
-                  <span className="text-green-600">Waived</span>
+                  <span className="text-green-600">{waiverLabel(vc.advanceWaiverType)}</span>
                 ) : (
                   <span className={vc.advancePaid ? 'text-green-600' : 'text-red-600'}>{vc.advancePaid ? 'Paid' : 'Unpaid'}</span>
                 )}
@@ -909,31 +1007,40 @@ const CaseDetail: React.FC = () => {
             they need an explicit exemption. Without one they sit on "Unpaid" forever and keep
             raising the pending-advance alert on a case where nothing is actually owed. */}
         <div className="border border-gray-100 bg-gray-50/60 rounded-lg p-4 space-y-3">
-          <div className="flex items-center gap-3">
+          {/* Exactly three kinds of waiver (1 Oct 2026 #9): Waived, Family, Friend. Picking one
+              waives the advance; "Not waived" lifts it. The kind is what the listings show. */}
+          <div className="flex flex-wrap items-center gap-3">
             <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
-              <button
-                type="button"
+              <select
+                className={`${inputCls} max-w-[200px]`}
                 disabled={patchMut.isPending}
-                onClick={() => {
-                  if (vc.advanceWaived) {
+                value={vc.advanceWaived ? (vc.advanceWaiverType ?? 'WAIVED') : ''}
+                onChange={e => {
+                  const type = e.target.value as AdvanceWaiverType | '';
+                  if (!type) {
                     setWaiverReason(null);
-                    patchMut.mutate({ patch: { advanceWaived: false }, msg: 'Advance waiver removed' });
+                    patchMut.mutate({ patch: { advanceWaiverType: null }, msg: 'Advance waiver removed' });
                     return;
                   }
                   patchMut.mutate({
-                    patch: { advanceWaived: true, advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null },
-                    msg: 'Advance waived',
+                    patch: {
+                      advanceWaiverType: type,
+                      ...(vc.advanceWaived ? {} : { advanceWaiverReason: (waiverReason ?? vc.advanceWaiverReason ?? '').trim() || null }),
+                    },
+                    msg: `Advance waived (${ADVANCE_WAIVER_LABELS[type]})`,
                   });
                 }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${vc.advanceWaived ? 'bg-green-500' : 'bg-gray-300'}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${vc.advanceWaived ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
+                <option value="">Not waived</option>
+                {ADVANCE_WAIVER_TYPES.map(t => <option key={t} value={t}>{ADVANCE_WAIVER_LABELS[t]}</option>)}
+              </select>
             </Can>
             <div>
               <p className="text-sm font-medium text-gray-800">
-                Advance Waived (refusal / free service):{' '}
-                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>{vc.advanceWaived ? 'Yes' : 'No'}</span>
+                Advance Waived:{' '}
+                <span className={vc.advanceWaived ? 'text-green-600' : 'text-gray-500'}>
+                  {vc.advanceWaived ? waiverLabel(vc.advanceWaiverType) : 'No'}
+                </span>
               </p>
               <p className="text-xs text-gray-400">
                 Marks the advance as exempt rather than outstanding. No money is recorded as received.
@@ -993,7 +1100,21 @@ const CaseDetail: React.FC = () => {
         {!locked && (
           <Can permissions={['appointments:write', 'clients:write']} requireAll={false}>
             <div className="flex justify-end border-t border-gray-100 pt-4">
-              <Button size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} loading={saveAppointmentMut.isPending} onClick={() => saveAppointmentMut.mutate()}>
+              <Button
+                size="sm"
+                leftIcon={<Save className="w-3.5 h-3.5" />}
+                loading={saveAppointmentMut.isPending}
+                onClick={() => {
+                  // Same rule the server applies: allotting or moving a date needs a payer.
+                  const date = editFields.appointmentDate as string;
+                  const dateChanged = !!date && date !== (vc.appointmentDate?.split('T')[0] ?? '');
+                  if (dateChanged && !editFields.appointmentPaidBy) {
+                    setError('Select who paid for the appointment (Client or Agency) before saving the date.');
+                    return;
+                  }
+                  saveAppointmentMut.mutate();
+                }}
+              >
                 Save
               </Button>
             </div>
@@ -1176,6 +1297,10 @@ const CaseDetail: React.FC = () => {
                     const clientPaidKey = DOC_CLIENT_PAID_KEY[key];
                     const hasPaidBy = AGENCY_PAID_DOCS.has(key);
                     const paidBy = docPaidBy[key];
+                    // The appointment's payer comes from the Appointment team and is read-only
+                    // here. A Super Admin can still correct it, and an older case that never
+                    // recorded one can have it set once.
+                    const payerLocked = key === 'docAppointment' && !!vc.appointmentPaidBy && !isSuperAdmin;
                     return (
                     <tr key={key}>
                       <td className="px-3 py-2 font-medium text-gray-700">{DOC_LABELS[key]}</td>
@@ -1197,16 +1322,18 @@ const CaseDetail: React.FC = () => {
                       </td>
                       <td className="px-3 py-2">
                         {hasPaidBy ? (
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-3" title={payerLocked ? 'Recorded by the Appointment team. Only a Super Admin can change it.' : undefined}>
                             {(['client', 'agency'] as const).map(opt => (
-                              <label key={opt} className="flex items-center gap-1 cursor-pointer">
+                              <label key={opt} className={`flex items-center gap-1 ${payerLocked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                                 <input
                                   type="radio"
                                   name={`paidBy-${key}`}
                                   value={opt}
                                   checked={paidBy === opt}
+                                  disabled={payerLocked}
                                   onChange={() => {
                                     setDocPaidBy(p => ({ ...p, [key]: opt }));
+                                    if (key === 'docAppointment') updateEF('appointmentPaidBy', opt === 'agency' ? 'AGENCY' : 'CLIENT');
                                     // Either direction is a deliberate edit of this doc's cost, so pin it
                                     // against a mid-edit refetch. Client-paid means the agency fronted
                                     // nothing, so the cost goes to zero.
@@ -1217,6 +1344,7 @@ const CaseDetail: React.FC = () => {
                                 <span className="text-xs text-gray-600 capitalize">{opt}</span>
                               </label>
                             ))}
+                            {payerLocked && <Lock className="w-3 h-3 text-gray-400" />}
                           </div>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
@@ -1262,6 +1390,21 @@ const CaseDetail: React.FC = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Client documents — the same upload box as the Add Client screen, so the file team
+              can attach share codes, e-visas, letters, insurance and bookings (any file type,
+              or a whole folder saved off WhatsApp) without leaving the case. */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 mb-2">Documents ({documents.length})</h4>
+            {!locked && (
+              <Can permissions={['clients:write', 'files:write']} requireAll={false}>
+                <div className="mb-4">
+                  <DocumentUploader clientId={vc.clientId} onUploaded={uploaded => setDocuments([...uploaded, ...documents])} />
+                </div>
+              </Can>
+            )}
+            <DocumentList clientId={vc.clientId} documents={documents} onChange={setDocuments} />
           </div>
 
           {/* Payment */}

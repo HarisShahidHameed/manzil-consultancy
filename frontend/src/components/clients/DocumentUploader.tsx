@@ -1,8 +1,9 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { UploadCloud, AlertCircle } from 'lucide-react';
+import { UploadCloud, AlertCircle, FolderUp } from 'lucide-react';
 import { uploadClientDocuments, type UploadProgress } from '../../api/documents';
-import { ACCEPTED_FILE_INPUT, MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
+import { MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
+import { collectDroppedFiles, isJunkFile, FOLDER_INPUT_PROPS } from '../../utils/fileDrop';
 import { DocumentThumb } from './DocumentThumb';
 import type { ClientDocument } from '../../types';
 
@@ -21,9 +22,10 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
   const [inFlight, setInFlight] = useState<Record<string, InFlightItem>>({});
   const [rejected, setRejected] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const startUpload = useCallback(async (fileList: FileList | File[]) => {
-    const files = Array.from(fileList);
+    const files = Array.from(fileList).filter(f => !isJunkFile(f));
     const tooBig = files.filter(f => f.size > MAX_FILE_SIZE_BYTES).map(f => `${f.name} (${formatBytes(f.size)} — limit is 25 MB)`);
     const ok = files.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
     setRejected(tooBig);
@@ -62,10 +64,12 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
     }, 1200);
   }, [clientId, onUploaded]);
 
-  const onDrop = (e: React.DragEvent) => {
+  // Dropped folders are expanded to every file inside them, sub-folders included.
+  const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    if (e.dataTransfer.files.length) startUpload(e.dataTransfer.files);
+    const files = await collectDroppedFiles(e.dataTransfer);
+    if (files.length) startUpload(files);
   };
 
   const entries = Object.values(inFlight);
@@ -87,12 +91,25 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
         <p className="text-sm text-gray-600">
           <span className="font-medium text-indigo-600">Click to upload</span> or drag and drop
         </p>
-        <p className="text-xs text-gray-400">PDF, JPEG, PNG, WEBP, HEIC · up to 25 MB each</p>
+        <p className="text-xs text-gray-400">Any file type, or a whole folder · up to 25 MB each</p>
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
+          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
+        >
+          <FolderUp className="w-3.5 h-3.5" /> Upload a folder
+        </button>
         <input
           ref={inputRef}
           type="file"
           multiple
-          accept={ACCEPTED_FILE_INPUT}
+          className="hidden"
+          onChange={e => { if (e.target.files?.length) startUpload(e.target.files); e.target.value = ''; }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          {...FOLDER_INPUT_PROPS}
           className="hidden"
           onChange={e => { if (e.target.files?.length) startUpload(e.target.files); e.target.value = ''; }}
         />

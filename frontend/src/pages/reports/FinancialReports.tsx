@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { ChartCard, ChartEmpty, CHART_COLORS } from '../../components/charts/ChartCard';
 import { DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS } from '../../constants/options';
 import type { ApiResponse, AssignableUser, FinancialReportsFilters } from '../../types';
+import { MonthlyBusinessReport } from './MonthlyBusinessReport';
 
 const fmtMoney = (v: number) =>
   `£${v.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -104,6 +105,14 @@ const FinancialReports: React.FC = () => {
           </p>
         </div>
         {isFetching && <RefreshCw className="w-4 h-4 text-indigo-500 animate-spin" />}
+      </div>
+
+      {/* 1 Oct 2026 #7 — monthly operations + true service revenue, above the invoice reports. */}
+      <MonthlyBusinessReport users={users} hasFullAccess={hasFullAccess} />
+
+      <div className="pt-2 border-t border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900 mt-4">Invoices & Collections</h2>
+        <p className="text-gray-500 text-sm mt-0.5">Billed amounts include pass-through costs. See Net Service Revenue above for income.</p>
       </div>
 
       {/* Filters */}

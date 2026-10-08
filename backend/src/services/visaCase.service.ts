@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 import { getMissingRequiredFields, CaseRequiredField } from '../utils/caseRequiredInfo';
 import { computeAgencyDocLineItems, InvoiceLineItem } from '../utils/invoiceItems';
+import { appendHrComment } from '../utils/hrComments';
 
 // A case is created with either a single decided `destination` or a shortlist of
 // `destinationOptions` when it isn't decided yet. A single-entry shortlist has no real
@@ -26,12 +27,12 @@ const resolveCity = (data: { city?: string; cityOptions?: string[] }) => {
 
 const CASE_SELECT = {
   id: true, clientId: true, destination: true, destinationOptions: true, city: true, cityOptions: true, visaType: true, ukVisaExpiry: true, eVisaType: true,
-  stage: true, priority: true,
+  stage: true, priority: true, receivedDate: true,
   advance: true, charges: true, discount: true,
-  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true,
+  advancePaid: true, advancePaidDate: true, advanceWaived: true, advanceWaiverReason: true, advanceWaiverType: true,
   onHold: true, onHoldReason: true,
   appointmentStatus: true,
-  appointmentDate: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
+  appointmentDate: true, appointmentPaidBy: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
   fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
   travelDate: true, hotelDate: true, salamComments: true,
   docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
@@ -72,6 +73,10 @@ export type CaseStageName = 'APPOINTMENT' | 'FILE_PROCESSING' | 'INVOICED' | 'CO
 export const isAdvanceSettled = (c: { advancePaid: boolean; advanceWaived: boolean }): boolean =>
   c.advancePaid || c.advanceWaived;
 
+
+// The note a duplicate case is auto-cancelled with. Exported so the monthly report can tell a
+// system clean-up apart from a client actually cancelling.
+export const AUTO_CANCEL_DUPLICATE_REASON = 'Auto-cancelled: duplicate case for this client';
 
 export const STAGE_ORDER: CaseStageName[] = ['APPOINTMENT', 'FILE_PROCESSING', 'INVOICED', 'COMPLETED'];
 
@@ -165,6 +170,18 @@ export const TRANSITION_PERMISSIONS: Record<string, string[]> = {
   '*>CANCELLED':                ['clients:write'],
 };
 
+/**
+ * The one backwards move the workflow allows: a case already handed over to File Processing
+ * goes back to Appointments when the client's plans change (e.g. an October appointment is
+ * cancelled and has to be rebooked for November). Re-working the date on the original record
+ * beats opening a second case for the same trip. It is a correction, not a step of the
+ * normal flow, so it is gated on the SUPER_ADMIN role rather than on a team permission —
+ * see the controller — and none of the forward gates apply to it.
+ */
+export const isRevertToAppointment = (from: string, to: string): boolean =>
+  from === 'FILE_PROCESSING' && to === 'APPOINTMENT';
+export const REVERT_ROLE = 'SUPER_ADMIN';
+
 export const requiredPermsForTransition = (from: string, to: string): string[] => {
   if (to === 'CANCELLED') return TRANSITION_PERMISSIONS['*>CANCELLED'];
   return TRANSITION_PERMISSIONS[`${from}>${to}`] ?? ['clients:write'];
@@ -187,6 +204,9 @@ export const assertTransitionAllowed = (
     destination: string | null; destinationOptions?: string[];
     city?: string | null; cityOptions?: string[];
     appointmentDate: Date | null;
+    // Optional so callers built before 1 Oct 2026 (and their tests) type-check unchanged; an
+    // absent key reads as "not recorded" and blocks the hand-over like a null does.
+    appointmentPaidBy?: string | null;
     client: {
       passportNumber: string | null; nationality: string | null; dob: Date | null;
       passportIssue: Date | null; passportExpiry: Date | null;
@@ -200,6 +220,10 @@ export const assertTransitionAllowed = (
 
   // Cancellation is allowed from any active stage
   if (next === 'CANCELLED') return;
+
+  // The Super Admin correction back to Appointments (role-checked by the controller). Allowed
+  // while paused too: pausing is often exactly what a changed booking looks like.
+  if (isRevertToAppointment(current, next)) return;
 
   // A paused (on-hold) case cannot move forward until it is resumed
   if (caseRecord.onHold) throw new Error('ON_HOLD');
@@ -221,6 +245,10 @@ export const assertTransitionAllowed = (
       throw e;
     }
     if (!caseRecord.appointmentDate) throw new Error('APPOINTMENT_NOT_BOOKED');
+    // Who paid for the appointment travels with the hand-over, so File Processing never has
+    // to go back and ask. Only the File Processing hand-over needs it; an appointment-only
+    // case completing here has no checklist downstream to feed.
+    if (next === 'FILE_PROCESSING' && !caseRecord.appointmentPaidBy) throw new Error('APPOINTMENT_PAYER_REQUIRED');
   }
 
   // Gate 2: a shortlisted-but-undecided destination or city must be finalized to a
@@ -260,24 +288,29 @@ export type SortOrder = 'asc' | 'desc';
  * before that timestamp existed have no value for it, so they fall in behind on
  * `nulls: 'last'` and keep their received-date order from the tiebreaker.
  */
-// Every ordering ends on the client number, ascending. Two cases that tie on the primary
-// key — which is the norm, since a day's intake shares a received date — would otherwise
-// come back in whatever order Postgres happened to produce, which is the reported
-// "CL-953 is listed above CL-951 and CL-950" bug. clientRefNum is the database-generated
-// numeric form of clientRef (see schema): ordering by clientRef itself is alphabetical and
-// would file CL-1000 above CL-953.
+// Every ordering ends on the client number, DESCENDING — newest client on top. Two cases
+// that tie on the primary key (the norm, since a day's intake shares a received date) would
+// otherwise come back in whatever order Postgres happened to produce. It used to be
+// ascending, which filed each newly added client at the BOTTOM of its day's group; the
+// 1 Oct 2026 change round asked for the reverse, so the board now reads in one consistent
+// downward flow: latest date first, and within a date the highest number first.
+// clientRefNum is the database-generated numeric form of clientRef (see schema): ordering by
+// clientRef itself is alphabetical and would file CL-1000 below CL-953.
 // clientRef itself breaks the remaining tie. Members of a legacy shared-number group all
 // carry the same number (CL-116-G1-01, CL-116-G1-02, ...), so clientRefNum alone leaves
 // them in arbitrary order; their zero-padded position makes the text sort correct there.
 const BY_CLIENT_NUMBER: Prisma.VisaCaseOrderByWithRelationInput[] = [
-  { client: { clientRefNum: 'asc' } },
-  { client: { clientRef: 'asc' } },
+  { client: { clientRefNum: { sort: 'desc', nulls: 'last' } } },
+  { client: { clientRef: 'desc' } },
 ];
 
 const CASE_ORDER_BY: Record<CaseSortField, (order: SortOrder) => Prisma.VisaCaseOrderByWithRelationInput[]> = {
-  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { client: { receivedDate: 'desc' } }, ...BY_CLIENT_NUMBER],
+  // receivedDate is the CASE's own entry date since 1 Oct 2026 (#10), not the client's: a
+  // returning client's new case files under the day it was opened, not under the date their
+  // profile was first received.
+  routedAt:        (order) => [{ fileProcessingStartedAt: { sort: order, nulls: 'last' } }, { receivedDate: 'desc' }, ...BY_CLIENT_NUMBER],
   appointmentDate: (order) => [{ appointmentDate: { sort: order, nulls: 'last' } }, ...BY_CLIENT_NUMBER],
-  receivedDate:    (order) => [{ client: { receivedDate: order } }, ...BY_CLIENT_NUMBER],
+  receivedDate:    (order) => [{ receivedDate: order }, ...BY_CLIENT_NUMBER],
   createdAt:       (order) => [{ createdAt: order }, ...BY_CLIENT_NUMBER],
 };
 
@@ -444,6 +477,14 @@ export const getCaseById = async (id: string) => {
   return c ? decorateCase(c) : null;
 };
 
+/**
+ * Today as a date-only value: midnight UTC of the server's calendar day, the same convention
+ * a 'YYYY-MM-DD' received date parses to — so a case opened today sorts and displays with
+ * the day's other intake rather than a few hours either side of it.
+ */
+export const todayAsDate = (now = new Date()): Date =>
+  new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
 export const createCase = async (
   clientId: string,
   data: {
@@ -451,9 +492,16 @@ export const createCase = async (
     city?: string; cityOptions?: string[]; visaType?: string; ukVisaExpiry?: string; eVisaType?: string;
     priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
     advance?: number; charges?: number; discount?: number;
+    // Explicit advance status chosen on the form (1 Oct 2026 #9). Absent = derive paid from
+    // the amount, as before.
+    advancePaid?: boolean;
+    advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND';
+    // The new case's entry date, 'YYYY-MM-DD' (1 Oct 2026 #10). Defaults to today — never
+    // to the client's original received date — even though the client number is reused.
+    receivedDate?: string;
   }
 ) => {
-  const paidNow = (data.advance ?? 0) > 0;
+  const paidNow = data.advancePaid ?? (data.advance ?? 0) > 0;
   const { destination, destinationOptions } = resolveDestination(data);
   const { city, cityOptions } = resolveCity(data);
   // New cases skip Intake entirely: they enter the appointment queue as Waiting.
@@ -479,6 +527,7 @@ export const createCase = async (
     const created = await tx.visaCase.create({
       data: {
         clientId,
+        receivedDate: data.receivedDate ? new Date(data.receivedDate) : todayAsDate(),
         appointmentStatus: 'WAITING',
         destination, destinationOptions,
         city, cityOptions,
@@ -491,6 +540,8 @@ export const createCase = async (
         discount: data.discount !== undefined ? new Prisma.Decimal(data.discount) : undefined,
         advancePaid: paidNow,
         advancePaidDate: paidNow ? new Date() : undefined,
+        // Only when the form chose a waiver — never inherited from the family (see above).
+        ...(data.advanceWaiverType ? { advanceWaived: true, advanceWaiverType: data.advanceWaiverType } : {}),
         whatsappGroupCreated: family?.whatsappGroupCreated ?? false,
       },
       select: CASE_SELECT,
@@ -515,6 +566,7 @@ const BEFORE_UPDATE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
   destination: true, destinationOptions: true, city: true, cityOptions: true,
   appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
+  appointmentPaidBy: true, appointmentStatus: true,
   invoices: { select: { status: true } },
   client: {
     select: {
@@ -525,13 +577,22 @@ const BEFORE_UPDATE_SELECT = {
   },
 } satisfies Prisma.VisaCaseSelect;
 
-export const updateCase = async (id: string, data: Record<string, any>) => {
+export const updateCase = async (
+  id: string,
+  rawData: Record<string, any>,
+  // Who is making the change — only used to sign the HR Comments entry a move back to
+  // Appointments leaves behind. Optional so every existing caller keeps working unchanged.
+  opts: { actorEmail?: string; actorRoles?: string[] } = {},
+) => {
+  // `revertReason` is a note that travels with a move back to Appointments, not a column.
+  const { revertReason, ...data } = rawData;
   const has = (f: string) => Object.prototype.hasOwnProperty.call(data, f);
   // Read the pre-update case once and share it: the workflow rules, the conversion-card
   // timestamps and the family-group propagation all ask about the same row, and an update
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
-    || ['advance', 'advancePaid', 'advanceWaived', 'whatsappGroupCreated', 'appointmentDate'].some(has);
+    || ['advance', 'advancePaid', 'advanceWaived', 'advanceWaiverType', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
+        'onHold', 'appointmentStatus'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
     : null;
@@ -562,12 +623,49 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     }
   }
 
+  // Removing an appointment date is only meaningful while the case is still being booked.
+  // Past the Appointment stage the date is what the case was handed over on (the hand-over
+  // gate requires it), so clearing it there would leave a File Processing case with no
+  // appointment at all. Staff reschedule those by moving the case back to Appointments.
+  const clearingAppointmentDate = has('appointmentDate') && data.appointmentDate === null
+    && !!before?.appointmentDate;
+  if (clearingAppointmentDate && before && !['APPOINTMENT', 'CANCELLED'].includes(before.stage)) {
+    throw new Error('APPOINTMENT_DATE_LOCKED');
+  }
+
+  // Appointment payer (1 Oct 2026 #5). The Appointment team records it with the date; from
+  // File Processing on it is read-only, and only a Super Admin may correct it there. A case
+  // that never had one recorded (pre-dating the field) may still have it filled in once.
+  if (before && has('appointmentPaidBy') && data.appointmentPaidBy !== before.appointmentPaidBy
+      && before.stage !== 'APPOINTMENT' && before.appointmentPaidBy != null
+      && !opts.actorRoles?.includes('SUPER_ADMIN')) {
+    throw new Error('APPOINTMENT_PAYER_LOCKED');
+  }
+  // Allotting a date (new, or moved) is the moment the payer is asked for. Re-saving an
+  // unchanged date on an older case does not nag; the hand-over gate catches those instead.
+  if (before && data.appointmentDate) {
+    const newDate = new Date(data.appointmentDate).getTime();
+    const dateChanged = !before.appointmentDate || before.appointmentDate.getTime() !== newDate;
+    const payer = has('appointmentPaidBy') ? data.appointmentPaidBy : before.appointmentPaidBy;
+    if (dateChanged && !payer) throw new Error('APPOINTMENT_PAYER_REQUIRED');
+  }
+
   const d: any = { ...data };
+  // Client-paid means the agency fronted nothing, so there is no agency cost to recover —
+  // the same rule the checklist's Paid By radio has always applied to the cost box.
+  if (d.appointmentPaidBy === 'CLIENT' && !has('docAppointmentCost')) d.docAppointmentCost = 0;
   const dateFields = ['ukVisaExpiry', 'appointmentDate', 'travelDate', 'hotelDate', 'advancePaidDate'];
   for (const f of dateFields) {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;
   }
+  // Waiver sub-type (1 Oct 2026 #9). Picking Waived / Family / Friend IS waiving, so a type
+  // on its own switches the waiver on; turning the waiver off takes the type with it; and a
+  // bare advanceWaived: true from an older caller gets the plain WAIVED type.
+  if (d.advanceWaiverType && !has('advanceWaived')) d.advanceWaived = true;
+  if (d.advanceWaiverType === null && !has('advanceWaived')) d.advanceWaived = false;
+  if (d.advanceWaived === false) d.advanceWaiverType = null;
+  if (d.advanceWaived === true && !d.advanceWaiverType) d.advanceWaiverType = 'WAIVED';
   // The waiver as it will stand after this write — either what the caller is setting now,
   // or what the case already carried.
   const waived = has('advanceWaived') ? d.advanceWaived === true : (before?.advanceWaived ?? false);
@@ -590,6 +688,21 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
   // A reschedule isn't a second allotment, and a case bouncing back into File Processing
   // isn't a second conversion — see the fields' comments in schema.prisma.
   if (before && d.appointmentDate && !before.appointmentDateSetAt) d.appointmentDateSetAt = new Date();
+  // Removing the date reverses the allotment it triggered: the "Appointment Date Allotted"
+  // card stops counting the case, and a date entered again later is a fresh allotment
+  // stamped on the day it actually happens rather than on the original, withdrawn one.
+  if (clearingAppointmentDate) d.appointmentDateSetAt = null;
+  // Monthly-report timestamps (1 Oct 2026 #7): when each counted status last happened. Only a
+  // genuine change stamps, so re-saving a form with the same values moves nothing.
+  if (before) {
+    const now = new Date();
+    if (d.stage && d.stage !== before.stage) {
+      if (d.stage === 'COMPLETED') d.completedAt = now;
+      if (d.stage === 'CANCELLED') d.cancelledAt = now;
+    }
+    if (d.onHold === true && !before.onHold) d.onHoldAt = now;
+    if (has('appointmentStatus') && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
+  }
   if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [
     'advance', 'charges', 'discount', 'paymentReceived',
@@ -616,6 +729,7 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
     }
     if (d.advanceWaived !== undefined && d.advanceWaived !== before.advanceWaived) {
       groupFlags.advanceWaived = d.advanceWaived;
+      groupFlags.advanceWaiverType = d.advanceWaiverType ?? null;
       if (d.advanceWaived === false) groupFlags.advanceWaiverReason = null;
       else if (d.advanceWaiverReason !== undefined) groupFlags.advanceWaiverReason = d.advanceWaiverReason;
     }
@@ -631,13 +745,25 @@ export const updateCase = async (id: string, data: Record<string, any>) => {
 
     await propagateGroupFlags(tx, id, groupId, groupFlags);
 
+    // A move back to Appointments is a correction to the workflow, so it leaves a dated line
+    // in the client's HR Comments log saying why — the file team would otherwise just see the
+    // case vanish from their board.
+    if (before && d.stage && isRevertToAppointment(before.stage, d.stage)) {
+      const c = await tx.client.findUnique({ where: { id: updated.clientId }, select: { hrComments: true } });
+      const note = `Case moved back from File Processing to Appointments${opts.actorEmail ? ` by ${opts.actorEmail}` : ''}`
+        + `${typeof revertReason === 'string' && revertReason.trim() ? ` — ${revertReason.trim()}` : ''}.`;
+      const hrComments = appendHrComment(c?.hrComments, 'Appointment', note);
+      await tx.client.update({ where: { id: updated.clientId }, data: { hrComments } });
+      if (updated.client) updated.client.hrComments = hrComments;
+    }
+
     // A client is only meant to be actively working one case at a time. Once a case
     // reaches File Processing, any other still-open case (Appointment stage) for the
     // same client is a duplicate application and gets auto-cancelled.
     if (d.stage === 'FILE_PROCESSING') {
       await tx.visaCase.updateMany({
         where: { clientId: updated.clientId, id: { not: id }, stage: 'APPOINTMENT' },
-        data: { stage: 'CANCELLED', onHoldReason: 'Auto-cancelled: duplicate case for this client' },
+        data: { stage: 'CANCELLED', onHoldReason: AUTO_CANCEL_DUPLICATE_REASON, cancelledAt: new Date() },
       });
     }
 
@@ -712,7 +838,7 @@ export const advanceToInvoicedWithInvoice = async (
       select: { id: true, invoiceRef: true, totalAmount: true, outstanding: true, status: true, issueDate: true },
     });
 
-    const updated = await tx.visaCase.update({ where: { id }, data: { stage: 'COMPLETED' }, select: CASE_SELECT });
+    const updated = await tx.visaCase.update({ where: { id }, data: { stage: 'COMPLETED', completedAt: new Date() }, select: CASE_SELECT });
     return [inv, updated] as const;
   });
 
@@ -841,9 +967,10 @@ const BUCKETS: BucketName[] = ['today', 'yesterday', 'month'];
  * card by when the case was opened — booking the appointment is the whole job.
  */
 const METRIC_CARDS = {
-  // `hasAppointmentDate` is part of the predicate, not decoration: appointmentDateSetAt is
-  // stamped once and never cleared, so a case whose appointment date was later removed
-  // would otherwise still be counted as allotted while showing no date in the drill-down.
+  // `hasAppointmentDate` is part of the predicate, not decoration. updateCase now clears
+  // appointmentDateSetAt when the date is removed, but rows whose date was blanked before
+  // that existed (or directly in the database) still carry a stamp with no date behind it,
+  // and must not be counted as allotted while showing no date in the drill-down.
   appointmentDateAllotted: {
     dateField: 'appointmentDateSetAt', serviceType: 'FULL_SERVICE', onHold: false, hasAppointmentDate: true,
   },

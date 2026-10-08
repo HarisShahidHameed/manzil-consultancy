@@ -65,7 +65,7 @@ export const EVISA_TYPE_OPTIONS = [
 export type DocKey = 'docAppointment' | 'docTicket' | 'docInsurance' | 'docHotel' | 'docEVisa' | 'docSop' | 'docVisaForm' | 'docSelfEmployment';
 export const DOC_KEYS: DocKey[] = ['docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment'];
 export const DOC_LABELS: Record<DocKey, string> = {
-  docAppointment: 'Appointment Docs', docTicket: 'Ticket',
+  docAppointment: 'Appointment', docTicket: 'Ticket',
   docInsurance: 'Insurance', docHotel: 'Hotel', docEVisa: 'E-Visa',
   docSop: 'SOP', docVisaForm: 'Visa Form', docSelfEmployment: 'Self Employment Letter',
 };
@@ -89,3 +89,13 @@ export const formatCityShortlist = (selected: string[], allOptions: string[]): s
   selected.length > 0 && allOptions.length > 0 && allOptions.every(o => selected.includes(o))
     ? 'Any'
     : selected.map(shortCity).join(', ');
+
+// Why an advance was waived (1 Oct 2026 #9) — exactly these three, shown in the listings in
+// place of a bare "Waived". Order is the dropdown order.
+export type AdvanceWaiverType = 'WAIVED' | 'FAMILY' | 'FRIEND';
+export const ADVANCE_WAIVER_LABELS: Record<AdvanceWaiverType, string> = {
+  WAIVED: 'Waived', FAMILY: 'Family', FRIEND: 'Friend',
+};
+export const ADVANCE_WAIVER_TYPES = Object.keys(ADVANCE_WAIVER_LABELS) as AdvanceWaiverType[];
+/** The label a waived case shows; older waivers with no type recorded read as plain "Waived". */
+export const waiverLabel = (type?: AdvanceWaiverType | null): string => ADVANCE_WAIVER_LABELS[type ?? 'WAIVED'];

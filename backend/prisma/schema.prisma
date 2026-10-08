@@ -50,6 +50,23 @@ enum AppointmentStatus {
   HOLD
   DROPPED
   BACK_UP
+  // Client could not make it to the appointment (1 Oct 2026 #7) — counted on its own in the
+  // monthly report, separately from DROPPED.
+  MISSED
+}
+
+// Who paid a third-party fee on the client's behalf. Used for the appointment fee, which the
+// Appointment team records when it allots the date (1 Oct 2026 #5).
+enum PaymentSource {
+  CLIENT
+  AGENCY
+}
+
+// Why an advance was waived (1 Oct 2026 #9) — shown in listings instead of a bare "Waived".
+enum AdvanceWaiverType {
+  WAIVED
+  FAMILY
+  FRIEND
 }
 
 enum InvoiceStatus {
@@ -276,6 +293,10 @@ model VisaCase {
   visaType                String?
   ukVisaExpiry            DateTime?
   eVisaType               String?
+  // The case's own entry date (1 Oct 2026 #10). The first case shares the client's
+  // receivedDate; a later case for a returning client is dated the day it is opened, so it
+  // lists under today even though the client number is an old one. Date-only (midnight).
+  receivedDate            DateTime       @default(now())
   stage                   CaseStage      @default(APPOINTMENT)
   priority                Priority       @default(MEDIUM)
   advance                 Decimal?       @db.Decimal(10, 2)
@@ -292,6 +313,9 @@ model VisaCase {
   // Why the advance was waived, e.g. "Prior refusal" / "Free service" — free text, and
   // cleared automatically whenever the waiver itself is turned back off.
   advanceWaiverReason     String?
+  // Which of the three waiver kinds this is — set whenever advanceWaived is true, cleared with
+  // it. advanceWaiverReason stays as an optional free-text note alongside.
+  advanceWaiverType       AdvanceWaiverType?
   onHold                  Boolean        @default(false)
   onHoldReason            String?
   appointmentStatus       AppointmentStatus? @default(WAITING)
@@ -303,6 +327,18 @@ model VisaCase {
   // Stamped the moment this case's stage first advances from Appointment into File
   // Processing — powers the "Moved to File Processing" conversion card's last-24h filter.
   fileProcessingStartedAt DateTime?
+  // When each status the monthly report counts last happened (1 Oct 2026 #7), stamped by
+  // updateCase / advanceToInvoicedWithInvoice. Rows from before then were backfilled from
+  // updatedAt (approximate) — see migration 20261001130000.
+  completedAt                DateTime?
+  cancelledAt                DateTime?
+  onHoldAt                   DateTime?
+  appointmentStatusChangedAt DateTime?
+  // Who paid for the appointment — chosen by the Appointment team when the date is allotted
+  // and shown locked in File Processing (only a Super Admin can change it there once set).
+  // NULL = never recorded (cases from before this field existed); the checklist then falls
+  // back to inferring it from docAppointmentCost, the old behaviour.
+  appointmentPaidBy       PaymentSource?
   bookedById              String?
   appointmentAssignedToId String?
   fileAssignedToId        String?
@@ -423,4 +459,19 @@ model Invoice {
   createdBy User?    @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("invoices")
+}
+
+// Exclusive "Add Client" lock (1 Oct 2026 #8). Holds at most one row, id 'ADD_CLIENT': the
+// member of staff whose Add Client form is open. Not a foreign key to users on purpose — a
+// lock must never block deleting a user, and a stale row simply expires.
+model ClientCreationLock {
+  id          String   @id
+  holderId    String
+  holderName  String
+  // One per open form, so a release from a tab that has since lost the lock is a no-op.
+  token       String
+  acquiredAt  DateTime @default(now())
+  heartbeatAt DateTime @default(now())
+
+  @@map("client_creation_locks")
 }

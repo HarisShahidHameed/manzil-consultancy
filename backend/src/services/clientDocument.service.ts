@@ -13,11 +13,18 @@ export const PART_SIZE_BYTES = 8 * 1024 * 1024; // 8MB (S3's multipart minimum i
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB — generous for a scanned passport/photo, not a video dump
 export const MAX_FILES_PER_REQUEST = 20;
 
-export const ALLOWED_MIME_TYPES = new Set([
+// Any file type is accepted (1 Oct 2026 #6): staff upload Word employment letters, share-code
+// screenshots, e-visa PDFs and whatever else a client sends over WhatsApp, and the old
+// PDF/image whitelist bounced the Word files. What the type now decides is only how a file
+// is SERVED back — see INLINE_VIEWABLE_MIME_TYPES. The size cap below still applies.
+// Only these open in the browser tab. Everything else is served as a download, so an
+// uploaded .html/.svg/.xml can never render as a live page, even on the bucket's origin.
+export const INLINE_VIEWABLE_MIME_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/gif',
   'image/heic',
   'image/heif',
 ]);
@@ -39,10 +46,7 @@ export class DocumentValidationError extends Error {
   constructor(message: string) { super(message); this.name = 'DocumentValidationError'; }
 }
 
-const validateFile = ({ fileName, mimeType, sizeBytes }: PresignFileInput): void => {
-  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    throw new DocumentValidationError(`"${fileName}" is a ${mimeType || 'unknown'} file — only PDF, JPEG, PNG, WEBP and HEIC are accepted.`);
-  }
+const validateFile = ({ fileName, sizeBytes }: PresignFileInput): void => {
   if (sizeBytes <= 0 || sizeBytes > MAX_FILE_SIZE_BYTES) {
     throw new DocumentValidationError(`"${fileName}" is ${(sizeBytes / 1024 / 1024).toFixed(1)}MB — the limit is ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`);
   }
@@ -129,7 +133,7 @@ export const listDocuments = async (clientId: string) => {
     sizeBytes: doc.sizeBytes,
     createdAt: doc.createdAt,
     uploadedBy: doc.uploadedBy ? `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}` : null,
-    viewUrl: await presignGetObject(doc.key, doc.fileName),
+    viewUrl: await presignGetObject(doc.key, doc.fileName, INLINE_VIEWABLE_MIME_TYPES.has(doc.mimeType) ? 'inline' : 'attachment'),
   })));
 };
 

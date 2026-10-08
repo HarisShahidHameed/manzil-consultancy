@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 // something, and whatever the client has already paid back toward it counts as an
 // advance on the invoice, same as a deposit would.
 const AGENCY_DOC_FIELDS = [
-  { label: 'Appointment Docs',        cost: 'docAppointmentCost',    clientPaid: 'docAppointmentClientPaid' },
+  { label: 'Appointment',             cost: 'docAppointmentCost',    clientPaid: 'docAppointmentClientPaid' },
   { label: 'Ticket',                  cost: 'docTicketCost',         clientPaid: 'docTicketClientPaid' },
   { label: 'Insurance',               cost: 'docInsuranceCost',      clientPaid: 'docInsuranceClientPaid' },
   { label: 'Hotel',                   cost: 'docHotelCost',          clientPaid: 'docHotelClientPaid' },
