@@ -182,6 +182,12 @@ export const isRevertToAppointment = (from: string, to: string): boolean =>
   from === 'FILE_PROCESSING' && to === 'APPOINTMENT';
 export const REVERT_ROLE = 'SUPER_ADMIN';
 
+// The File Processing document checklist (status columns only).
+export const CHECKLIST_DOC_FIELDS = [
+  'docAppointment', 'docTicket', 'docInsurance', 'docHotel',
+  'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
+] as const;
+
 export const requiredPermsForTransition = (from: string, to: string): string[] => {
   if (to === 'CANCELLED') return TRANSITION_PERMISSIONS['*>CANCELLED'];
   return TRANSITION_PERMISSIONS[`${from}>${to}`] ?? ['clients:write'];
@@ -696,6 +702,12 @@ export const updateCase = async (
     // With no date the booking is back to square one, so its status goes back to Waiting too
     // (client answer to Q1, 13 Oct 2026) — unless this same request sets a status itself.
     if (!has('appointmentStatus')) d.appointmentStatus = 'WAITING';
+  }
+  // Moving back to Appointments restarts the file work (client answer to Q3): every checklist
+  // item goes back to Pending. Costs and client contributions stay — they are money records,
+  // and the file team will re-confirm them when the case comes back to them.
+  if (before && d.stage && isRevertToAppointment(before.stage, d.stage)) {
+    for (const k of CHECKLIST_DOC_FIELDS) d[k] = 'PENDING';
   }
   // Monthly-report timestamps (1 Oct 2026 #7): when each counted status last happened. Only a
   // genuine change stamps, so re-saving a form with the same values moves nothing.

@@ -745,6 +745,17 @@ describe('moving a case back to Appointments', () => {
     expect(hr).toContain('moved back from File Processing to Appointments by admin@manzil.com — Rebooking for November');
   });
 
+  it('resets every checklist item to Pending but keeps the costs (client answer Q3)', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
+    (prisma.client as unknown as Record<string, jest.Mock>).findUnique.mockResolvedValue({ hrComments: null });
+    await updateCase('case-1', { stage: 'APPOINTMENT' }, { actorEmail: 'admin@manzil.com' });
+    const data = caseMock.update.mock.calls[0][0].data;
+    for (const k of ['docAppointment', 'docTicket', 'docInsurance', 'docHotel', 'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment']) {
+      expect(data[k]).toBe('PENDING');
+    }
+    expect(data).not.toHaveProperty('docTicketCost');
+  });
+
   it('writes no HR note for an ordinary forward move', async () => {
     mockUpdateFlow(existingCase({
       stage: 'APPOINTMENT', appointmentDate: new Date('2026-10-20'), appointmentPaidBy: 'CLIENT',

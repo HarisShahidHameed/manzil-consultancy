@@ -647,7 +647,7 @@ const CaseDetail: React.FC = () => {
                 loading={revertToAppointmentMut.isPending}
                 onClick={() => {
                   const reason = window.prompt(
-                    'Move this case back to Appointments so the appointment can be re-booked?\n\nReason (optional, saved to HR Comments):'
+                    'Move this case back to Appointments so the appointment can be re-booked?\n\nThe document checklist will be reset to Pending (costs are kept).\n\nReason (optional, saved to HR Comments):'
                   );
                   if (reason !== null) revertToAppointmentMut.mutate(reason.trim());
                 }}
