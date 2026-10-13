@@ -886,7 +886,7 @@ const CaseDetail: React.FC = () => {
             </div>
             <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
             {!editFields.appointmentDate && vc.appointmentDate && (
-              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm.</p>
+              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm. The status will go back to Waiting.</p>
             )}
           </div>
           {/* Asked here, at allotment, so File Processing gets it locked in and never has to

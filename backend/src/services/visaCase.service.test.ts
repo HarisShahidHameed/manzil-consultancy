@@ -705,6 +705,14 @@ describe('removing an appointment date', () => {
     expect(caseMock.update.mock.calls[0][0].data).not.toHaveProperty('appointmentDateSetAt');
   });
 
+  it('sends the appointment status back to Waiting (client answer Q1)', async () => {
+    mockUpdateFlow(existingCase({ appointmentDate: new Date('2026-10-20'), appointmentStatus: 'REGISTERED' }));
+    await updateCase('case-1', { appointmentDate: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.appointmentStatus).toBe('WAITING');
+    expect(data.appointmentStatusChangedAt).toBeInstanceOf(Date);
+  });
+
   it('refuses to strip the date off a case already in File Processing', async () => {
     mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentDate: new Date('2026-10-20') }));
     await expect(updateCase('case-1', { appointmentDate: null })).rejects.toThrow('APPOINTMENT_DATE_LOCKED');

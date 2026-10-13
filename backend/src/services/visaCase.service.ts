@@ -691,7 +691,12 @@ export const updateCase = async (
   // Removing the date reverses the allotment it triggered: the "Appointment Date Allotted"
   // card stops counting the case, and a date entered again later is a fresh allotment
   // stamped on the day it actually happens rather than on the original, withdrawn one.
-  if (clearingAppointmentDate) d.appointmentDateSetAt = null;
+  if (clearingAppointmentDate) {
+    d.appointmentDateSetAt = null;
+    // With no date the booking is back to square one, so its status goes back to Waiting too
+    // (client answer to Q1, 13 Oct 2026) — unless this same request sets a status itself.
+    if (!has('appointmentStatus')) d.appointmentStatus = 'WAITING';
+  }
   // Monthly-report timestamps (1 Oct 2026 #7): when each counted status last happened. Only a
   // genuine change stamps, so re-saving a form with the same values moves nothing.
   if (before) {
@@ -701,7 +706,7 @@ export const updateCase = async (
       if (d.stage === 'CANCELLED') d.cancelledAt = now;
     }
     if (d.onHold === true && !before.onHold) d.onHoldAt = now;
-    if (has('appointmentStatus') && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
+    if (d.appointmentStatus !== undefined && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
   }
   if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [
