@@ -700,6 +700,7 @@ describe('removing an appointment date', () => {
       appointmentDate: new Date('2026-10-20'),
       appointmentDateSetAt: new Date('2026-10-01T09:00:00Z'),
       appointmentPaidBy: 'AGENCY',
+      docAppointmentCost: 35,
     }));
     await updateCase('case-1', { appointmentDate: '2026-11-15' });
     expect(caseMock.update.mock.calls[0][0].data).not.toHaveProperty('appointmentDateSetAt');
@@ -905,5 +906,32 @@ describe('new case entry date', () => {
     caseMock.count.mockResolvedValue(0);
     await listCases({ stage: 'APPOINTMENT' });
     expect(caseMock.findMany.mock.calls[0][0].orderBy[0]).toEqual({ receivedDate: 'desc' });
+  });
+});
+
+// Client answer to Q4 — when the agency paid, the Appointment team enters the fee too, and
+// File Processing receives it locked.
+describe('appointment fee', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('is required when Agency is chosen with the date', async () => {
+    mockUpdateFlow(existingCase());
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'AGENCY' }))
+      .rejects.toThrow('APPOINTMENT_FEE_REQUIRED');
+    await expect(updateCase('case-1', { appointmentDate: '2026-11-15', appointmentPaidBy: 'AGENCY', docAppointmentCost: 35 }))
+      .resolves.toBeDefined();
+  });
+
+  it('is locked in File Processing for everyone but a Super Admin', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: 'AGENCY', docAppointmentCost: 35 }));
+    await expect(updateCase('case-1', { docAppointmentCost: 40 }, { actorRoles: ['FILE_TEAM'] }))
+      .rejects.toThrow('APPOINTMENT_PAYER_LOCKED');
+    await expect(updateCase('case-1', { docAppointmentCost: 35 }, { actorRoles: ['FILE_TEAM'] })).resolves.toBeDefined();
+    await expect(updateCase('case-1', { docAppointmentCost: 40 }, { actorRoles: ['SUPER_ADMIN'] })).resolves.toBeDefined();
+  });
+
+  it('can be filled in once in File Processing on an older case that never recorded it', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING', appointmentPaidBy: 'AGENCY', docAppointmentCost: null }));
+    await expect(updateCase('case-1', { docAppointmentCost: 35 }, { actorRoles: ['FILE_TEAM'] })).resolves.toBeDefined();
   });
 });

@@ -572,7 +572,7 @@ const BEFORE_UPDATE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
   destination: true, destinationOptions: true, city: true, cityOptions: true,
   appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
-  appointmentPaidBy: true, appointmentStatus: true,
+  appointmentPaidBy: true, appointmentStatus: true, docAppointmentCost: true,
   invoices: { select: { status: true } },
   client: {
     select: {
@@ -598,7 +598,7 @@ export const updateCase = async (
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
     || ['advance', 'advancePaid', 'advanceWaived', 'advanceWaiverType', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
-        'onHold', 'appointmentStatus'].some(has);
+        'onHold', 'appointmentStatus', 'docAppointmentCost'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
     : null;
@@ -654,6 +654,29 @@ export const updateCase = async (
     const dateChanged = !before.appointmentDate || before.appointmentDate.getTime() !== newDate;
     const payer = has('appointmentPaidBy') ? data.appointmentPaidBy : before.appointmentPaidBy;
     if (dateChanged && !payer) throw new Error('APPOINTMENT_PAYER_REQUIRED');
+  }
+
+  // Appointment fee (client answer to Q4): when the agency paid, the Appointment team enters
+  // the fee with the payer, so File Processing receives it filled in. Asked at the same
+  // moments as the payer — a date allotted or moved, or the payer switched to Agency — and
+  // only while the case is still being booked.
+  if (before && before.stage === 'APPOINTMENT') {
+    const payer = has('appointmentPaidBy') ? data.appointmentPaidBy : before.appointmentPaidBy;
+    const fee = has('docAppointmentCost') ? data.docAppointmentCost : before.docAppointmentCost;
+    const dateChanged = !!data.appointmentDate
+      && (!before.appointmentDate || before.appointmentDate.getTime() !== new Date(data.appointmentDate).getTime());
+    const payerChanged = has('appointmentPaidBy') && data.appointmentPaidBy !== before.appointmentPaidBy;
+    if (payer === 'AGENCY' && (dateChanged || payerChanged) && !(Number(fee ?? 0) > 0)) {
+      throw new Error('APPOINTMENT_FEE_REQUIRED');
+    }
+  }
+  // ...and, like the payer, that fee is locked once the case has moved on: only a Super Admin
+  // changes it from File Processing. A fee never recorded may still be filled in once there.
+  if (before && has('docAppointmentCost') && before.stage !== 'APPOINTMENT'
+      && before.appointmentPaidBy === 'AGENCY' && before.docAppointmentCost != null
+      && Number(data.docAppointmentCost ?? 0) !== Number(before.docAppointmentCost)
+      && !opts.actorRoles?.includes('SUPER_ADMIN')) {
+    throw new Error('APPOINTMENT_PAYER_LOCKED');
   }
 
   const d: any = { ...data };
