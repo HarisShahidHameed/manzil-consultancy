@@ -197,6 +197,7 @@ const ClientForm: React.FC = () => {
       eVisaType: form.eVisaType,
       priority: form.priority,
       advance: form.advance, charges: form.charges, discount: form.discount,
+      advancePaidChoice: form.advancePaidChoice, advanceWaiverType: form.advanceWaiverType,
     };
     // replace, not push: this abandons the duplicate profile the user was filling in, so
     // that form must not stay on the history stack for Back to land on.
@@ -268,10 +269,13 @@ const ClientForm: React.FC = () => {
         // created; surface them as a warning on the page we land on instead.
         let docWarning: string | undefined;
         if (stagedFiles.length > 0 && resp.data?.id) {
+          const failedNames: string[] = [];
           const uploaded = await uploadClientDocuments(resp.data.id, stagedFiles, progress => {
+            if (progress.status === 'error') failedNames.push(`${progress.fileName} (${progress.error ?? 'upload failed'})`);
             setUploadProgress(prev => ({
               ...prev,
-              [progress.fileName]: {
+              // By position, not name: same-named files from different sub-folders must not collide.
+              [String(progress.index)]: {
                 status: progress.status,
                 pct: progress.total ? (progress.loaded / progress.total) * 100 : 0,
                 error: progress.error,
@@ -280,7 +284,8 @@ const ClientForm: React.FC = () => {
           });
           if (uploaded.length < stagedFiles.length) {
             const failed = stagedFiles.length - uploaded.length;
-            docWarning = `Client created, but ${failed} of ${stagedFiles.length} document${stagedFiles.length > 1 ? 's' : ''} failed to upload. You can retry from the client's profile page.`;
+            // Name the files, so staff know exactly what to upload again from the profile page.
+            docWarning = `Client created, but ${failed} of ${stagedFiles.length} document${stagedFiles.length > 1 ? 's' : ''} failed to upload: ${failedNames.join('; ') || 'unknown files'}. Upload them again from the client's profile page.`;
           }
         }
         return { resp, docWarning };

@@ -145,6 +145,9 @@ export interface Client {
   id: string;
   clientRef: string;
   receivedDate: string;
+  // Later of receivedDate and the newest case's received date (DB-maintained): what the
+  // Clients page orders by, so a returning client's new case brings them back up (Q11).
+  lastIntakeDate?: string | null;
   firstName: string;
   lastName: string | null;
   gender: Gender | null;

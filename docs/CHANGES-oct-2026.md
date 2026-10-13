@@ -51,6 +51,31 @@ clashes. To take one of these out alone, either revert newest-first down to it a
 the later ones with `git cherry-pick`, or resolve by hand. The conflicts are always "keep the
 other points' lines, drop this point's".
 
+## Follow-up: client answers (13 Oct 2026)
+
+The client returned the notes doc (`1st Oct CRM - Developer Notes (1).docx`) with answers to
+the open questions. Applied one commit each, on the same branch:
+
+| # | Tag | Answer applied | Migration |
+|---|---|---|---|
+| 12 | `oct2026/12-clear-date-resets-status` | Q1: removing the date sets the status back to Waiting | none |
+| 13 | `oct2026/13-revert-resets-checklist` | Q3: moving back to Appointments resets the checklist to Pending (costs kept) | none |
+| 14 | `oct2026/14-appointment-fee-upstream` | Q4: Agency payer → Appointment team enters the fee, locked in FP | none |
+| 15 | `oct2026/15-upload-feedback` | Feedback: upload summary of skipped/failed files; same-name files no longer collide | none |
+| 16 | `oct2026/16-new-case-advance-controls` | Q10: advance controls on the New Case form | none |
+| 17 | `oct2026/17-clients-latest-intake` | Q11: Clients page ordered by latest intake (trigger-maintained column) | `20261014120000` |
+
+Unchanged by the answers: Q2 Super Admin only (the inline "NO" was confirmed over the
+summary's "HR Manager"), Q6 File Team can upload and delete (already the case), Q8 report access
+unchanged, Q9 import left as is. Q5 (25 MB limit) and Q7 (meaning of "cancelled") were not
+answered, so the defaults stand.
+
+`20261014120000` adds `clients."lastIntakeDate"` plus two triggers and three functions
+(`manzil_client_last_intake`, `manzil_clients_last_intake_trg`, `manzil_cases_last_intake_trg`).
+Reverting #17 in git leaves them in the database; they are harmless, but to remove them run
+`DROP TRIGGER visa_cases_last_intake ON visa_cases; DROP TRIGGER clients_last_intake ON clients;`
+and drop the three functions and the column.
+
 ## Database migrations
 
 All five are additive (new columns, a new table, new enum values), and each backfills
@@ -83,8 +108,8 @@ Fixed or added in passing rather than asked for, so worth knowing before pulling
 
 ## Verified at the last commit
 
-Backend `tsc` clean, 153 tests passing. Frontend `tsc` clean, 21 tests passing, `vite build`
-succeeds. A 23-step API smoke run against the real database (lock contention, waiver
+Backend `tsc` clean, 158 tests passing. Frontend `tsc` clean, 23 tests passing, `vite build`
+succeeds (re-verified after the follow-up). A 30-step API smoke run against the real database (lock contention, waiver
 creation, payer gate, date clearing, FP lock, Super Admin reversal + HR note, returning-client
 case date, ordering, MISSED + monthly report, validation) passed. The test client it created
 was deleted afterwards.

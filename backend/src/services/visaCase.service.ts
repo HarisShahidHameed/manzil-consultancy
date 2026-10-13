@@ -182,6 +182,12 @@ export const isRevertToAppointment = (from: string, to: string): boolean =>
   from === 'FILE_PROCESSING' && to === 'APPOINTMENT';
 export const REVERT_ROLE = 'SUPER_ADMIN';
 
+// The File Processing document checklist (status columns only).
+export const CHECKLIST_DOC_FIELDS = [
+  'docAppointment', 'docTicket', 'docInsurance', 'docHotel',
+  'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
+] as const;
+
 export const requiredPermsForTransition = (from: string, to: string): string[] => {
   if (to === 'CANCELLED') return TRANSITION_PERMISSIONS['*>CANCELLED'];
   return TRANSITION_PERMISSIONS[`${from}>${to}`] ?? ['clients:write'];
@@ -566,7 +572,7 @@ const BEFORE_UPDATE_SELECT = {
   advancePaid: true, advancePaidDate: true, advanceWaived: true, whatsappGroupCreated: true,
   destination: true, destinationOptions: true, city: true, cityOptions: true,
   appointmentDate: true, appointmentDateSetAt: true, fileProcessingStartedAt: true,
-  appointmentPaidBy: true, appointmentStatus: true,
+  appointmentPaidBy: true, appointmentStatus: true, docAppointmentCost: true,
   invoices: { select: { status: true } },
   client: {
     select: {
@@ -592,7 +598,7 @@ export const updateCase = async (
   // that touches none of those (a note, a doc status) skips the read entirely.
   const needsContext = has('stage') || has('destination') || has('city')
     || ['advance', 'advancePaid', 'advanceWaived', 'advanceWaiverType', 'whatsappGroupCreated', 'appointmentDate', 'appointmentPaidBy',
-        'onHold', 'appointmentStatus'].some(has);
+        'onHold', 'appointmentStatus', 'docAppointmentCost'].some(has);
   const before = needsContext
     ? await prisma.visaCase.findUnique({ where: { id }, select: BEFORE_UPDATE_SELECT })
     : null;
@@ -650,6 +656,29 @@ export const updateCase = async (
     if (dateChanged && !payer) throw new Error('APPOINTMENT_PAYER_REQUIRED');
   }
 
+  // Appointment fee (client answer to Q4): when the agency paid, the Appointment team enters
+  // the fee with the payer, so File Processing receives it filled in. Asked at the same
+  // moments as the payer — a date allotted or moved, or the payer switched to Agency — and
+  // only while the case is still being booked.
+  if (before && before.stage === 'APPOINTMENT') {
+    const payer = has('appointmentPaidBy') ? data.appointmentPaidBy : before.appointmentPaidBy;
+    const fee = has('docAppointmentCost') ? data.docAppointmentCost : before.docAppointmentCost;
+    const dateChanged = !!data.appointmentDate
+      && (!before.appointmentDate || before.appointmentDate.getTime() !== new Date(data.appointmentDate).getTime());
+    const payerChanged = has('appointmentPaidBy') && data.appointmentPaidBy !== before.appointmentPaidBy;
+    if (payer === 'AGENCY' && (dateChanged || payerChanged) && !(Number(fee ?? 0) > 0)) {
+      throw new Error('APPOINTMENT_FEE_REQUIRED');
+    }
+  }
+  // ...and, like the payer, that fee is locked once the case has moved on: only a Super Admin
+  // changes it from File Processing. A fee never recorded may still be filled in once there.
+  if (before && has('docAppointmentCost') && before.stage !== 'APPOINTMENT'
+      && before.appointmentPaidBy === 'AGENCY' && before.docAppointmentCost != null
+      && Number(data.docAppointmentCost ?? 0) !== Number(before.docAppointmentCost)
+      && !opts.actorRoles?.includes('SUPER_ADMIN')) {
+    throw new Error('APPOINTMENT_PAYER_LOCKED');
+  }
+
   const d: any = { ...data };
   // Client-paid means the agency fronted nothing, so there is no agency cost to recover —
   // the same rule the checklist's Paid By radio has always applied to the cost box.
@@ -691,7 +720,18 @@ export const updateCase = async (
   // Removing the date reverses the allotment it triggered: the "Appointment Date Allotted"
   // card stops counting the case, and a date entered again later is a fresh allotment
   // stamped on the day it actually happens rather than on the original, withdrawn one.
-  if (clearingAppointmentDate) d.appointmentDateSetAt = null;
+  if (clearingAppointmentDate) {
+    d.appointmentDateSetAt = null;
+    // With no date the booking is back to square one, so its status goes back to Waiting too
+    // (client answer to Q1, 13 Oct 2026) — unless this same request sets a status itself.
+    if (!has('appointmentStatus')) d.appointmentStatus = 'WAITING';
+  }
+  // Moving back to Appointments restarts the file work (client answer to Q3): every checklist
+  // item goes back to Pending. Costs and client contributions stay — they are money records,
+  // and the file team will re-confirm them when the case comes back to them.
+  if (before && d.stage && isRevertToAppointment(before.stage, d.stage)) {
+    for (const k of CHECKLIST_DOC_FIELDS) d[k] = 'PENDING';
+  }
   // Monthly-report timestamps (1 Oct 2026 #7): when each counted status last happened. Only a
   // genuine change stamps, so re-saving a form with the same values moves nothing.
   if (before) {
@@ -701,7 +741,7 @@ export const updateCase = async (
       if (d.stage === 'CANCELLED') d.cancelledAt = now;
     }
     if (d.onHold === true && !before.onHold) d.onHoldAt = now;
-    if (has('appointmentStatus') && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
+    if (d.appointmentStatus !== undefined && d.appointmentStatus !== before.appointmentStatus) d.appointmentStatusChangedAt = now;
   }
   if (before && d.stage === 'FILE_PROCESSING' && !before.fileProcessingStartedAt) d.fileProcessingStartedAt = new Date();
   const decimalFields = [

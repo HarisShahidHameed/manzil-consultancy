@@ -224,7 +224,17 @@ const ClientList: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">{fmtDate(c.receivedDate)}</td>
+                    {/* The latest intake, matching the order of the list: a returning client
+                        shows their new case's date, with the original date on hover (Q11). */}
+                    <td
+                      className="px-4 py-3 text-gray-400 text-xs"
+                      title={c.lastIntakeDate && c.lastIntakeDate !== c.receivedDate ? `First received ${fmtDate(c.receivedDate)}` : undefined}
+                    >
+                      {fmtDate(c.lastIntakeDate ?? c.receivedDate)}
+                      {c.lastIntakeDate && c.lastIntakeDate !== c.receivedDate && (
+                        <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-indigo-50 text-indigo-600">new case</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-700">{destinationLabel(c.visaCases[0])}</td>
                     <td className="px-4 py-3 text-gray-700">{cityLabel(c.visaCases[0])}</td>
                     <td className="px-4 py-3">

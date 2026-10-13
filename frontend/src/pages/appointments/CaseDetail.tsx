@@ -97,7 +97,9 @@ const caseSummaryItems = (vc: VisaCase): [string, string][] => [
   ['Destination', `${destinationLabel(vc)}${cityLabel(vc) ? ` (${cityLabel(vc)})` : ''}`],
   ['Visa Type', vc.visaType ?? '—'],
   ['Appointment Date', fmtDate(vc.appointmentDate)],
-  ['Appointment Paid By', vc.appointmentPaidBy === 'AGENCY' ? 'Agency' : vc.appointmentPaidBy === 'CLIENT' ? 'Client' : '—'],
+  ['Appointment Paid By', vc.appointmentPaidBy === 'AGENCY'
+    ? `Agency${vc.docAppointmentCost != null ? ` (${fmtMoney(vc.docAppointmentCost)})` : ''}`
+    : vc.appointmentPaidBy === 'CLIENT' ? 'Client' : '—'],
   ['Booked By', vc.bookedBy ? `${vc.bookedBy.firstName} ${vc.bookedBy.lastName}` : '—'],
   ['Appointment Team Assignee', vc.appointmentAssigned ? `${vc.appointmentAssigned.firstName} ${vc.appointmentAssigned.lastName}` : '—'],
   ['TLS Account', vc.tlsAccount ?? '—'],
@@ -141,7 +143,7 @@ const APPT_STATUS_OPTS: { value: string; label: string }[] = [
 // re-syncing on every refetch (see the seeding effect).
 const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
   'destination', 'city', 'charges', 'discount', 'advance', 'priority',
-  'appointmentDate', 'appointmentPaidBy', 'fraNo', 'tlsAccount', 'appointmentNotes',
+  'appointmentDate', 'appointmentPaidBy', 'docAppointmentCost', 'fraNo', 'tlsAccount', 'appointmentNotes',
 ];
 const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
   'travelDate', 'hotelDate', 'salamComments',
@@ -330,6 +332,10 @@ const CaseDetail: React.FC = () => {
       // stored date untouched, which is why a date once entered could never be removed.
       appointmentDate:  (editFields.appointmentDate as string) || null,
       appointmentPaidBy: editFields.appointmentPaidBy ?? undefined,
+      // The fee travels with an Agency payer (client answer Q4); a Client payer zeroes it server-side.
+      docAppointmentCost: editFields.appointmentPaidBy === 'AGENCY'
+        ? toNum((editFields.docAppointmentCost as number | string | undefined) ?? vc?.docAppointmentCost)
+        : undefined,
       fraNo:            (editFields.fraNo as string) || undefined,
       tlsAccount:       (editFields.tlsAccount as string) || undefined,
       appointmentNotes: (editFields.appointmentNotes as string) || undefined,
@@ -647,7 +653,7 @@ const CaseDetail: React.FC = () => {
                 loading={revertToAppointmentMut.isPending}
                 onClick={() => {
                   const reason = window.prompt(
-                    'Move this case back to Appointments so the appointment can be re-booked?\n\nReason (optional, saved to HR Comments):'
+                    'Move this case back to Appointments so the appointment can be re-booked?\n\nThe document checklist will be reset to Pending (costs are kept).\n\nReason (optional, saved to HR Comments):'
                   );
                   if (reason !== null) revertToAppointmentMut.mutate(reason.trim());
                 }}
@@ -886,7 +892,7 @@ const CaseDetail: React.FC = () => {
             </div>
             <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.appointmentDate as string ?? ''} onChange={setEF('appointmentDate')} />
             {!editFields.appointmentDate && vc.appointmentDate && (
-              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm.</p>
+              <p className="text-xs text-amber-600 mt-1">Date removed — Save to confirm. The status will go back to Waiting.</p>
             )}
           </div>
           {/* Asked here, at allotment, so File Processing gets it locked in and never has to
@@ -911,6 +917,18 @@ const CaseDetail: React.FC = () => {
               ))}
             </div>
           </div>
+          {/* Agency-paid: the fee is entered here too, so File Processing receives it filled in
+              and locked (client answer Q4). */}
+          {editFields.appointmentPaidBy === 'AGENCY' && (
+            <div>
+              <label className="text-xs text-gray-500">Appointment Fee (£)<span className="text-red-500 ml-0.5">*</span></label>
+              <input
+                type="number" min="0" step="0.01" className={`${inputCls} mt-1`} placeholder="0.00"
+                value={String((editFields.docAppointmentCost as string | number | undefined) ?? vc.docAppointmentCost ?? '')}
+                onChange={setEF('docAppointmentCost')}
+              />
+            </div>
+          )}
           <div>
             <label className="text-xs text-gray-500">FRA No.</label>
             <input className={`${inputCls} mt-1`} value={editFields.fraNo as string ?? ''} onChange={setEF('fraNo')} />
@@ -1112,6 +1130,12 @@ const CaseDetail: React.FC = () => {
                     setError('Select who paid for the appointment (Client or Agency) before saving the date.');
                     return;
                   }
+                  const payerChanged = editFields.appointmentPaidBy !== (vc.appointmentPaidBy ?? null);
+                  const fee = num((editFields.docAppointmentCost as number | string | undefined) ?? vc.docAppointmentCost);
+                  if (vc.stage === 'APPOINTMENT' && editFields.appointmentPaidBy === 'AGENCY' && (dateChanged || payerChanged) && !(fee > 0)) {
+                    setError('The agency paid for this appointment: enter the appointment fee as well.');
+                    return;
+                  }
                   saveAppointmentMut.mutate();
                 }}
               >
@@ -1301,6 +1325,9 @@ const CaseDetail: React.FC = () => {
                     // here. A Super Admin can still correct it, and an older case that never
                     // recorded one can have it set once.
                     const payerLocked = key === 'docAppointment' && !!vc.appointmentPaidBy && !isSuperAdmin;
+                    // The agency's fee comes from the Appointment team as well, locked the same way
+                    // once it is recorded (client answer Q4).
+                    const feeLocked = payerLocked && vc.appointmentPaidBy === 'AGENCY' && vc.docAppointmentCost != null;
                     return (
                     <tr key={key}>
                       <td className="px-3 py-2 font-medium text-gray-700">{DOC_LABELS[key]}</td>
@@ -1362,8 +1389,10 @@ const CaseDetail: React.FC = () => {
                           ) : (
                             <input
                               type="number" min="0" step="0.01"
-                              className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                               placeholder="0.00"
+                              disabled={feeLocked}
+                              title={feeLocked ? 'Recorded by the Appointment team. Only a Super Admin can change it.' : undefined}
                               value={String((editFields[costKey] as string | number | undefined) ?? vc[costKey] ?? '')}
                               onChange={e => updateEF(costKey, e.target.value)}
                             />

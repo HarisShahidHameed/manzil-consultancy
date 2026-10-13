@@ -53,6 +53,9 @@ const FILE_CONCURRENCY = 3;   // simultaneous files uploading
 const PART_CONCURRENCY = 4;   // simultaneous parts, per large file
 
 export interface UploadProgress {
+  /** Position of the file in the array passed in. Names repeat across sub-folders, so this is
+   *  the only reliable key for matching a report back to its file. */
+  index: number;
   fileName: string;
   loaded: number;
   total: number;
@@ -83,26 +86,26 @@ export const uploadClientDocuments = async (
     // The whole batch failed before any file-specific upload started (bad config, network
     // drop, validation) — surface it per file rather than leaving progress bars stuck.
     const message = err?.response?.data?.message ?? err?.message ?? 'Could not start upload';
-    files.forEach(f => onProgress({ fileName: f.name, loaded: 0, total: f.size, status: 'error', error: message }));
+    files.forEach((f, idx) => onProgress({ index: idx, fileName: f.name, loaded: 0, total: f.size, status: 'error', error: message }));
     return [];
   }
   const results: (ClientDocument | null)[] = new Array(files.length).fill(null);
 
   await withConcurrency(files, FILE_CONCURRENCY, async (file, i) => {
     const target = presigned[i];
-    onProgress({ fileName: file.name, loaded: 0, total: file.size, status: 'uploading' });
+    onProgress({ index: i, fileName: file.name, loaded: 0, total: file.size, status: 'uploading' });
 
     try {
       if (target.mode === 'single') {
         await s3.put(target.uploadUrl, file, {
           headers: { 'Content-Type': target.mimeType },
-          onUploadProgress: evt => onProgress({ fileName: file.name, loaded: evt.loaded, total: evt.total ?? file.size, status: 'uploading' }),
+          onUploadProgress: evt => onProgress({ index: i, fileName: file.name, loaded: evt.loaded, total: evt.total ?? file.size, status: 'uploading' }),
         });
         const doc = await completeUpload(clientId, { key: target.key, fileName: target.fileName, mimeType: target.mimeType, sizeBytes: target.sizeBytes, mode: 'single' });
         results[i] = doc;
       } else {
         const partsLoaded = new Array(target.parts.length).fill(0);
-        const reportCombined = () => onProgress({ fileName: file.name, loaded: partsLoaded.reduce((a, b) => a + b, 0), total: file.size, status: 'uploading' });
+        const reportCombined = () => onProgress({ index: i, fileName: file.name, loaded: partsLoaded.reduce((a, b) => a + b, 0), total: file.size, status: 'uploading' });
 
         const completedParts: { partNumber: number; eTag: string }[] = [];
         await withConcurrency(target.parts, PART_CONCURRENCY, async part => {
@@ -123,10 +126,10 @@ export const uploadClientDocuments = async (
         });
         results[i] = doc;
       }
-      onProgress({ fileName: file.name, loaded: file.size, total: file.size, status: 'done' });
+      onProgress({ index: i, fileName: file.name, loaded: file.size, total: file.size, status: 'done' });
     } catch (err: any) {
       if (target.mode === 'multipart') await abortUpload(clientId, target.key, target.uploadId);
-      onProgress({ fileName: file.name, loaded: 0, total: file.size, status: 'error', error: err?.response?.data?.message ?? err?.message ?? 'Upload failed' });
+      onProgress({ index: i, fileName: file.name, loaded: 0, total: file.size, status: 'error', error: err?.response?.data?.message ?? err?.message ?? 'Upload failed' });
     }
   });
 

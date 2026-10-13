@@ -14,6 +14,7 @@ import { MultiCombobox } from '../../components/ui/MultiCombobox';
 import { Can } from '../../routes/RoleGuard';
 import {
   DESTINATION_OPTIONS, APPOINTMENT_CITY_OPTIONS, VISA_TYPE_OPTIONS, EVISA_TYPE_OPTIONS, formatShortlist,
+  ADVANCE_WAIVER_LABELS, ADVANCE_WAIVER_TYPES, type AdvanceWaiverType,
 } from '../../constants/options';
 import { DocumentUploader } from '../../components/clients/DocumentUploader';
 import { DocumentList } from '../../components/clients/DocumentList';
@@ -53,6 +54,10 @@ const emptyNewCase = {
   eVisaType: '',
   priority: 'MEDIUM' as Priority,
   advance: '', charges: '', discount: '',
+  // Same advance controls as Add Client (client answer Q10). '' = automatic: paid once an
+  // amount is entered.
+  advancePaidChoice: '' as '' | 'PAID' | 'UNPAID',
+  advanceWaiverType: '' as '' | AdvanceWaiverType,
 };
 export type NewCasePrefill = Partial<typeof emptyNewCase>;
 
@@ -144,6 +149,9 @@ const ClientDetail: React.FC = () => {
         charges:  newCase.charges  ? parseFloat(newCase.charges)  : undefined,
         discount: newCase.discount ? parseFloat(newCase.discount) : undefined,
         receivedDate: newCaseDate || undefined,
+        advancePaid: newCase.advanceWaiverType ? undefined
+          : newCase.advancePaidChoice === 'PAID' ? true : newCase.advancePaidChoice === 'UNPAID' ? false : undefined,
+        advanceWaiverType: newCase.advanceWaiverType || undefined,
       });
     },
     onSuccess: () => {
@@ -449,6 +457,28 @@ const ClientDetail: React.FC = () => {
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700">Advance (£)</label>
               <input type="number" min="0" step="0.01" className={inputCls} value={newCase.advance} onChange={setNc('advance')} placeholder="0.00" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">Advance Payment</label>
+              <select
+                className={inputCls}
+                value={newCase.advanceWaiverType ? '' : newCase.advancePaidChoice}
+                disabled={!!newCase.advanceWaiverType}
+                onChange={setNc('advancePaidChoice')}
+              >
+                <option value="">Automatic (paid once an amount is entered)</option>
+                <option value="PAID">Paid</option>
+                <option value="UNPAID">Unpaid</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">Advance Waived</label>
+              <select className={inputCls} value={newCase.advanceWaiverType} onChange={setNc('advanceWaiverType')}>
+                <option value="">Not waived</option>
+                {ADVANCE_WAIVER_TYPES.map(t => <option key={t} value={t}>{ADVANCE_WAIVER_LABELS[t]}</option>)}
+              </select>
             </div>
           </div>
         </div>

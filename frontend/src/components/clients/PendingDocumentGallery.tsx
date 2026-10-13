@@ -15,8 +15,9 @@ export interface PendingUploadProgress {
 interface Props {
   files: File[];
   onChange: (files: File[]) => void;
-  // Keyed by File.name — set by the parent once it starts uploading these files
-  // against the newly-created client, so cards can flip from "staged" to "uploading".
+  // Keyed by the file's position in `files` (as a string) — set by the parent once it starts
+  // uploading these against the newly-created client, so cards flip from "staged" to
+  // "uploading". Not by name: a folder can hold two files with the same name.
   progress?: Record<string, PendingUploadProgress>;
   disabled?: boolean;
 }
@@ -53,7 +54,7 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
     const ok: File[] = [];
     incoming.forEach(f => {
       if (isJunkFile(f)) return;
-      if (f.size > MAX_FILE_SIZE_BYTES) { bad.push(`${f.name} (${formatBytes(f.size)} — limit is 25 MB)`); return; }
+      if (f.size > MAX_FILE_SIZE_BYTES) { bad.push(`${f.name} (${formatBytes(f.size)})`); return; }
       ok.push(f);
     });
     setRejected(bad);
@@ -133,9 +134,15 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
       </motion.div>
 
       {rejected.length > 0 && (
-        <div className="mt-3 text-xs text-red-600 flex items-start gap-1.5">
+        // Says exactly which files were left out and why, rather than the batch just coming up
+        // short (client feedback, 13 Oct 2026).
+        <div role="status" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 flex items-start gap-2">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>{rejected.join(' · ')}</span>
+          <div className="flex-1">
+            <p className="font-medium">{rejected.length} file{rejected.length === 1 ? '' : 's'} not added: over the 25 MB per-file limit. Compress or split them and add again.</p>
+            <ul className="list-disc ml-4 mt-1">{rejected.map((r, i) => <li key={i}>{r}</li>)}</ul>
+          </div>
+          <button type="button" onClick={() => setRejected([])} className="text-amber-700 hover:underline">Dismiss</button>
         </div>
       )}
 
@@ -143,7 +150,7 @@ export const PendingDocumentGallery: React.FC<Props> = ({ files, onChange, progr
         <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
           <AnimatePresence>
             {files.map((file, i) => {
-              const p = progress?.[file.name];
+              const p = progress?.[String(i)];
               const id = idFor(file, i);
               return (
                 <DocumentThumb
