@@ -231,6 +231,11 @@ model Client {
   // READ-ONLY: the column is GENERATED ALWAYS (see migration 20260927120000), so nothing
   // may ever write to it. Declared here only so Prisma can select and orderBy it.
   clientRefNum         Int?
+  // The later of this client's own receivedDate and their newest case's receivedDate — what the
+  // Clients page orders by, so a returning client with a new case rises to the top (1 Oct 2026,
+  // client answer Q11). READ-ONLY: maintained entirely by database triggers (see migration
+  // 20261014120000); the application never writes it.
+  lastIntakeDate       DateTime?
   groupId              String?
   receivedDate         DateTime
   firstName            String

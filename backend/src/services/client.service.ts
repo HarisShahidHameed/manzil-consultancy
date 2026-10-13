@@ -7,7 +7,7 @@ import { appendHrComment, formatHrCommentEntry } from '../utils/hrComments';
 export { generateClientRef };
 
 const CLIENT_SELECT = {
-  id: true, clientRef: true, receivedDate: true,
+  id: true, clientRef: true, receivedDate: true, lastIntakeDate: true,
   firstName: true, lastName: true, gender: true, dob: true,
   phone: true, email: true, whatsapp: true, availability: true,
   addressStreet: true, addressCity: true, addressShire: true, addressPostalCode: true, addressCountry: true,
@@ -310,7 +310,13 @@ export const listClients = async (page = 1, limit = 20, search?: string, stage?:
   const [clients, total] = await Promise.all([
     prisma.client.findMany({
       where, skip, take: limit, select: CLIENT_SELECT,
-      orderBy: [{ receivedDate: 'desc' }, { clientRefNum: { sort: 'desc', nulls: 'last' } }, { clientRef: 'desc' }],
+      // lastIntakeDate (DB-maintained) is the later of the client's own received date and their
+      // newest case's — so a returning client who opens a new case comes back to the top
+      // (client answer Q11). receivedDate breaks ties between rows that predate the column.
+      orderBy: [
+        { lastIntakeDate: { sort: 'desc', nulls: 'last' } }, { receivedDate: 'desc' },
+        { clientRefNum: { sort: 'desc', nulls: 'last' } }, { clientRef: 'desc' },
+      ],
     }),
     prisma.client.count({ where }),
   ]);
