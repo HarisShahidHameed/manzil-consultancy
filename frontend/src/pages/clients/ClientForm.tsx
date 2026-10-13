@@ -197,6 +197,7 @@ const ClientForm: React.FC = () => {
       eVisaType: form.eVisaType,
       priority: form.priority,
       advance: form.advance, charges: form.charges, discount: form.discount,
+      advancePaidChoice: form.advancePaidChoice, advanceWaiverType: form.advanceWaiverType,
     };
     // replace, not push: this abandons the duplicate profile the user was filling in, so
     // that form must not stay on the history stack for Back to land on.
