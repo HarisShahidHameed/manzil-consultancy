@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { UploadCloud, AlertCircle, FolderUp } from 'lucide-react';
+import { UploadCloud, FolderUp } from 'lucide-react';
+import { UploadSummary, type UploadSummaryData } from './UploadSummary';
 import { uploadClientDocuments, type UploadProgress } from '../../api/documents';
 import { MAX_FILE_SIZE_BYTES, formatBytes, isImageMime } from '../../constants/documents';
 import { collectDroppedFiles, isJunkFile, FOLDER_INPUT_PROPS } from '../../utils/fileDrop';
@@ -20,22 +21,29 @@ interface Props {
 export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
   const [dragOver, setDragOver] = useState(false);
   const [inFlight, setInFlight] = useState<Record<string, InFlightItem>>({});
-  const [rejected, setRejected] = useState<string[]>([]);
+  const [summary, setSummary] = useState<UploadSummaryData | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const startUpload = useCallback(async (fileList: FileList | File[]) => {
     const files = Array.from(fileList).filter(f => !isJunkFile(f));
-    const tooBig = files.filter(f => f.size > MAX_FILE_SIZE_BYTES).map(f => `${f.name} (${formatBytes(f.size)} — limit is 25 MB)`);
+    const tooBig = files.filter(f => f.size > MAX_FILE_SIZE_BYTES).map(f => `${f.name} (${formatBytes(f.size)})`);
     const ok = files.filter(f => f.size <= MAX_FILE_SIZE_BYTES);
-    setRejected(tooBig);
-    if (ok.length === 0) return;
+    setSummary(null);
+    if (ok.length === 0) {
+      if (tooBig.length) setSummary({ total: files.length, uploaded: 0, skipped: tooBig, failed: [] });
+      return;
+    }
 
+    // Keyed by batch + position, never by name: a folder routinely holds two "passport.jpg"s in
+    // different sub-folders, and name keys made one overwrite the other on screen.
+    const batch = Date.now().toString(36);
+    const keyOf = (i: number) => `${batch}-${i}`;
     setInFlight(prev => {
       const next = { ...prev };
-      ok.forEach(f => {
-        next[f.name] = {
-          fileName: f.name, loaded: 0, total: f.size, status: 'uploading',
+      ok.forEach((f, i) => {
+        next[keyOf(i)] = {
+          index: i, fileName: f.name, loaded: 0, total: f.size, status: 'uploading',
           mimeType: f.type || 'application/octet-stream',
           previewUrl: isImageMime(f.type) ? URL.createObjectURL(f) : undefined,
         };
@@ -43,20 +51,25 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
       return next;
     });
 
+    const failed: { name: string; reason: string }[] = [];
     const docs = await uploadClientDocuments(clientId, ok, progress => {
-      setInFlight(prev => ({ ...prev, [progress.fileName]: { ...prev[progress.fileName], ...progress } }));
+      if (progress.status === 'error') failed.push({ name: progress.fileName, reason: progress.error ?? 'Upload failed' });
+      setInFlight(prev => ({ ...prev, [keyOf(progress.index)]: { ...prev[keyOf(progress.index)], ...progress } }));
     });
 
     if (docs.length) onUploaded(docs);
+    // Stays on screen until dismissed, so nothing that did not make it can go unnoticed.
+    setSummary({ total: files.length, uploaded: docs.length, skipped: tooBig, failed });
 
-    // Clear finished/errored entries after a short beat so success is visible before it disappears.
+    // Finished cards clear after a short beat; failed ones stay, and are listed in the summary.
     setTimeout(() => {
       setInFlight(prev => {
         const next = { ...prev };
-        ok.forEach(f => {
-          if (next[f.name]?.status !== 'error') {
-            if (next[f.name]?.previewUrl) URL.revokeObjectURL(next[f.name].previewUrl!);
-            delete next[f.name];
+        ok.forEach((_, i) => {
+          const k = keyOf(i);
+          if (next[k]?.status !== 'error') {
+            if (next[k]?.previewUrl) URL.revokeObjectURL(next[k].previewUrl!);
+            delete next[k];
           }
         });
         return next;
@@ -72,7 +85,10 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
     if (files.length) startUpload(files);
   };
 
-  const entries = Object.values(inFlight);
+  const inFlightKeys = Object.entries(inFlight);
+  const entries = inFlightKeys.map(([, item]) => item);
+  const uploadingCount = entries.filter(e => e.status === 'uploading').length;
+  const doneCount = entries.filter(e => e.status === 'done').length;
 
   return (
     <div>
@@ -115,19 +131,21 @@ export const DocumentUploader: React.FC<Props> = ({ clientId, onUploaded }) => {
         />
       </motion.div>
 
-      {rejected.length > 0 && (
-        <div className="mt-3 text-xs text-red-600 flex items-start gap-1.5">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>Skipped: {rejected.join(', ')}</span>
-        </div>
+      {/* Live count while a batch is going, so a long folder upload visibly progresses. */}
+      {uploadingCount > 0 && (
+        <p className="mt-3 text-xs text-gray-600" aria-live="polite">
+          Uploading… {doneCount} of {entries.length} done
+        </p>
       )}
+
+      {summary && !uploadingCount && <UploadSummary summary={summary} onDismiss={() => setSummary(null)} />}
 
       {entries.length > 0 && (
         <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
           <AnimatePresence>
-            {entries.map(item => (
+            {inFlightKeys.map(([key, item]) => (
               <DocumentThumb
-                key={item.fileName}
+                key={key}
                 fileName={item.fileName}
                 mimeType={item.mimeType}
                 previewUrl={item.previewUrl}
