@@ -1,6 +1,9 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
-import { backfillGroupMembers, nextMemberIndex, groupRefForMember, ungroupedRef, matchGroupedRef } from '../utils/clientRef';
+import {
+  backfillGroupMembers, nextMemberIndex, groupRefForMember, ungroupedRef, matchGroupedRef,
+  refNumber, releaseClientNumber,
+} from '../utils/clientRef';
 
 const GROUP_SELECT = {
   id: true, groupRef: true, name: true, relation: true, notes: true,
@@ -13,16 +16,16 @@ const GROUP_SELECT = {
         orderBy: { createdAt: 'desc' as const },
       },
     },
-    // Just a deterministic base order — members now keep their own numbers, so the string
-    // order of clientRef no longer tracks in-group position (CL-1000-G1-03 sorts before
-    // CL-942-G1-01). orderMembers below re-sorts by the parsed position; Prisma can't
-    // order by a substring, so it has to happen in JS.
+    // Just a deterministic base order. Members share one number, but a group not yet
+    // backfilled can still hold mixed or legacy refs whose string order does not track the
+    // in-group position, so orderMembers below re-sorts by the parsed position; Prisma
+    // can't order by a substring, so it has to happen in JS.
     orderBy: { clientRef: 'asc' as const },
   },
   _count: { select: { clients: true } },
 } satisfies Prisma.ClientGroupSelect;
 
-// Members in in-group position order (CL-942-G1-01, CL-945-G1-02, CL-1000-G1-03). Anything
+// Members in in-group position order (CL-942-G1-01, CL-942-G1-02, CL-942-G1-03). Anything
 // whose position doesn't parse — a plain ref on a group not backfilled yet — sinks to the
 // end, tie-broken on clientRef so the order is still stable.
 const orderMembers = <T extends { clients: { clientRef: string }[] }>(group: T): T => {
@@ -34,8 +37,8 @@ const orderMembers = <T extends { clients: { clientRef: string }[] }>(group: T):
   return group;
 };
 
-// Forward-only MAX+1, same as generateClientRef (see utils/clientRef.ts for the full
-// reasoning): a group number is never re-issued, so a deleted GRP-004 leaves a permanent
+// Forward-only MAX+1 (unlike client numbers, group numbers have no reuse pool): a group
+// number is never re-issued, so a deleted GRP-004 leaves a permanent
 // hole rather than being handed to an unrelated family later. The numeric CAST is what
 // must not be dropped — a lexicographic `orderBy: groupRef desc` on the zero-padded
 // 3-digit ref breaks the moment the sequence passes 999 ("GRP-1000" sorts before
@@ -102,12 +105,16 @@ export const deleteGroup = async (id: string) => {
   // Every member reverts to a plain clientRef before the group itself is removed —
   // the FK is ON DELETE SET NULL, but that only clears groupId, not the ref format.
   const members = await prisma.client.findMany({ where: { groupId: id }, select: { id: true, clientRef: true } });
-  // Each member drops the -G<n>-<pos> suffix and keeps its own number, so disbanding a
-  // group consumes no numbers at all. Sequential on purpose: ungroupedRef falls back to a
-  // minted number for legacy shared-number members, and that write has to land before the
-  // next member reads the table.
-  for (const m of members) {
-    await prisma.client.update({ where: { id: m.id }, data: { clientRef: await ungroupedRef(m.clientRef) } });
+  // Members share the group's number, so only one of them can keep it on the way out: the
+  // first member (position 01). Processing in descending position order means every other
+  // member is handed a number of its own while the number is still shared, and position 01
+  // goes last and finds it free. Sequential on purpose: each write must land before the
+  // next member's ungroupedRef reads the table.
+  const byPositionDesc = [...members].sort(
+    (a, b) => (matchGroupedRef(b.clientRef)?.position ?? 0) - (matchGroupedRef(a.clientRef)?.position ?? 0),
+  );
+  for (const m of byPositionDesc) {
+    await prisma.client.update({ where: { id: m.id }, data: { clientRef: await ungroupedRef(m.clientRef, m.id) } });
   }
   return prisma.clientGroup.delete({ where: { id } });
 };
@@ -116,14 +123,15 @@ export const addMembers = async (groupId: string, clientIds: string[]) => {
   const group = await prisma.clientGroup.findUnique({ where: { id: groupId }, select: { id: true, groupRef: true } });
   if (!group) { const e: any = new Error('NOT_FOUND'); e.code = 'P2025'; throw e; }
 
-  // Backfill first — any plain or legacy-format members get upgraded to the current
-  // format (keeping their own numbers) before the new members are appended after them, so
-  // the whole group reads consistently and positions are allocated off a settled set.
-  await backfillGroupMembers(groupId, group.groupRef);
+  // Backfill first — every existing member is put on the group's one shared number and the
+  // current format before the new members are appended after them, so the whole group reads
+  // consistently and positions are allocated off a settled set.
+  let groupNumber = await backfillGroupMembers(groupId, group.groupRef);
   const startIndex = await nextMemberIndex(groupId);
 
-  // Each incoming member keeps the number it already owns and only gains the group's
-  // G<n> segment and its position — nothing is reassigned, so no number is stranded.
+  // Each incoming member takes the group's number and the next position. The number it gave
+  // up is released for reuse, so grouping existing clients leaves no visible gap. (For an
+  // empty group, the first incoming member's own number becomes the group's number.)
   const incoming = await prisma.client.findMany({
     where: { id: { in: clientIds } }, select: { id: true, clientRef: true },
   });
@@ -131,8 +139,11 @@ export const addMembers = async (groupId: string, clientIds: string[]) => {
 
   for (let i = 0; i < clientIds.length; i++) {
     const memberIndex = startIndex + i;
-    const clientRef = await groupRefForMember(currentRefs.get(clientIds[i]), group.groupRef, memberIndex);
+    const ownRef = currentRefs.get(clientIds[i]);
+    const clientRef = await groupRefForMember(ownRef, group.groupRef, memberIndex, groupNumber);
+    groupNumber = groupNumber ?? refNumber(clientRef);
     await prisma.client.update({ where: { id: clientIds[i] }, data: { groupId, clientRef } });
+    if (refNumber(ownRef) !== groupNumber) await releaseClientNumber(refNumber(ownRef));
   }
   return getGroupById(groupId);
 };
@@ -140,15 +151,14 @@ export const addMembers = async (groupId: string, clientIds: string[]) => {
 export const removeMember = async (groupId: string, clientId: string) => {
   const member = await prisma.client.findFirst({ where: { id: clientId, groupId }, select: { id: true, clientRef: true } });
   if (!member) return getGroupById(groupId);
-  // Reverts to the plain CL-### it already owned — the number was never shared with the
-  // members left behind, so handing it straight back can't collide (ungroupedRef still
-  // checks, for groups formed under the old shared-number scheme). No number is consumed
-  // and the member's id is stable across leaving the group.
+  // The group's number stays with the members left behind, so a leaver gets a number of
+  // its own (a reused one if any is pooled), unless it is the last member out, which keeps
+  // the number as a plain CL-###. See ungroupedRef.
   // The vacated position is NOT reused: nextMemberIndex counts off the highest position
   // in use, so the members left keep their refs untouched.
   await prisma.client.update({
     where: { id: clientId },
-    data: { groupId: null, clientRef: await ungroupedRef(member.clientRef) },
+    data: { groupId: null, clientRef: await ungroupedRef(member.clientRef, clientId) },
   });
   return getGroupById(groupId);
 };

@@ -1,20 +1,33 @@
 import { prisma } from '../config/database';
 
-// Forward-only numbering: MAX+1, never a gap scan. A number handed to a client is that
-// client's for good — it is never re-issued to a different person, even after the client
-// is deleted, grouped or ungrouped. Gaps are therefore acceptable and expected (a deleted
-// CL-943 leaves 943 empty forever); what is NOT acceptable is the sequence appearing to
-// skip while every number is still in use, which was the reported "942 jumps to 945" bug.
-// That is fixed at the other end: backfillGroupMembers no longer rewrites a member's
-// number when it joins a group (see below), so grouping strands nothing and MAX+1 lands on
-// the number right after the highest one actually issued.
-// The numeric CAST (rather than a lexicographic ORDER BY) is load-bearing: imported
-// clientRefs (e.g. CL-9000, carried over as-is, see bulkImportClients) sort before CL-101
-// as strings, so a string MAX would under-report the high-water mark and hand out a number
-// that collides with a ref already in the table. The pattern matches both a plain "CL-105"
-// and a group-formatted "CL-105-G1-01" (see below) so a number already claimed by a group
-// member is counted too.
+// Numbering (16 Oct 2026). A number freed by grouping is handed out again before the
+// counter moves on; otherwise it is MAX+1.
+//
+// Every member of a group shares ONE number (CL-942-G1-01, CL-942-G1-02, ...), so an existing
+// client who joins a group gives up its own number. Without reuse that number would sit
+// empty forever and the sequence would look like it skipped (942 -> 947), which is what the
+// client reported on 8 Sep. So such numbers go into client_number_pool (releaseClientNumber)
+// and the next brand-new client takes the lowest of them. Only grouping feeds the pool:
+// numbers left by deleted clients, or gaps in imported history, are never refilled, so
+// nobody is handed a number from deep in the past.
+//
+// The MAX+1 fallback keeps the numeric CAST (rather than a lexicographic ORDER BY), which is
+// load-bearing: imported clientRefs (e.g. CL-9000, carried over as-is, see
+// bulkImportClients) sort before CL-101 as strings, so a string MAX would under-report the
+// high-water mark and hand out a number that collides with a ref already in the table. The
+// pattern matches both a plain "CL-105" and a group-formatted "CL-105-G1-01".
 export const generateClientRef = async (): Promise<string> => {
+  // The lowest pooled number nobody carries any more. DELETE ... RETURNING with SKIP LOCKED,
+  // so two clients created at the same moment never draw the same number.
+  const reused = await prisma.$queryRaw<{ number: number }[]>`
+    DELETE FROM "client_number_pool" WHERE "number" = (
+      SELECT p."number" FROM "client_number_pool" p
+      WHERE NOT EXISTS (SELECT 1 FROM "clients" c WHERE c."clientRefNum" = p."number")
+      ORDER BY p."number" LIMIT 1 FOR UPDATE SKIP LOCKED
+    ) RETURNING "number"
+  `;
+  if (reused.length > 0) return `CL-${reused[0].number}`;
+
   // COALESCE(..., 99) + 1 so an empty table yields exactly 100, the base of the sequence.
   const [{ next }] = await prisma.$queryRaw<{ next: number }[]>`
     SELECT COALESCE(MAX(CAST(SUBSTRING("clientRef" FROM '^CL-(\\d+)') AS INTEGER)), 99) + 1 AS next
@@ -24,12 +37,28 @@ export const generateClientRef = async (): Promise<string> => {
   return `CL-${next}`;
 };
 
-// Group members are id'd like CL-942-G1-01, CL-945-G1-02 — each member keeps its OWN
-// number (the one it was issued as a standalone client), a short form of the group's own
-// immutable groupRef ("GRP-001" -> "G1", so renaming the group never touches member refs),
-// and a 1-based position (zero-padded to 2 digits) that's assigned once and never
-// renumbered (append-only). The group identity lives entirely in the G<n> segment, so
-// numbers stay per-person and nothing is stranded by grouping.
+/**
+ * Offer a number back for reuse once no client carries it any more. Call AFTER the write that
+ * stopped using it (clientRefNum is derived from the stored ref). A number another client
+ * still holds — e.g. a group number the remaining members keep — is simply not added.
+ */
+export const releaseClientNumber = async (number: number | null | undefined): Promise<void> => {
+  if (number == null) return;
+  await prisma.$executeRaw`
+    INSERT INTO "client_number_pool" ("number")
+    SELECT ${number}
+    WHERE NOT EXISTS (SELECT 1 FROM "clients" WHERE "clientRefNum" = ${number})
+    ON CONFLICT ("number") DO NOTHING
+  `;
+};
+
+// Group members are id'd like CL-942-G1-01, CL-942-G1-02 — ONE number shared by the whole
+// group (its first member's), a short form of the group's own immutable groupRef ("GRP-001"
+// -> "G1", so renaming the group never touches member refs), and a 1-based member position
+// (zero-padded to 2 digits) that's assigned once and never renumbered (append-only). Only
+// the position differs between members. This is the original format: Sep 2026 briefly gave
+// each member a number of its own, and 16 Oct 2026 restored the shared one at the client's
+// request — see generateClientRef for how the skipped-number problem is avoided.
 export const GROUPED_REF_RE = /^CL-(\d+)-G\d+-(\d+)$/;
 // Refs written by earlier ref-format cuts: the original sanitized-group-name format
 // (e.g. CL-105-Khan-1) and the first numbered-group format that spelled out the full
@@ -41,8 +70,7 @@ const LEGACY_GRP_REF_RE = /^CL-(\d+)-GRP-\d+-(\d+)$/;
 const LEGACY_NAME_GROUPED_REF_RE = /^CL-(\d+)-[A-Za-z0-9]+-(\d+)$/;
 export const PLAIN_REF_RE = /^CL-(\d+)$/;
 
-// `number` is the MEMBER's own number, not one shared by the group — every member carries
-// a different one. Only the G<n> segment is common to the whole group.
+// `number` is the group's shared number; `memberIndex` is the member's position.
 export const buildGroupRef = (number: number, groupRef: string, memberIndex: number) => {
   const groupSeq = parseInt(groupRef.replace(/^GRP-/, ''), 10);
   return `CL-${number}-G${groupSeq}-${String(memberIndex).padStart(2, '0')}`;
@@ -60,8 +88,8 @@ export const matchGroupedRef = (ref: string): { number: number; position: number
   return null;
 };
 
-// The number a client already owns, grouped or standalone. null only for a ref in no
-// recognized format at all — or no ref yet, i.e. a brand-new client.
+// The number a ref carries, grouped or standalone. null only for a ref in no recognized
+// format at all — or no ref yet, i.e. a brand-new client.
 export const refNumber = (ref?: string | null): number | null => {
   if (!ref) return null;
   const grouped = matchGroupedRef(ref);
@@ -73,49 +101,62 @@ export const refNumber = (ref?: string | null): number | null => {
 const mintNumber = async (): Promise<number> =>
   parseInt((await generateClientRef()).replace('CL-', ''), 10);
 
-// The ref a client should carry as position `memberIndex` of `groupRef`. It keeps the
-// number it already owns (standalone, or carried over from a previous group) — grouping
-// never reassigns a number — and only a brand-new client with no ref yet mints one.
+// The ref a client should carry as position `memberIndex` of `groupRef`. It takes the group's
+// shared number (`groupNumber`, from backfillGroupMembers). Only the first member of an empty
+// group brings a number of its own: the one it already holds, or a fresh one for a brand-new
+// client. A joining client whose own number is given up should have it released
+// (releaseClientNumber) once the new ref is saved.
 export const groupRefForMember = async (
   currentRef: string | null | undefined,
   groupRef: string,
   memberIndex: number,
+  groupNumber: number | null,
 ): Promise<string> => {
-  const number = refNumber(currentRef) ?? (await mintNumber());
+  const number = groupNumber ?? refNumber(currentRef) ?? (await mintNumber());
   return buildGroupRef(number, groupRef, memberIndex);
 };
 
-// The ref a member reverts to when it leaves a group: its own number, unadorned. No new
-// number is consumed and none is churned, because that number was always this client's.
-// The collision lookup covers exactly one case — groups formed under the old shared-number
-// scheme, where several members legitimately carry the SAME number (CL-942-G1-01 and
-// CL-942-G1-02 side by side). Only the first of those can take CL-942 back; the rest fall
-// through to a fresh number. For anything written under the current scheme the lookup
-// always misses, since a number appears in at most one ref.
-export const ungroupedRef = async (currentRef: string | null | undefined): Promise<string> => {
+// The ref a member reverts to when it leaves a group. The group's number is shared, so the
+// leaver keeps it only if nobody else still carries it (the last member out, or the first
+// member when a group is disbanded — see deleteGroup). Everyone else gets a number of their
+// own: a pooled one if any, otherwise the next in sequence.
+export const ungroupedRef = async (currentRef: string | null | undefined, clientId: string): Promise<string> => {
   const number = refNumber(currentRef);
   if (number == null) return generateClientRef();
-  const plain = `CL-${number}`;
-  const taken = await prisma.client.findFirst({ where: { clientRef: plain }, select: { id: true } });
-  return taken ? generateClientRef() : plain;
+  const sharedWith = await prisma.client.findFirst({
+    where: { clientRefNum: number, id: { not: clientId } }, select: { id: true },
+  });
+  return sharedWith ? generateClientRef() : `CL-${number}`;
 };
 
-// Brings every member of a group onto the current ref format without ever changing a
-// member's number. Reconciles the shapes that show up in practice: members still carrying
-// a plain CL-### (never touched since the group was formed), members on one of the legacy
-// grouped formats, and members that arrived from another group. Called whenever a group is
-// touched (adding members, renaming) so legacy refs upgrade in place instead of new members
-// being stamped in a format the existing ones don't share — see the CL-110-Anewgroup-4 vs
-// CL-111/112/113 split this was originally fixing.
-// Positions are per-group and append-only; numbers are per-member and never rewritten, so
-// this strands nothing and generateClientRef's MAX+1 can't skip a live number.
-// Returns the number a brand-new, numberless member would take next (MAX+1 as of after
-// this reconciliation) — the only thing callers still need from here, now that there is no
-// such thing as a settled group number.
-export const backfillGroupMembers = async (groupId: string, groupRef: string): Promise<number> => {
+// The group's shared number: that of its first member by position (or, for a group whose
+// members still carry plain refs, the lowest of those). null when no member has a number.
+export const settleGroupNumber = (refs: string[]): number | null => {
+  const grouped = refs
+    .map(matchGroupedRef)
+    .filter((g): g is { number: number; position: number } => !!g)
+    .sort((a, b) => a.position - b.position || a.number - b.number);
+  if (grouped.length) return grouped[0].number;
+  const plain = refs
+    .map((r) => r.match(PLAIN_REF_RE))
+    .filter((m): m is RegExpMatchArray => !!m)
+    .map((m) => parseInt(m[1], 10));
+  return plain.length ? Math.min(...plain) : null;
+};
+
+// Puts every member of a group on the one shared number and the current format, keeping each
+// member's position. Reconciles what shows up in practice: members still on a plain CL-###,
+// members on a legacy grouped format, members that came from another group, and groups from
+// Sep–Oct 2026 whose members each kept a number of their own. Any number a member gives up is
+// released for reuse, so grouping never leaves a visible gap in the sequence.
+// Called whenever a group is touched (adding members, renaming). Returns the group number
+// (null for an empty group) for the caller to stamp new members with.
+export const backfillGroupMembers = async (groupId: string, groupRef: string): Promise<number | null> => {
   const members = await prisma.client.findMany({
     where: { groupId }, select: { id: true, clientRef: true }, orderBy: { createdAt: 'asc' },
   });
+  if (members.length === 0) return null;
+  const groupNumber = settleGroupNumber(members.map((m) => m.clientRef)) ?? (await mintNumber());
 
   // Pass 1 — reserve positions. A member already in a grouped format keeps its position
   // (append-only), including one carried in from another group. First member in join order
@@ -136,20 +177,21 @@ export const backfillGroupMembers = async (groupId: string, groupRef: string): P
     return cursor;
   };
 
-  // Pass 2 — rewrite. Sequential on purpose: a member whose ref is in no recognized format
-  // mints a number, and that write has to land before the next mint reads MAX again.
+  // Pass 2 — rewrite, then release whatever numbers were given up. Unchanged refs are
+  // skipped, so a rename of an already-consistent group writes nothing.
+  const released = new Set<number>();
   for (const m of members) {
     const position = kept.get(m.id) ?? nextFreePosition();
-    const number = refNumber(m.clientRef) ?? (await mintNumber());
-    const newRef = buildGroupRef(number, groupRef, position);
-    // Unchanged refs are skipped, so a rename is a no-op and only genuinely stale members
-    // (plain, legacy-format, or moved group) are written.
+    const newRef = buildGroupRef(groupNumber, groupRef, position);
     if (newRef !== m.clientRef) {
       await prisma.client.update({ where: { id: m.id }, data: { clientRef: newRef } });
+      const own = refNumber(m.clientRef);
+      if (own != null && own !== groupNumber) released.add(own);
     }
   }
+  for (const n of released) await releaseClientNumber(n);
 
-  return mintNumber();
+  return groupNumber;
 };
 
 // Next append-only member position for a group: one past the highest position in use, not

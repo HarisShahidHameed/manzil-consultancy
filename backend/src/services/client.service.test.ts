@@ -20,11 +20,12 @@ jest.mock('../config/database', () => ({
       delete: jest.fn(),
     },
     $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
   },
 }));
 
 import { prisma } from '../config/database';
-import { bulkImportClients, findClientByPassport, listClients, updateClient } from './client.service';
+import { bulkImportClients, createClient, findClientByPassport, listClients, updateClient } from './client.service';
 import { backfillGroupMembers, generateClientRef } from '../utils/clientRef';
 import { addMembers, removeMember } from './group.service';
 
@@ -225,90 +226,115 @@ describe('findClientByPassport', () => {
   });
 });
 
-// Numbers are forward-only and per-person: grouping must never move a client onto a
-// different number, which is what used to strand 945/946 and make the sequence look like
-// it skipped. See utils/clientRef.ts.
-describe('client ids — forward-only numbering', () => {
+// Group members share ONE number (16 Oct 2026, the client's own format): CL-942-G1-01,
+// CL-942-G1-02, ... Only the member position differs. A number given up by an existing
+// client joining a group is pooled and reused, so the sequence never looks like it skipped.
+// See utils/clientRef.ts.
+const rawQuery = prisma.$queryRaw as unknown as jest.Mock;
+const rawExec = prisma.$executeRaw as unknown as jest.Mock;
+// generateClientRef asks the pool first, then falls back to MAX+1.
+const mockNumbering = (pooled: number[], next: number) =>
+  rawQuery.mockImplementation((strings: TemplateStringsArray) => {
+    if (strings.join('').includes('DELETE FROM "client_number_pool"')) {
+      const n = pooled.shift();
+      return Promise.resolve(n == null ? [] : [{ number: n }]);
+    }
+    return Promise.resolve([{ next }]);
+  });
+// The numbers releaseClientNumber offered back to the pool, in order.
+const released = () => rawExec.mock.calls.map((c) => c[1]);
+
+describe('client ids — numbering', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('reuses a number freed by grouping before moving the counter on', async () => {
+    mockNumbering([945], 960);
+    expect(await generateClientRef()).toBe('CL-945');
+    expect(await generateClientRef()).toBe('CL-960');
+  });
+
+  it('falls back to a numeric MAX+1', async () => {
+    mockNumbering([], 947);
+    await generateClientRef();
+    const sql = (rawQuery.mock.calls[1][0] as string[]).join('');
+    // The numeric CAST is what keeps CL-9000 from sorting below CL-101.
+    expect(sql).toMatch(/MAX\(CAST\(SUBSTRING/);
+  });
+});
+
+describe('group refs — one shared number per group', () => {
   const refsWritten = () =>
     (prisma.client.update as jest.Mock).mock.calls.map((c) => [c[0].where.id, c[0].data.clientRef]);
 
   beforeEach(() => {
     jest.clearAllMocks();
     (prisma.client.update as jest.Mock).mockResolvedValue({});
+    mockNumbering([], 999);
   });
 
-  it('mints the next id with MAX+1, not a gap scan', async () => {
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 947 }]);
-
-    expect(await generateClientRef()).toBe('CL-947');
-
-    const sql = ((prisma.$queryRaw as unknown as jest.Mock).mock.calls[0][0] as string[]).join('');
-    expect(sql).toMatch(/MAX\(/);
-    expect(sql).not.toMatch(/generate_series/); // a freed number is never re-issued
-    // The numeric CAST is what keeps CL-9000 from sorting below CL-101 (and GRP-1000
-    // below GRP-999) — a lexicographic high-water mark would mint a duplicate.
-    expect(sql).toMatch(/CAST\(SUBSTRING/);
-  });
-
-  it('groups 942/945/946 without renumbering anyone, and the next new client is 947', async () => {
+  it('puts grouped 942/945/946 all on 942 and frees 945 and 946 for reuse', async () => {
     (prisma.client.findMany as jest.Mock).mockResolvedValue([
       { id: 'a', clientRef: 'CL-942' },
       { id: 'b', clientRef: 'CL-945' },
       { id: 'c', clientRef: 'CL-946' },
     ]);
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 947 }]);
 
-    const nextNumber = await backfillGroupMembers('group-1', 'GRP-001');
-
+    expect(await backfillGroupMembers('group-1', 'GRP-001')).toBe(942);
     expect(refsWritten()).toEqual([
       ['a', 'CL-942-G1-01'],
-      ['b', 'CL-945-G1-02'],
-      ['c', 'CL-946-G1-03'],
+      ['b', 'CL-942-G1-02'],
+      ['c', 'CL-942-G1-03'],
     ]);
-    // Nothing was orphaned by the grouping, so MAX+1 lands on 947 — no visible skip.
-    expect(nextNumber).toBe(947);
+    expect(released()).toEqual([945, 946]);
   });
 
-  it('leaves an already-current group untouched on a rename and keeps positions', async () => {
+  it('converts a Sep-2026 group whose members each had a number onto the first member\'s', async () => {
+    (prisma.client.findMany as jest.Mock).mockResolvedValue([
+      { id: 'b', clientRef: 'CL-951-G2-02' },
+      { id: 'a', clientRef: 'CL-950-G2-01' },
+    ]);
+
+    expect(await backfillGroupMembers('group-2', 'GRP-002')).toBe(950);
+    expect(refsWritten()).toEqual([['b', 'CL-950-G2-02']]);
+    expect(released()).toEqual([951]);
+  });
+
+  it('leaves an already-consistent group untouched on a rename', async () => {
     (prisma.client.findMany as jest.Mock).mockResolvedValue([
       { id: 'a', clientRef: 'CL-942-G1-01' },
-      { id: 'b', clientRef: 'CL-945-G1-02' },
+      { id: 'b', clientRef: 'CL-942-G1-02' },
     ]);
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 947 }]);
 
     await backfillGroupMembers('group-1', 'GRP-001');
-
     expect(prisma.client.update).not.toHaveBeenCalled();
+    expect(rawExec).not.toHaveBeenCalled();
   });
 
-  it('keeps number and position when a member moves in from another group', async () => {
-    (prisma.client.findMany as jest.Mock).mockResolvedValue([
-      { id: 'a', clientRef: 'CL-942-G1-01' },
-      { id: 'b', clientRef: 'CL-950-G7-02' }, // came from GRP-007, position 02 is free here
-      { id: 'c', clientRef: 'CL-951-G7-02' }, // same position, loses the tie -> next free
-    ]);
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 952 }]);
-
-    await backfillGroupMembers('group-1', 'GRP-001');
-
-    expect(refsWritten()).toEqual([
-      ['b', 'CL-950-G1-02'],
-      ['c', 'CL-951-G1-03'],
-    ]);
-  });
-
-  it('upgrades a legacy shared-number group in place without touching the numbers', async () => {
+  it('upgrades legacy-format refs in place, keeping the number and positions', async () => {
     (prisma.client.findMany as jest.Mock).mockResolvedValue([
       { id: 'a', clientRef: 'CL-110-Khan-1' },
       { id: 'b', clientRef: 'CL-110-GRP-002-2' },
     ]);
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 200 }]);
 
     await backfillGroupMembers('group-1', 'GRP-002');
-
     expect(refsWritten()).toEqual([
       ['a', 'CL-110-G2-01'],
       ['b', 'CL-110-G2-02'],
+    ]);
+    expect(released()).toEqual([]);
+  });
+
+  it('a member moving in from another group takes this group\'s number; a contested position moves on', async () => {
+    (prisma.client.findMany as jest.Mock).mockResolvedValue([
+      { id: 'a', clientRef: 'CL-942-G1-01' },
+      { id: 'b', clientRef: 'CL-950-G7-02' },
+      { id: 'c', clientRef: 'CL-950-G7-02' },
+    ]);
+
+    await backfillGroupMembers('group-1', 'GRP-001');
+    expect(refsWritten()).toEqual([
+      ['b', 'CL-942-G1-02'],
+      ['c', 'CL-942-G1-03'],
     ]);
   });
 });
@@ -320,10 +346,10 @@ describe('group membership — joining and leaving', () => {
     (prisma.clientGroup.findUnique as jest.Mock).mockResolvedValue({
       id: 'g1', groupRef: 'GRP-001', clients: [],
     });
-    (prisma.$queryRaw as unknown as jest.Mock).mockResolvedValue([{ next: 999 }]);
+    mockNumbering([], 999);
   });
 
-  it('stamps an added member with its OWN number and the next free position', async () => {
+  it('an added client takes the group\'s number and the next position, freeing its own', async () => {
     (prisma.client.findMany as jest.Mock).mockImplementation(({ where }: any) =>
       Promise.resolve(where?.id?.in
         ? [{ id: 'b', clientRef: 'CL-945' }]                 // the incoming client
@@ -334,25 +360,49 @@ describe('group membership — joining and leaving', () => {
 
     expect((prisma.client.update as jest.Mock).mock.calls[0][0]).toMatchObject({
       where: { id: 'b' },
-      data: { groupId: 'g1', clientRef: 'CL-945-G1-02' },
+      data: { groupId: 'g1', clientRef: 'CL-942-G1-02' },
     });
+    expect(released()).toEqual([945]);
   });
 
-  it('gives a leaving member its own plain id back rather than a new number', async () => {
+  it('a new client created into a group shares its number and consumes none', async () => {
+    (prisma.client.findMany as jest.Mock).mockResolvedValue([
+      { id: 'a', clientRef: 'CL-942-G1-01' },
+      { id: 'b', clientRef: 'CL-942-G1-02' },
+    ]);
+    (prisma.client.create as jest.Mock).mockImplementation(({ data }: any) => Promise.resolve({ id: 'n', ...data }));
+
+    await createClient({ ...baseRow(), groupId: 'g1' });
+
+    expect((prisma.client.create as jest.Mock).mock.calls[0][0].data.clientRef).toBe('CL-942-G1-03');
+    expect(rawQuery).not.toHaveBeenCalled(); // no number drawn
+  });
+
+  it('a leaver gets a number of its own while the group keeps the shared one', async () => {
     (prisma.client.findFirst as jest.Mock).mockImplementation(({ where }: any) =>
-      Promise.resolve(where?.clientRef
-        ? null                                               // CL-946 is free, as it must be
-        : { id: 'c', clientRef: 'CL-946-G1-03' })
+      Promise.resolve(where?.clientRefNum
+        ? { id: 'a' }                                        // 942 is still the group's
+        : { id: 'c', clientRef: 'CL-942-G1-03' })
     );
+    mockNumbering([945], 999);
 
     await removeMember('g1', 'c');
 
     expect((prisma.client.update as jest.Mock).mock.calls[0][0]).toMatchObject({
       where: { id: 'c' },
-      data: { groupId: null, clientRef: 'CL-946' },
+      data: { groupId: null, clientRef: 'CL-945' }, // a reused number, not a skip
     });
-    // No number was consumed on the way out.
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('the last member out keeps the number as a plain id', async () => {
+    (prisma.client.findFirst as jest.Mock).mockImplementation(({ where }: any) =>
+      Promise.resolve(where?.clientRefNum ? null : { id: 'a', clientRef: 'CL-942-G1-01' })
+    );
+
+    await removeMember('g1', 'a');
+
+    expect((prisma.client.update as jest.Mock).mock.calls[0][0].data.clientRef).toBe('CL-942');
+    expect(rawQuery).not.toHaveBeenCalled();
   });
 });
 

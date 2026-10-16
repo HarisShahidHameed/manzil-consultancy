@@ -25,7 +25,8 @@ either number moves.
 
 **The survivor** is the profile with the lowest client number — the original record, i.e.
 the "master Client ID". Its reference is the one that stays; the duplicates' numbers are
-retired and, under forward-only numbering, never reissued.
+retired and never reissued (the only numbers ever reused are ones freed by grouping, see
+`utils/clientRef.ts`).
 
 ## What it refuses to touch
 
