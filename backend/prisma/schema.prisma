@@ -480,3 +480,14 @@ model ClientCreationLock {
 
   @@map("client_creation_locks")
 }
+
+// Client numbers given up when an existing client joins a group (members share the group's
+// one number since 16 Oct 2026). generateClientRef reuses the lowest of these before moving
+// the counter on, so grouping never leaves a visible gap. Written and read with raw SQL in
+// utils/clientRef.ts; declared here so Prisma's migrations know the table exists.
+model ClientNumberPool {
+  number     Int      @id
+  releasedAt DateTime @default(now())
+
+  @@map("client_number_pool")
+}

@@ -76,6 +76,19 @@ Reverting #17 in git leaves them in the database; they are harmless, but to remo
 `DROP TRIGGER visa_cases_last_intake ON visa_cases; DROP TRIGGER clients_last_intake ON clients;`
 and drop the three functions and the column.
 
+## Follow-up: shared group numbers (16 Oct 2026)
+
+| # | Tag | Change | Migration |
+|---|---|---|---|
+| 19 | `oct2026/19-shared-group-numbers` | Group members share one number again: `CL-<n>-G<g>-<member>` | `20261016120000` |
+
+Restores the original group format, which `sep2026/01-numbering` (6d43e58) had changed to
+one number per member. To keep that fix's purpose (no visible gaps), numbers given up by
+existing clients who join a group go into `client_number_pool` and are reused first.
+
+Reverting #19 in git brings back per-member numbers for *new* groupings only. The migration's
+conversion of existing groups is not undone, and the pool table stays (harmless).
+
 ## Database migrations
 
 All five are additive (new columns, a new table, new enum values), and each backfills
