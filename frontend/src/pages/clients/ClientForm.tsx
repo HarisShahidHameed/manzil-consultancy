@@ -301,6 +301,8 @@ const ClientForm: React.FC = () => {
         await updateCase(targetCase.id, {
           ...destinationFields,
           ...cityFields,
+          // No city picked now means none: an undefined here would leave the old one in place.
+          ...(form.cities.length === 0 ? { city: '' } : {}),
           visaType:     form.visaType     || undefined,
           ukVisaExpiry: form.ukVisaExpiry || undefined,
           eVisaType:    form.eVisaType    || undefined,

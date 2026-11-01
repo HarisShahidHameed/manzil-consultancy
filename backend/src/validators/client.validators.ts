@@ -135,6 +135,11 @@ const optionalDate = () =>
 // "clear it" and reach the service as an explicit null; an absent key still means "leave it".
 const clearableDate = () =>
   z.string().regex(DATE_REGEX, DATE_FORMAT_MSG).nullable().optional().or(z.literal('').transform(() => null));
+// The same for free text: a box the user empties (or leaves only spaces in) is stored as null,
+// so the screens that show "—" for a missing value keep doing so. An absent key still means
+// "leave it".
+const clearableText = (max?: number) =>
+  (max ? z.string().max(max) : z.string()).nullable().optional().transform(v => (v?.trim() === '' ? null : v));
 
 export const importClientSchema = createClientObjectSchema.extend({
   // Carried over as-is from the source file's "#" column when present, instead of
@@ -245,7 +250,7 @@ const clearableAssignee = () =>
 export const updateCaseSchema = z.object({
   destination:        z.string().min(1).max(100).optional(),
   destinationOptions: z.array(z.string().min(1).max(100).trim()).max(50).optional(),
-  city:               z.string().max(100).optional(),
+  city:               clearableText(100),
   cityOptions:        z.array(z.string().min(1).max(100).trim()).max(50).optional(),
   visaType:     z.string().max(100).optional(),
   ukVisaExpiry: optionalDate(),
@@ -278,14 +283,14 @@ export const updateCaseSchema = z.object({
   bookedById:              clearableAssignee(),
   appointmentAssignedToId: clearableAssignee(),
   fileAssignedToId:        clearableAssignee(),
-  fraNo:           z.string().max(100).optional(),
-  tlsAccount:      z.string().max(100).optional(),
-  appointmentNotes: z.string().optional(),
+  fraNo:           clearableText(100),
+  tlsAccount:      clearableText(100),
+  appointmentNotes: clearableText(),
   whatsappGroupCreated: z.boolean().optional(),
   // Stage 3
-  travelDate:    optionalDate(),
-  hotelDate:     optionalDate(),
-  salamComments: z.string().optional(),
+  travelDate:    clearableDate(),
+  hotelDate:     clearableDate(),
+  salamComments: clearableText(),
   docAppointment: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docTicket:      z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docInsurance:   z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),

@@ -619,7 +619,9 @@ export const updateCase = async (
         && !before.destinationOptions.includes(data.destination)) {
       throw new Error('DESTINATION_NOT_SHORTLISTED');
     }
-    if (data.city !== undefined && data.cityOptions === undefined
+    // An empty city isn't a choice to check: it's an undecided shortlist being saved as it is,
+    // and the File Processing > Invoiced gate still insists on a final pick.
+    if (data.city && data.cityOptions === undefined
         && before.cityOptions.length > 0
         && !before.cityOptions.includes(data.city)) {
       throw new Error('CITY_NOT_SHORTLISTED');

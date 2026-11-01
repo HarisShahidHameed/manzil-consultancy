@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gray-on-color",
+        "value": "*",
+        "files": [
+          "frontend/src/pages/clients/ClientForm.tsx"
+        ],
+        "createdAt": "2026-10-07T00:38:54.272Z",
+        "reason": "Claude: pre-existing warnInputCls uses text-gray-900 on bg-amber-50 (near-black on a pale tint, ~17:1 contrast), not washed-out gray"
+      }
+    ]
+  }
+}

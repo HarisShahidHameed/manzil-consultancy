@@ -323,7 +323,10 @@ const CaseDetail: React.FC = () => {
   const saveAppointmentMut = useMutation({
     mutationFn: () => updateCase(id!, {
       destination:      (editFields.destination as string) || undefined,
-      city:             (editFields.city as string) || undefined,
+      // City, FRA No, TLS Account and the notes are sent as typed, not `|| undefined`: an emptied
+      // box must reach the server as '' or the key is dropped, the stored value stays, and the
+      // refetch brings the deleted text back.
+      city:             editFields.city as string,
       charges:  toNum(editFields.charges),
       discount: toNum(editFields.discount),
       advance:  toNum(editFields.advance),
@@ -336,9 +339,9 @@ const CaseDetail: React.FC = () => {
       docAppointmentCost: editFields.appointmentPaidBy === 'AGENCY'
         ? toNum((editFields.docAppointmentCost as number | string | undefined) ?? vc?.docAppointmentCost)
         : undefined,
-      fraNo:            (editFields.fraNo as string) || undefined,
-      tlsAccount:       (editFields.tlsAccount as string) || undefined,
-      appointmentNotes: (editFields.appointmentNotes as string) || undefined,
+      fraNo:            editFields.fraNo as string,
+      tlsAccount:       editFields.tlsAccount as string,
+      appointmentNotes: editFields.appointmentNotes as string,
     }),
     onSuccess: () => {
       // Persisted — these fields are the server's again, so the refetch below is free to
@@ -352,9 +355,10 @@ const CaseDetail: React.FC = () => {
 
   const saveFileMut = useMutation({
     mutationFn: () => updateCase(id!, {
-      travelDate:    (editFields.travelDate as string) || undefined,
-      hotelDate:     (editFields.hotelDate as string) || undefined,
-      salamComments: (editFields.salamComments as string) || undefined,
+      // As typed, like the Appointment save above, so whatever is emptied here stays empty.
+      travelDate:    editFields.travelDate as string,
+      hotelDate:     editFields.hotelDate as string,
+      salamComments: editFields.salamComments as string,
       docAppointment: editFields.docAppointment,
       docTicket:      editFields.docTicket,
       docInsurance:   editFields.docInsurance,

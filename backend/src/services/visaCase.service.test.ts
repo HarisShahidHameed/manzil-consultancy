@@ -721,6 +721,39 @@ describe('removing an appointment date', () => {
   });
 });
 
+describe('emptying the city', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('clears a city typed in by hand', async () => {
+    mockUpdateFlow(existingCase({ city: 'London', cityOptions: [] }));
+    await updateCase('case-1', { city: null });
+    expect(caseMock.update.mock.calls[0][0].data.city).toBeNull();
+  });
+
+  it('lets an undecided shortlist be saved without a city', async () => {
+    mockUpdateFlow(existingCase({ city: null, cityOptions: ['London', 'Manchester'] }));
+    await expect(updateCase('case-1', { city: null })).resolves.toBeDefined();
+  });
+
+  it('still refuses a city that is not on the shortlist', async () => {
+    mockUpdateFlow(existingCase({ city: null, cityOptions: ['London', 'Manchester'] }));
+    await expect(updateCase('case-1', { city: 'Leeds' })).rejects.toThrow('CITY_NOT_SHORTLISTED');
+    expect(caseMock.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('emptying a travel or hotel date', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('stores null for both', async () => {
+    mockUpdateFlow(existingCase({ stage: 'FILE_PROCESSING' }));
+    await updateCase('case-1', { travelDate: null, hotelDate: null });
+    const data = caseMock.update.mock.calls[0][0].data;
+    expect(data.travelDate).toBeNull();
+    expect(data.hotelDate).toBeNull();
+  });
+});
+
 // 1 Oct 2026 #4 — a Super Admin can send a File Processing case back to Appointments to
 // re-book it, rather than opening a second case for the same trip.
 describe('moving a case back to Appointments', () => {
