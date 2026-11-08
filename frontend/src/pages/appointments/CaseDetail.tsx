@@ -12,6 +12,7 @@ import { getDocuments } from '../../api/documents';
 import type { AssignableUser, CaseStage, ClientDocument, DocumentStatus, VisaCase } from '../../types';
 import { DocumentUploader } from '../../components/clients/DocumentUploader';
 import { DocumentList } from '../../components/clients/DocumentList';
+import { CaseEmailsPanel } from '../../components/cases/CaseEmailsPanel';
 import { Button } from '../../components/ui/Button';
 import { Alert } from '../../components/ui/Alert';
 import { Modal } from '../../components/ui/Modal';
@@ -53,6 +54,13 @@ const CLIENT_LEVEL_REQUIRED_FIELDS = ['passportNumber', 'nationality', 'dob', 'p
 
 const APPT_ROLES = ['APPOINTMENT_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
 const FILE_ROLES = ['FILE_TEAM', 'HR_MANAGER', 'ADMIN', 'SUPER_ADMIN', 'MANAGER'];
+
+// An ISO instant as the local "YYYY-MM-DDTHH:mm" a datetime-local input needs.
+const toLocalDateTimeInput = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
 
 const fmtMoney = (v?: number | string | null) => v != null ? `£${parseFloat(String(v)).toFixed(2)}` : '—';
 const fmtDate = (d?: string | null) => (d ? new Date(d).toLocaleDateString('en-GB') : '—');
@@ -146,7 +154,7 @@ const APPOINTMENT_SAVE_KEYS: (keyof VisaCase)[] = [
   'appointmentDate', 'appointmentPaidBy', 'docAppointmentCost', 'fraNo', 'tlsAccount', 'appointmentNotes',
 ];
 const FILE_SAVE_KEYS: (keyof VisaCase)[] = [
-  'travelDate', 'hotelDate', 'salamComments',
+  'travelDate', 'hotelDate', 'hotelCancellationDate', 'flightDateTime', 'salamComments',
   'docAppointment', 'docTicket', 'docInsurance', 'docHotel',
   'docEVisa', 'docSop', 'docVisaForm', 'docSelfEmployment',
   'docAppointmentCost', 'docTicketCost', 'docInsuranceCost', 'docHotelCost',
@@ -239,6 +247,8 @@ const CaseDetail: React.FC = () => {
       appointmentNotes: vc.appointmentNotes ?? '',
       travelDate: vc.travelDate?.split('T')[0] ?? '',
       hotelDate: vc.hotelDate?.split('T')[0] ?? '',
+      hotelCancellationDate: vc.hotelCancellationDate?.split('T')[0] ?? '',
+      flightDateTime: toLocalDateTimeInput(vc.flightDateTime),
       salamComments: vc.salamComments ?? '',
       docAppointment: vc.docAppointment,
       docTicket: vc.docTicket,
@@ -358,6 +368,9 @@ const CaseDetail: React.FC = () => {
       // As typed, like the Appointment save above, so whatever is emptied here stays empty.
       travelDate:    editFields.travelDate as string,
       hotelDate:     editFields.hotelDate as string,
+      hotelCancellationDate: editFields.hotelCancellationDate as string,
+      // The input holds local time with no offset, and the server needs the exact instant.
+      flightDateTime: editFields.flightDateTime ? new Date(editFields.flightDateTime as string).toISOString() : '',
       salamComments: editFields.salamComments as string,
       docAppointment: editFields.docAppointment,
       docTicket:      editFields.docTicket,
@@ -1152,6 +1165,8 @@ const CaseDetail: React.FC = () => {
       )}
 
       {/* File Processing Section */}
+      <CaseEmailsPanel caseId={vc.id} />
+
       {activeSection === 'FILE_PROCESSING' && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">File Processing</h3>
@@ -1254,6 +1269,16 @@ const CaseDetail: React.FC = () => {
             <div>
               <label className="text-xs text-gray-500">Hotel Date</label>
               <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.hotelDate as string ?? ''} onChange={setEF('hotelDate')} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Hotel Cancellation Date</label>
+              <input type="date" min="1900-01-01" max="2099-12-31" className={`${inputCls} mt-1`} value={editFields.hotelCancellationDate as string ?? ''} onChange={setEF('hotelCancellationDate')} />
+              <p className="mt-1 text-xs text-gray-400">The client is emailed at 09:00 UK time on this date.</p>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Flight Date &amp; Time</label>
+              <input type="datetime-local" className={`${inputCls} mt-1`} value={editFields.flightDateTime as string ?? ''} onChange={setEF('flightDateTime')} />
+              <p className="mt-1 text-xs text-gray-400">The client is emailed 24 hours before, when online check-in opens.</p>
             </div>
           </div>
 

@@ -91,13 +91,15 @@ jobs:
           cp -r backend/dist "$RELEASE/backend/dist"
           cp backend/package.json backend/package-lock.json "$RELEASE/backend/"
           cp -r backend/prisma "$RELEASE/backend/prisma"
+          # Documents attached to the welcome email, read at runtime.
+          cp -r backend/assets "$RELEASE/backend/assets"
 
           # Frontend: static build only.
           cp -r frontend/dist "$RELEASE/frontend/dist"
 
           # Ops tooling needed on the server for this release.
           cp ops/ecosystem.config.js "$RELEASE/ops/"
-          cp scripts/remote-deploy.sh "$RELEASE/scripts/"
+          cp scripts/remote-deploy.sh scripts/sync-env.sh "$RELEASE/scripts/"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -140,6 +142,67 @@ jobs:
           SSH_OPTS="-i ~/.ssh/deploy_key -p $PORT -o UserKnownHostsFile=~/.ssh/known_hosts"
           ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "mkdir -p $DEPLOY_ROOT/releases/$RELEASE_ID"
           rsync -az -e "ssh $SSH_OPTS" release/"$RELEASE_ID"/ "$SSH_USER@$SSH_HOST:$DEPLOY_ROOT/releases/$RELEASE_ID/"
+
+      # Copies each app setting that has a GitHub secret of the same name into the server's
+      # shared .env. A setting with no secret (or an empty one) keeps its server value, and
+      # NODE_ENV is left to PM2. Values travel over SSH stdin and are never printed.
+      - name: Sync app settings from GitHub secrets
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          RELEASE_ID: ${{ needs.build.outputs.release_id }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PORT: ${{ secrets.PORT }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_ACCESS_EXPIRES_IN: ${{ secrets.JWT_ACCESS_EXPIRES_IN }}
+          JWT_REFRESH_EXPIRES_IN: ${{ secrets.JWT_REFRESH_EXPIRES_IN }}
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
+          CLIENT_URL: ${{ secrets.CLIENT_URL }}
+          MAX_FAILED_ATTEMPTS: ${{ secrets.MAX_FAILED_ATTEMPTS }}
+          LOCKOUT_DURATION_MINUTES: ${{ secrets.LOCKOUT_DURATION_MINUTES }}
+          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          EMAIL_ENABLED: ${{ secrets.EMAIL_ENABLED }}
+          EMAIL_REMINDERS_ENABLED: ${{ secrets.EMAIL_REMINDERS_ENABLED }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_REPLY_TO: ${{ secrets.EMAIL_REPLY_TO }}
+          EMAIL_REDIRECT_TO: ${{ secrets.EMAIL_REDIRECT_TO }}
+        run: |
+          set -euo pipefail
+          KEYS="DATABASE_URL PORT JWT_ACCESS_SECRET JWT_REFRESH_SECRET JWT_ACCESS_EXPIRES_IN
+            JWT_REFRESH_EXPIRES_IN COOKIE_SECRET CLIENT_URL MAX_FAILED_ATTEMPTS LOCKOUT_DURATION_MINUTES
+            SEED_ADMIN_EMAIL SEED_ADMIN_PASSWORD AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+            S3_BUCKET_NAME EMAIL_ENABLED EMAIL_REMINDERS_ENABLED SMTP_HOST SMTP_PORT SMTP_USER
+            SMTP_PASS EMAIL_FROM EMAIL_REPLY_TO EMAIL_REDIRECT_TO"
+          SETTINGS="$RUNNER_TEMP/app-settings.env"
+          ( umask 077; : > "$SETTINGS" )
+          for key in $KEYS; do
+            value="${!key:-}"
+            [ -z "$value" ] && continue
+            if [[ "$value" == *$'\n'* ]]; then echo "::error::Secret $key has a line break, which .env can't hold"; exit 1; fi
+            # Quoted so spaces, < > and # survive. Single quotes are fully literal in dotenv.
+            if [[ "$value" != *"'"* ]]; then q="'"
+            elif [[ "$value" != *'"'* ]]; then q='"'
+            elif [[ "$value" != *'`'* ]]; then q='`'
+            else echo "::error::Secret $key contains all three quote characters"; exit 1
+            fi
+            printf '%s=%s%s%s\n' "$key" "$q" "$value" "$q" >> "$SETTINGS"
+          done
+          echo "Secrets found for: $(cut -d= -f1 "$SETTINGS" | tr '\n' ' ')"
+          PORT_SSH="${SSH_PORT:-22}"
+          SSH_OPTS="-i ~/.ssh/deploy_key -p $PORT_SSH -o UserKnownHostsFile=~/.ssh/known_hosts"
+          ssh $SSH_OPTS "$SSH_USER@$SSH_HOST" "bash $DEPLOY_ROOT/releases/$RELEASE_ID/scripts/sync-env.sh" < "$SETTINGS"
+          rm -f "$SETTINGS"
 
       - name: Run remote deploy script
         env:

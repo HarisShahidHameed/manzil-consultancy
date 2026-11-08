@@ -147,14 +147,21 @@ AWS_REGION=eu-west-2
 AWS_ACCESS_KEY_ID=<from the manzil-app-s3 IAM user's access key>
 AWS_SECRET_ACCESS_KEY=<from the same access key — shown once at creation, save it now>
 S3_BUCKET_NAME=<the bucket you created>
+
+# Client emails. Optional: without these the app runs normally and sends nothing. Emails that
+# would have gone show as "Not sent" on the case, and only go out if staff press Retry later.
+EMAIL_ENABLED=true
+EMAIL_REMINDERS_ENABLED=false
+SMTP_USER=info@manzilconsultancy.com
+SMTP_PASS=<that mailbox's password>
+EMAIL_FROM=Manzil Consultancy <info@manzilconsultancy.com>
+EMAIL_REPLY_TO=visa@manzilconsultancy.com
 ```
 
 Generate secrets with `openssl rand -base64 48` (repeat per secret — don't reuse).
 This file lives only on the server and is symlinked into every release by
-`scripts/remote-deploy.sh`. **This is the design on purpose**: application secrets
-(DB credentials, JWT signing keys, and now the AWS keys above) never pass through
-GitHub Actions at all — only the SSH login itself does (§3). One less place secrets
-can leak from.
+`scripts/remote-deploy.sh`. Settings that are also GitHub secrets are overwritten
+from those secrets on every deploy (§3.1), so change those in GitHub, not here.
 
 After editing this file on an already-running server, reload with
 `pm2 reload manzil-backend --update-env` so the new values actually take effect —
@@ -232,10 +239,16 @@ Paste the full output (all lines) as the secret value. This pins the host key so
 deploy step fails closed on a MITM instead of silently trusting whatever key shows up
 (`StrictHostKeyChecking` is left at its default — the workflow does *not* disable it).
 
-Notice **DATABASE_URL, JWT secrets, the S3 keys, etc. are not GitHub Secrets** — they
-live only in `/opt/manzil/shared/backend/.env` on the server (§1.6). GitHub Actions
-only ever gets enough to SSH in; the app's own secrets never transit through CI. See
-`docs/AWS_S3_SETUP.md` for how to obtain the four `AWS_*`/`S3_BUCKET_NAME` values.
+**App settings can also be GitHub secrets.** Any setting from `backend/.env.example`
+(except `NODE_ENV`, which PM2 sets) that has a secret of exactly the same name, such as
+`EMAIL_ENABLED` or `SMTP_PASS`, is written into `/opt/manzil/shared/backend/.env` on
+every deploy by `scripts/sync-env.sh`, before the app restarts. A setting with no
+secret, or an empty one, keeps whatever the server file has, and the previous file is
+kept as `.env.bak`. Deleting a secret does **not** remove the setting from the server;
+edit the file there to remove it. The full list of copied names is in the "Sync app
+settings from GitHub secrets" step of `.github/workflows/deploy.yml`; add a new setting
+there too. See `docs/AWS_S3_SETUP.md` for how to obtain the four `AWS_*`/`S3_BUCKET_NAME`
+values.
 
 ### 3.2 What the pipelines do
 

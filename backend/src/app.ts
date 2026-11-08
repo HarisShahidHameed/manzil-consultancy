@@ -19,6 +19,7 @@ import dashboardRoutes from './routes/dashboard.routes';
 import financialReportsRoutes from './routes/financialReports.routes';
 import apiKeyRoutes from './routes/apiKey.routes';
 import publicRoutes from './routes/public.routes';
+import { startEmailScheduler } from './services/clientEmail.service';
 
 // Safety net for exactly the crash this comment is here because of: an Express 4 route
 // handler is `async`, and a validation error (or anything else) thrown after an `await`
@@ -95,6 +96,7 @@ const start = async () => {
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT} [${env.NODE_ENV}]`);
+    startEmailScheduler();
   });
 };
 

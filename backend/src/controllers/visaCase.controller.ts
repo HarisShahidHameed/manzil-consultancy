@@ -5,6 +5,7 @@ import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
 import { updateCaseSchema } from '../validators/client.validators';
 import { streamAdvanceReceiptPdf, streamInvoicePdf } from '../utils/pdf';
+import * as clientEmail from '../services/clientEmail.service';
 
 // Exported so the service tests can drive the real coercion the wire uses, rather than a
 // hand-rolled copy of it — a metric card's filters have to survive this exact round trip.
@@ -143,6 +144,8 @@ export const updateCase = async (req: Request, res: Response): Promise<void> => 
       req,
     });
     sendSuccess(res, 'Case updated', visaCase);
+    // Charges or a finalised destination may be what the welcome email was waiting for.
+    if (data.charges !== undefined || data.destination !== undefined) clientEmail.triggerWelcome(req.params.id);
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
@@ -201,6 +204,28 @@ export const downloadReceiptPreview = async (req: Request, res: Response): Promi
   const preview = await visaCaseService.buildInvoicePreview(req.params.id);
   if (!preview) { sendError(res, 'Case not found', 404); return; }
   streamInvoicePdf(res, preview);
+};
+
+export const listCaseEmails = async (req: Request, res: Response): Promise<void> => {
+  sendSuccess(res, 'Case emails retrieved', await clientEmail.listCaseEmails(req.params.id));
+};
+
+export const retryCaseEmail = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const log = await clientEmail.retryEmail(req.params.id, req.params.logId);
+    await createAuditLog({
+      userId: req.user?.sub,
+      action: 'CASE_EMAIL_RETRIED',
+      resource: 'cases',
+      resourceId: req.params.id,
+      details: { logId: req.params.logId, status: log?.status },
+      req,
+    });
+    sendSuccess(res, 'Email retried', log);
+  } catch (error: any) {
+    if (error instanceof clientEmail.EmailRetryError) { sendError(res, error.message, 409); return; }
+    sendError(res, 'Failed to retry email', 500);
+  }
 };
 
 export const deleteCase = async (req: Request, res: Response): Promise<void> => {

@@ -43,6 +43,16 @@ router.post(
   requireAnyPermission('files:write', 'invoices:write'),
   visaCaseController.advanceToInvoiced
 );
+router.get(
+  '/:id/emails',
+  requireAnyPermission('appointments:read', 'files:read', 'clients:read'),
+  visaCaseController.listCaseEmails
+);
+router.post(
+  '/:id/emails/:logId/retry',
+  requireAnyPermission('appointments:write', 'files:write', 'clients:write'),
+  visaCaseController.retryCaseEmail
+);
 router.delete('/:id', requirePermission('clients:delete'), visaCaseController.deleteCase);
 
 export default router;

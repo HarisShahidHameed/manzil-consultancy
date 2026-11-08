@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import CaseDetail from './CaseDetail';
-import { getCase, updateCase } from '../../api/cases';
+import { getCase, updateCase, getCaseEmails } from '../../api/cases';
 import { getAssignableUsers } from '../../api/users';
 import { getDocuments } from '../../api/documents';
 import { useAuth } from '../../hooks/useAuth';
@@ -30,6 +30,7 @@ const baseCase = {
   appointmentNotes: 'Bring the original passport',
   travelDate: '2026-11-20T00:00:00.000Z',
   hotelDate: '2026-11-21T00:00:00.000Z',
+  hotelCancellationDate: '2026-11-22T00:00:00.000Z',
   salamComments: 'File Ready - Payment, Dead Line 28/10/2026',
   docAppointment: 'PENDING', docTicket: 'PENDING', docInsurance: 'PENDING', docHotel: 'PENDING',
   docEVisa: 'PENDING', docSop: 'PENDING', docVisaForm: 'PENDING', docSelfEmployment: 'PENDING',
@@ -59,6 +60,7 @@ describe('CaseDetail: emptying a field', () => {
     } as never);
     vi.mocked(getAssignableUsers).mockResolvedValue({ success: true, data: [] } as never);
     vi.mocked(getDocuments).mockResolvedValue([] as never);
+    vi.mocked(getCaseEmails).mockResolvedValue({ success: true, data: [] } as never);
     vi.mocked(updateCase).mockResolvedValue({ success: true, data: baseCase } as never);
   });
 
@@ -66,6 +68,7 @@ describe('CaseDetail: emptying a field', () => {
     ['User Comments', 'salamComments', 'File Ready - Payment, Dead Line 28/10/2026'],
     ['Travel Date', 'travelDate', '2026-11-20'],
     ['Hotel Date', 'hotelDate', '2026-11-21'],
+    ['Hotel Cancellation Date', 'hotelCancellationDate', '2026-11-22'],
   ])('File Processing save sends an emptied %s', async (_label, field, shown) => {
     const user = userEvent.setup();
     await renderCase('FILE_PROCESSING');
@@ -75,6 +78,32 @@ describe('CaseDetail: emptying a field', () => {
 
     await waitFor(() => expect(updateCase).toHaveBeenCalled());
     expect(vi.mocked(updateCase).mock.calls[0][1]).toMatchObject({ [field]: '' });
+  });
+
+  it('File Processing save sends the flight time as an exact instant', async () => {
+    const user = userEvent.setup();
+    await renderCase('FILE_PROCESSING');
+
+    const input = (await screen.findByText('Flight Date & Time')).parentElement!.querySelector('input')!;
+    await user.type(input, '2026-11-25T14:30');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(updateCase).toHaveBeenCalled());
+    expect(vi.mocked(updateCase).mock.calls[0][1]).toMatchObject({
+      flightDateTime: new Date('2026-11-25T14:30').toISOString(),
+    });
+  });
+
+  it('lists the client emails with a Retry on a failure', async () => {
+    vi.mocked(getCaseEmails).mockResolvedValue({
+      success: true,
+      data: [{ id: 'log-1', type: 'WELCOME', recipient: 'sara@example.com', status: 'FAILED', error: 'SMTP down', createdAt: '2026-11-01T10:00:00.000Z' }],
+    } as never);
+    await renderCase('FILE_PROCESSING');
+
+    expect(await screen.findByText('Welcome email')).toBeInTheDocument();
+    expect(screen.getByText('SMTP down')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 
   it.each([
