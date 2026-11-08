@@ -234,6 +234,8 @@ export interface VisaCase {
   whatsappGroupCreated?: boolean;
   travelDate?: string;
   hotelDate?: string;
+  hotelCancellationDate?: string;
+  flightDateTime?: string;
   salamComments?: string;
   docAppointment: DocumentStatus;
   docTicket: DocumentStatus;

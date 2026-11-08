@@ -27,6 +27,22 @@ export const getCase = (id: string) =>
 export const updateCase = (id: string, data: unknown) =>
   api.put<ApiResponse<VisaCase>>(`/cases/${id}`, data).then(r => r.data);
 
+export type CaseEmail = {
+  id: string;
+  type: 'WELCOME' | 'HOTEL_CANCELLATION' | 'FLIGHT_CHECKIN';
+  recipient: string;
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+  error?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+};
+
+export const getCaseEmails = (id: string) =>
+  api.get<ApiResponse<CaseEmail[]>>(`/cases/${id}/emails`).then(r => r.data);
+
+export const retryCaseEmail = (id: string, logId: string) =>
+  api.post<ApiResponse<CaseEmail>>(`/cases/${id}/emails/${logId}/retry`).then(r => r.data);
+
 export const deleteCase = (id: string) =>
   api.delete<ApiResponse<void>>(`/cases/${id}`).then(r => r.data);
 
