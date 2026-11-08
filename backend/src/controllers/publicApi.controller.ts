@@ -4,6 +4,7 @@ import * as publicApiService from '../services/publicApi.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { createAuditLog } from '../utils/audit';
 import { createPublicClientSchema } from '../validators/client.validators';
+import * as clientEmail from '../services/clientEmail.service';
 
 const listQuerySchema = z.object({
   page:   z.string().optional().transform(v => (v ? parseInt(v, 10) : 1)),
@@ -125,6 +126,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
     });
     await logApiKeyAccess(req, 'public_clients', created?.id);
     sendSuccess(res, 'Client created', created, 201);
+    if (created?.id) clientEmail.triggerWelcomeForClient(created.id);
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);

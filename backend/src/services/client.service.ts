@@ -124,6 +124,8 @@ export const createClient = async (data: {
   // from the amount, as before; a waiver type means the advance is waived for that reason.
   advancePaid?: boolean;
   advanceWaiverType?: 'WAIVED' | 'FAMILY' | 'FRIEND';
+  // False for bulk imports: those are historical records, not new clients to welcome.
+  welcomeEmailEligible?: boolean;
 }) => {
   // An explicit groupId at creation time (picked from the client form's group select)
   // gets the client its group-formatted ref straight away, same as adding an existing
@@ -146,7 +148,7 @@ export const createClient = async (data: {
   const {
     visaType, ukVisaExpiry, eVisaType, priority,
     advance, charges, discount, createdById, clientRef: _clientRef,
-    advancePaid, advanceWaiverType,
+    advancePaid, advanceWaiverType, welcomeEmailEligible,
     destination: _destination, destinationOptions: _destinationOptions,
     city: _city, cityOptions: _cityOptions, ...rest
   } = data;
@@ -184,6 +186,7 @@ export const createClient = async (data: {
           advancePaidDate: (advancePaid ?? (advance ?? 0) > 0) ? new Date() : undefined,
           advanceWaived: !!advanceWaiverType,
           advanceWaiverType: advanceWaiverType ?? null,
+          welcomeEmailEligible: welcomeEmailEligible ?? true,
         },
       },
     },
@@ -260,7 +263,7 @@ export const bulkImportClients = async (
     }
 
     try {
-      await createClient({ ...row, createdById });
+      await createClient({ ...row, createdById, welcomeEmailEligible: false });
       results.imported++;
       if (passport) seenPassports.add(passport);
       else seenNameKeys.add(key);

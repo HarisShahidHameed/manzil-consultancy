@@ -147,6 +147,15 @@ AWS_REGION=eu-west-2
 AWS_ACCESS_KEY_ID=<from the manzil-app-s3 IAM user's access key>
 AWS_SECRET_ACCESS_KEY=<from the same access key — shown once at creation, save it now>
 S3_BUCKET_NAME=<the bucket you created>
+
+# Client emails. Optional: without these the app runs normally and sends nothing. Emails that
+# would have gone show as "Not sent" on the case, and only go out if staff press Retry later.
+EMAIL_ENABLED=true
+EMAIL_REMINDERS_ENABLED=false
+SMTP_USER=info@manzilconsultancy.com
+SMTP_PASS=<that mailbox's password>
+EMAIL_FROM=Manzil Consultancy <info@manzilconsultancy.com>
+EMAIL_REPLY_TO=visa@manzilconsultancy.com
 ```
 
 Generate secrets with `openssl rand -base64 48` (repeat per secret — don't reuse).

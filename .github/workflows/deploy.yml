@@ -91,6 +91,8 @@ jobs:
           cp -r backend/dist "$RELEASE/backend/dist"
           cp backend/package.json backend/package-lock.json "$RELEASE/backend/"
           cp -r backend/prisma "$RELEASE/backend/prisma"
+          # Documents attached to the welcome email, read at runtime.
+          cp -r backend/assets "$RELEASE/backend/assets"
 
           # Frontend: static build only.
           cp -r frontend/dist "$RELEASE/frontend/dist"

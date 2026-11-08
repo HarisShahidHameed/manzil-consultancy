@@ -290,6 +290,10 @@ export const updateCaseSchema = z.object({
   // Stage 3
   travelDate:    clearableDate(),
   hotelDate:     clearableDate(),
+  hotelCancellationDate: clearableDate(),
+  // An exact instant, because the check-in email goes out 24 hours before it.
+  flightDateTime: z.string().datetime({ offset: true }).nullable().optional()
+    .or(z.literal('').transform(() => null)),
   salamComments: clearableText(),
   docAppointment: z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),
   docTicket:      z.enum(['PENDING', 'IN_PROGRESS', 'DONE', 'NOT_REQUIRED']).optional(),

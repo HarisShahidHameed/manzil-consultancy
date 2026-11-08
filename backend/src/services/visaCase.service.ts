@@ -34,7 +34,7 @@ const CASE_SELECT = {
   appointmentStatus: true,
   appointmentDate: true, appointmentPaidBy: true, bookedById: true, appointmentAssignedToId: true, fileAssignedToId: true,
   fraNo: true, tlsAccount: true, appointmentNotes: true, whatsappGroupCreated: true,
-  travelDate: true, hotelDate: true, salamComments: true,
+  travelDate: true, hotelDate: true, hotelCancellationDate: true, flightDateTime: true, salamComments: true,
   docAppointment: true, docTicket: true, docInsurance: true, docHotel: true,
   docEVisa: true, docSop: true, docVisaForm: true, docSelfEmployment: true,
   docAppointmentCost: true, docTicketCost: true, docInsuranceCost: true, docHotelCost: true,
@@ -685,7 +685,7 @@ export const updateCase = async (
   // Client-paid means the agency fronted nothing, so there is no agency cost to recover —
   // the same rule the checklist's Paid By radio has always applied to the cost box.
   if (d.appointmentPaidBy === 'CLIENT' && !has('docAppointmentCost')) d.docAppointmentCost = 0;
-  const dateFields = ['ukVisaExpiry', 'appointmentDate', 'travelDate', 'hotelDate', 'advancePaidDate'];
+  const dateFields = ['ukVisaExpiry', 'appointmentDate', 'travelDate', 'hotelDate', 'hotelCancellationDate', 'flightDateTime', 'advancePaidDate'];
   for (const f of dateFields) {
     if (d[f] && d[f] !== '') d[f] = new Date(d[f]);
     else if (d[f] === '') d[f] = null;

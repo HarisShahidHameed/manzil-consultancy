@@ -15,6 +15,7 @@ import {
 import { streamClientPdf } from '../utils/pdf';
 import * as clientCreationLock from '../services/clientCreationLock.service';
 import { prisma } from '../config/database';
+import * as clientEmail from '../services/clientEmail.service';
 
 export const createClient = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -32,6 +33,7 @@ export const createClient = async (req: Request, res: Response): Promise<void> =
       req,
     });
     sendSuccess(res, 'Client created', client, 201);
+    clientEmail.triggerWelcomeForClient(client.id);
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);
@@ -93,6 +95,8 @@ export const updateClient = async (req: Request, res: Response): Promise<void> =
       req,
     });
     sendSuccess(res, 'Client updated', client);
+    // The welcome email waits for an address if the client had none when charges were entered.
+    if (data.email) clientEmail.triggerWelcomeForClient(req.params.id);
   } catch (error: any) {
     if (error?.name === 'ZodError') {
       sendError(res, 'Validation failed', 422, error.flatten().fieldErrors);

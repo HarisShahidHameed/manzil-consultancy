@@ -88,6 +88,19 @@ enum ServiceType {
   FULL_SERVICE
 }
 
+enum EmailType {
+  WELCOME
+  HOTEL_CANCELLATION
+  FLIGHT_CHECKIN
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 enum ClientProcessingStatus {
   PENDING
   IN_PROGRESS
@@ -355,6 +368,14 @@ model VisaCase {
   whatsappGroupCreated    Boolean        @default(false)
   travelDate              DateTime?
   hotelDate               DateTime?
+  // True only on the first case of a client added through the Add Client form or the public
+  // API. Existing cases, imported clients and a returning client's later cases stay false, so
+  // they never receive the welcome email.
+  welcomeEmailEligible    Boolean        @default(false)
+  // The day the hotel cancellation email goes out (date-only, entered in File Processing).
+  hotelCancellationDate   DateTime?
+  // Flight departure. The check-in email goes out 24 hours before this.
+  flightDateTime          DateTime?
   salamComments           String?
   docAppointment          DocumentStatus @default(PENDING)
   docTicket               DocumentStatus @default(PENDING)
@@ -388,6 +409,7 @@ model VisaCase {
   appointmentAssigned User?    @relation("CaseAssignedTo",     fields: [appointmentAssignedToId], references: [id], onDelete: SetNull)
   fileAssigned        User?    @relation("CaseFileAssignedTo", fields: [fileAssignedToId],         references: [id], onDelete: SetNull)
   invoices            Invoice[]
+  emailLogs           EmailLog[]
 
   @@map("visa_cases")
 }
@@ -464,6 +486,30 @@ model Invoice {
   createdBy User?    @relation("InvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@map("invoices")
+}
+
+// One row per email a case is due. dedupeKey is unique and includes the date the email is
+// for, so an email can't go out twice, while a changed date earns a fresh reminder.
+model EmailLog {
+  id            String      @id @default(uuid())
+  caseId        String
+  type          EmailType
+  dedupeKey     String      @unique
+  recipient     String
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  error         String?
+  scheduledFor  DateTime?
+  lastAttemptAt DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  case VisaCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@index([status])
+  @@map("email_logs")
 }
 
 // Exclusive "Add Client" lock (1 Oct 2026 #8). Holds at most one row, id 'ADD_CLIENT': the
